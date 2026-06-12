@@ -40,13 +40,35 @@ Default admin: `admin@igla.local` / `igla-admin-2026` (override with
 | Igla app auto-pull | `GET /api/guild/resolve?vin=…&make=…&model=…&year=…&serial=…` with `Authorization: Bearer <token>` (`npm run token:service`). VIN first, alias-normalized free text fallback, serial → product |
 | Internal PDF/archival | Editor → Export (`/print/<id>`), admin/tech only — installer paths never expose downloads |
 
-## Production notes
+## Deploying to Vercel + Supabase
 
-- Set real values in `.env`: `DATABASE_URL`, `S3_*` (real S3, `ca-central-1`),
-  `SESSION_SECRET`, `SMS_PROVIDER=twilio` + `TWILIO_*`, `APP_BASE_URL`.
-- SMS in dev prints codes to the server console (`SMS_PROVIDER=console`).
-- Replace the internal inventory table with the Igla portal inventory API in
-  `src/lib/inventory.ts` when it exists (open item #2 in the plan).
+The app is built for this target — serverless-safe (`after()` keeps alert
+evaluation alive past the response) and storage-agnostic (any S3-compatible
+endpoint).
+
+1. **Supabase project** → copy from *Settings → Database*:
+   - `DATABASE_URL` = the **Transaction pooler** string (port 6543) with
+     `?pgbouncer=true` appended
+   - `DIRECT_URL` = the **direct/Session** string (port 5432) — used only by
+     `prisma migrate deploy`
+2. **Supabase Storage** → create a **private** bucket (e.g. `igla-guilds`),
+   then *Settings → Storage → S3 access keys*:
+   - `S3_ENDPOINT` = `https://<project-ref>.storage.supabase.co/storage/v1/s3`
+   - `S3_REGION` = your project region, `S3_FORCE_PATH_STYLE=true`
+   - `S3_ACCESS_KEY` / `S3_SECRET_KEY` = the generated S3 keys
+   - `S3_BUCKET` = the bucket name
+   (Plain Amazon S3 in `ca-central-1` works identically if preferred for data
+   residency — only these env vars change.)
+3. **Vercel** → import the repo, set all `.env` values (`SESSION_SECRET` to a
+   fresh 32+ char secret, `SMS_PROVIDER=twilio` + `TWILIO_*`,
+   `APP_BASE_URL=https://<your-domain>`, optionally `IGLA_SERVICE_TOKEN`).
+4. **Migrate + seed** once against the direct URL:
+   `npx prisma migrate deploy` then `npm run db:seed`.
+
+Notes: Supabase Postgres region selection covers the Canada data-residency
+requirement (`ca-central-1`). SMS in dev prints codes to the server console
+(`SMS_PROVIDER=console`). Replace the internal inventory table with the Igla
+portal inventory API in `src/lib/inventory.ts` when it exists (open item #2).
 
 ## Open items from the plan (owner input)
 

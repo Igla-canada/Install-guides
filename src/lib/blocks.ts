@@ -12,6 +12,7 @@ export type BlockContent =
   | { kind: "checklist"; items: Array<{ text: string; checked: boolean }> }
   | { kind: "callout"; style: "info" | "warning" | "danger"; text: string }
   | { kind: "code_value"; label?: string; value: string }
+  | { kind: "file"; assetId: string; name: string; size?: number } // firmware .bin etc.
   | { kind: "divider" };
 
 export const BLOCK_TYPES = [
@@ -23,6 +24,7 @@ export const BLOCK_TYPES = [
   { type: "checklist", label: "Checklist" },
   { type: "callout", label: "Callout / warning" },
   { type: "code_value", label: "Code / value" },
+  { type: "file", label: "File attachment (.bin, …)" },
   { type: "divider", label: "Divider" },
 ] as const;
 
@@ -53,25 +55,61 @@ export function defaultContent(type: string): object {
       return { style: "warning", text: "" };
     case "code_value":
       return { label: "", value: "" };
+    case "file":
+      return { assetId: "", name: "" };
     default:
       return {};
   }
 }
 
+// Colors mirror the Notion reference pages: green connection sections, blue
+// settings, dark-red software, olive buttons & indication.
+const SECTION_COLORS: Record<
+  string,
+  { bar: string; tint: string; accent: string }
+> = {
+  installation_point: {
+    bar: "bg-green-800 text-white",
+    tint: "bg-green-50",
+    accent: "border-l-green-700",
+  },
+  connections: {
+    bar: "bg-green-800 text-white",
+    tint: "bg-green-50",
+    accent: "border-l-green-700",
+  },
+  settings: {
+    bar: "bg-blue-900 text-white",
+    tint: "bg-blue-50",
+    accent: "border-l-blue-800",
+  },
+  software: {
+    bar: "bg-red-900 text-white",
+    tint: "bg-red-50",
+    accent: "border-l-red-800",
+  },
+  buttons_indications: {
+    bar: "bg-yellow-800 text-white",
+    tint: "bg-yellow-50",
+    accent: "border-l-yellow-700",
+  },
+  warning: {
+    bar: "bg-amber-700 text-white",
+    tint: "bg-amber-50",
+    accent: "border-l-amber-600",
+  },
+  custom: {
+    bar: "bg-zinc-700 text-white",
+    tint: "bg-zinc-50",
+    accent: "border-l-zinc-400",
+  },
+};
+
+export function sectionColors(type: string) {
+  return SECTION_COLORS[type] ?? SECTION_COLORS.custom;
+}
+
+/** Left-border accent used in the editor cards. */
 export function sectionAccent(type: string): string {
-  switch (type) {
-    case "installation_point":
-    case "connections":
-      return "border-l-red-500";
-    case "settings":
-      return "border-l-blue-500";
-    case "software":
-      return "border-l-purple-500";
-    case "buttons_indications":
-      return "border-l-green-500";
-    case "warning":
-      return "border-l-amber-500";
-    default:
-      return "border-l-zinc-300";
-  }
+  return sectionColors(type).accent;
 }

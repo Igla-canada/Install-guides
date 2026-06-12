@@ -4,7 +4,13 @@
 import { useState } from "react";
 import type { ClientQuickPick, ClientSection } from "./types";
 import BlockCard from "./block-card";
-import { BLOCK_TYPES, SECTION_TYPES, defaultContent, sectionAccent } from "@/lib/blocks";
+import {
+  BLOCK_TYPES,
+  SECTION_TYPES,
+  defaultContent,
+  sectionAccent,
+  sectionColors,
+} from "@/lib/blocks";
 
 export default function SectionCard({
   section,
@@ -96,7 +102,11 @@ export default function SectionCard({
         section.type
       )}`}
     >
-      <div className="flex items-center gap-2 px-4 py-2">
+      <div
+        className={`flex items-center gap-2 rounded-tr-xl px-4 py-2 ${
+          sectionColors(section.type).tint
+        }`}
+      >
         <button
           onClick={() => setCollapsed((v) => !v)}
           className="text-zinc-400 hover:text-zinc-600"

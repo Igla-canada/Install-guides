@@ -1,4 +1,4 @@
-// Admin/tech-only print & archival view (browser print → PDF). This is the
+﻿// Admin/tech-only print & archival view (browser print â†’ PDF). This is the
 // INTERNAL export path; installer-facing routes never expose it. Each export
 // is still stamped with who exported it and logged.
 import { notFound } from "next/navigation";
@@ -27,13 +27,13 @@ export default async function PrintGuildPage(props: {
     meta: { via: "print_view" },
   });
 
-  const stamp = `Internal export · ${user.name} · ${new Date().toISOString()}`;
+  const stamp = `Internal export Â· ${user.name} Â· ${new Date().toISOString()}`;
   return (
     <main className="bg-white p-8 print:p-0">
       <p className="mb-4 text-xs text-zinc-400 print:fixed print:bottom-2 print:left-2">
         {stamp}
       </p>
-      <GuildView doc={doc} />
+      <GuildView doc={doc} theme="light" />
     </main>
   );
 }

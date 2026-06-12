@@ -1,8 +1,10 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { useRef, useState } from "react";
 import type { ClientBlock } from "./types";
 import ImageBlockEditor from "@/components/images/image-block-editor";
+import { uploadImage } from "@/lib/client/offline";
 
 export default function BlockCard({
   block,
@@ -242,6 +244,9 @@ function BlockBody({
         </div>
       );
 
+    case "file":
+      return <FileBlockEditor content={c} update={update} />;
+
     case "divider":
       return <hr className="border-zinc-200" />;
 
@@ -253,4 +258,71 @@ function BlockBody({
         </p>
       );
   }
+}
+
+// Firmware/settings file attachment (.bin etc.). Uploads through the same
+// offline-tolerant queue as photos.
+function FileBlockEditor({
+  content: c,
+  update,
+}: {
+  content: any;
+  update: (content: any) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handle = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { assetId } = await uploadImage(file, file.name);
+      update({ ...c, assetId, name: file.name, size: file.size });
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div>
+      <input ref={fileRef} type="file" hidden onChange={(e) => void handle(e.target.files)} />
+      {c.assetId ? (
+        <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm">
+          <span className="text-lg">📄</span>
+          <input
+            defaultValue={c.name ?? "file"}
+            onBlur={(e) => {
+              if (e.target.value !== c.name) update({ ...c, name: e.target.value });
+            }}
+            className="min-w-0 flex-1 truncate border-0 bg-transparent font-medium focus:outline-none"
+          />
+          {typeof c.size === "number" && (
+            <span className="text-xs text-zinc-400">
+              {c.size > 1048576
+                ? `${(c.size / 1048576).toFixed(1)} MB`
+                : `${Math.round(c.size / 1024)} KB`}
+            </span>
+          )}
+          {String(c.assetId).startsWith("pending:") && (
+            <span className="rounded bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700">
+              waiting to sync
+            </span>
+          )}
+          <button onClick={() => fileRef.current?.click()} className="text-xs text-zinc-400 hover:text-zinc-600">
+            Replace
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-300 px-4 py-4 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
+        >
+          📄 {busy ? "Uploading…" : "Attach file (.bin, settings, …)"}
+        </button>
+      )}
+    </div>
+  );
 }

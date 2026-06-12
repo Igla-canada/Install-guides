@@ -275,12 +275,16 @@ export function AnnoShape({
   index,
   selected,
   onSelect,
+  callout = false,
 }: {
   anno: Anno;
   index: number;
   selected?: boolean;
   onSelect?: () => void;
+  /** Viewer style: red-bordered label box with a leader line (reference look). */
+  callout?: boolean;
 }) {
+  if (callout) return <CalloutShape anno={anno} index={index} />;
   const common = {
     onPointerDown: (e: React.PointerEvent) => {
       if (onSelect) {
@@ -385,6 +389,93 @@ export function AnnoShape({
       >
         {index + 1}
       </text>
+    </g>
+  );
+}
+
+/**
+ * The reference-page look: a red-bordered label box with a leader line down to
+ * the wire/point. Multi-line labels supported via "\n" — the box grows.
+ * Uses a nested <svg> so the box can be laid out in px around a % anchor.
+ */
+function CalloutShape({ anno, index }: { anno: Anno; index: number }) {
+  const color = anno.color || "#ef4444";
+  const label = (anno.label || `${index + 1}`).trim();
+  const lines = label.split("\n").filter(Boolean);
+  const boxW = Math.max(56, Math.max(...lines.map((l) => l.length)) * 7.2 + 18);
+  const boxH = lines.length * 16 + 12;
+  const pct = (v: number) => `${v * 100}%`;
+
+  // Anchor (target on the photo) + where the label box sits.
+  let target: { x: number; y: number };
+  if (anno.shape === "point") target = anno.coords;
+  else if (anno.shape === "arrow") target = { x: anno.coords.x2, y: anno.coords.y2 };
+  else target = { x: anno.coords.x + anno.coords.w / 2, y: anno.coords.y };
+  const labelOrigin =
+    anno.shape === "arrow" ? { x: anno.coords.x1, y: anno.coords.y1 } : target;
+  const below = labelOrigin.y < 0.18; // near the top edge → box goes below
+  const gap = 28;
+  const boxOffsetY = below ? gap : -(gap + boxH);
+
+  return (
+    <g>
+      {anno.shape === "box" && (
+        <rect
+          x={pct(anno.coords.x)}
+          y={pct(anno.coords.y)}
+          width={pct(anno.coords.w)}
+          height={pct(anno.coords.h)}
+          fill="none"
+          stroke={color}
+          strokeWidth={2.5}
+          rx={4}
+        />
+      )}
+      {/* leader line + dot at the target */}
+      <svg x={pct(labelOrigin.x)} y={pct(labelOrigin.y)} overflow="visible">
+        <line
+          x1={0}
+          y1={below ? boxOffsetY : boxOffsetY + boxH}
+          x2={0}
+          y2={0}
+          stroke={color}
+          strokeWidth={2}
+        />
+        <g transform={`translate(${-boxW / 2}, ${boxOffsetY})`}>
+          <rect
+            width={boxW}
+            height={boxH}
+            rx={4}
+            fill="rgba(20,20,20,0.92)"
+            stroke={color}
+            strokeWidth={2}
+          />
+          {lines.map((line, i) => (
+            <text
+              key={i}
+              x={boxW / 2}
+              y={16 + i * 16}
+              textAnchor="middle"
+              fill="#fff"
+              fontSize={12}
+              fontWeight={700}
+            >
+              {line}
+            </text>
+          ))}
+        </g>
+      </svg>
+      <circle cx={pct(target.x)} cy={pct(target.y)} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />
+      {anno.shape === "arrow" && (
+        <line
+          x1={pct(anno.coords.x1)}
+          y1={pct(anno.coords.y1)}
+          x2={pct(anno.coords.x2)}
+          y2={pct(anno.coords.y2)}
+          stroke={color}
+          strokeWidth={2}
+        />
+      )}
     </g>
   );
 }

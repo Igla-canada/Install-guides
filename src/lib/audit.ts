@@ -2,6 +2,7 @@
 // Every installer-facing access goes through logEvent(); the alert checks run
 // on the hot path but are cheap indexed counts. This is deterrence +
 // forensics, not prevention — the watermark is what makes a leak traceable.
+import { after } from "next/server";
 import { prisma } from "./db";
 import type { Prisma } from "@prisma/client";
 
@@ -40,10 +41,18 @@ export async function logEvent(input: LogInput): Promise<void> {
     },
   });
 
-  // Fire-and-forget: alert evaluation must never block or fail the view.
-  evaluateAlerts(event.id, input).catch((e) =>
-    console.error("alert evaluation failed", e)
-  );
+  // Alert evaluation must never block or fail the view. after() keeps the
+  // work alive past the response on serverless (Vercel) — a plain floating
+  // promise would be killed when the function freezes.
+  const evaluate = () =>
+    evaluateAlerts(event.id, input).catch((e) =>
+      console.error("alert evaluation failed", e)
+    );
+  try {
+    after(evaluate);
+  } catch {
+    void evaluate(); // outside a request scope (scripts/tests)
+  }
 }
 
 async function raiseAlert(

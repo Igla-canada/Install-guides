@@ -139,7 +139,7 @@ export async function uploadImage(
       s.add({
         uuid,
         blob: file,
-        mime: file.type || "image/jpeg",
+        mime: file.type || "application/octet-stream",
         name,
         ts: Date.now(),
       } satisfies QueuedUpload)
@@ -153,13 +153,13 @@ async function uploadNow(file: Blob, name: string): Promise<string> {
   const presign = await fetch("/api/images/presign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mime: file.type || "image/jpeg", name }),
+    body: JSON.stringify({ mime: file.type || "application/octet-stream", name }),
   });
   if (!presign.ok) throw new Error("presign failed");
   const { uploadUrl, s3Key } = await presign.json();
   const put = await fetch(uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": file.type || "image/jpeg" },
+    headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
   if (!put.ok) throw new Error("upload failed");
@@ -169,7 +169,7 @@ async function uploadNow(file: Blob, name: string): Promise<string> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       s3Key,
-      mime: file.type || "image/jpeg",
+      mime: file.type || "application/octet-stream",
       width: dims?.width,
       height: dims?.height,
     }),

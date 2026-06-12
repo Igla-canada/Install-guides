@@ -26,13 +26,21 @@ export const s3 = new S3Client({
 export const BUCKET = process.env.S3_BUCKET ?? "igla-guilds";
 
 let bucketEnsured = false;
-/** Dev convenience: create the bucket on first use (MinIO starts empty). */
+/**
+ * Dev convenience: create the bucket on first use (MinIO starts empty).
+ * Best-effort — on Supabase Storage (S3-compatible endpoint) buckets are
+ * created in the dashboard and CreateBucket may be denied; signing still works.
+ */
 export async function ensureBucket(): Promise<void> {
   if (bucketEnsured) return;
   try {
     await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
   } catch {
-    await s3.send(new CreateBucketCommand({ Bucket: BUCKET }));
+    try {
+      await s3.send(new CreateBucketCommand({ Bucket: BUCKET }));
+    } catch {
+      // Bucket may exist without Head/Create permission — proceed.
+    }
   }
   bucketEnsured = true;
 }

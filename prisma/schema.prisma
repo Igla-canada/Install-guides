@@ -12,7 +12,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // On Supabase: DATABASE_URL = pooled connection (port 6543, pgbouncer),
+  // DIRECT_URL = direct connection (port 5432) used by prisma migrate.
+  // Locally both point at the same Docker Postgres.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
