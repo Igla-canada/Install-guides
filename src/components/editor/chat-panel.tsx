@@ -16,7 +16,11 @@ type Msg = { from: "bot" | "user"; text: string };
 type Mode =
   | { kind: "menu" }
   | { kind: "pick_section_type" }
-  | { kind: "pick_target_section"; then: "text" | "photo" | "checklist" | "callout" | "quick_pick"; pickId?: string }
+  | {
+      kind: "pick_target_section";
+      then: "text" | "photo" | "file" | "checklist" | "callout" | "quick_pick";
+      pickId?: string;
+    }
   | { kind: "write_text"; sectionId: string }
   | { kind: "rename_title" };
 
@@ -41,6 +45,7 @@ export default function ChatPanel({
   const [mode, setMode] = useState<Mode>({ kind: "menu" });
   const [input, setInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const anyFileRef = useRef<HTMLInputElement>(null);
   const photoTargetRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -153,6 +158,27 @@ export default function ChatPanel({
     );
   };
 
+  const handleAnyFile = async (files: FileList | null) => {
+    const sectionId = photoTargetRef.current;
+    const file = files?.[0];
+    if (!file || !sectionId) return;
+    const { assetId, pending: queued } = await uploadImage(file, file.name);
+    await dispatch([
+      {
+        op: "add_block",
+        blockId: crypto.randomUUID(),
+        sectionId,
+        type: "file",
+        content: { assetId, name: file.name, size: file.size },
+      },
+    ]);
+    backToMenu(
+      queued
+        ? `"${file.name}" saved on this device (no signal) — it will upload when you're back online.`
+        : `Attached "${file.name}". Installers get a download button for it. What's next?`
+    );
+  };
+
   const submitText = async () => {
     const text = input.trim();
     if (!text) return;
@@ -178,6 +204,7 @@ export default function ChatPanel({
     options = [
       { label: "➕ Add a section", onClick: () => { echo("Add a section"); setMode({ kind: "pick_section_type" }); say("What kind of section?"); } },
       { label: "📷 Add a photo", onClick: () => { echo("Add a photo"); setMode({ kind: "pick_target_section", then: "photo" }); say("Which section gets the photo?"); } },
+      { label: "📄 Add a file (software / settings)", onClick: () => { echo("Add a file"); setMode({ kind: "pick_target_section", then: "file" }); say("Which section gets the file? (Usually IGLA Settings or Software)"); } },
       { label: "📝 Add text", onClick: () => { echo("Add text"); setMode({ kind: "pick_target_section", then: "text" }); say("Which section?"); } },
       { label: "☑ Add a checklist", onClick: () => { echo("Add a checklist"); setMode({ kind: "pick_target_section", then: "checklist" }); say("Which section?"); } },
       { label: "⚠ Add a warning", onClick: () => { echo("Add a warning"); setMode({ kind: "pick_target_section", then: "callout" }); say("Which section?"); } },
@@ -208,6 +235,9 @@ export default function ChatPanel({
         if (mode.then === "photo") {
           photoTargetRef.current = s.id;
           fileRef.current?.click();
+        } else if (mode.then === "file") {
+          photoTargetRef.current = s.id;
+          anyFileRef.current?.click();
         } else if (mode.then === "text") {
           if (input.trim()) {
             const text = input.trim();
@@ -242,8 +272,16 @@ export default function ChatPanel({
 
   return (
     <div className="flex h-[70vh] flex-col rounded-xl border border-zinc-200 bg-white lg:sticky lg:top-16">
-      <div className="border-b border-zinc-100 px-4 py-2 text-sm font-medium text-zinc-600">
-        Chat editor <span className="font-normal text-zinc-400">— same page, different hands</span>
+      <div className="flex items-center border-b border-zinc-100 px-4 py-2 text-sm font-medium text-zinc-600">
+        Chat editor{" "}
+        <span className="ml-1 font-normal text-zinc-400">— same page, different hands</span>
+        <a
+          href="/quick-picks"
+          className="ml-auto text-xs font-normal text-zinc-400 underline hover:text-zinc-600"
+          title="Rename, edit or delete saved quick picks"
+        >
+          ☆ edit quick picks
+        </a>
       </div>
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-3">
         {messages.map((m, i) => (
@@ -290,6 +328,12 @@ export default function ChatPanel({
         capture="environment"
         hidden
         onChange={(e) => void handlePhoto(e.target.files)}
+      />
+      <input
+        ref={anyFileRef}
+        type="file"
+        hidden
+        onChange={(e) => void handleAnyFile(e.target.files)}
       />
       {showTextInput && (
         <form
