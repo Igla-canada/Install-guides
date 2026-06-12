@@ -32,12 +32,12 @@ Default admin: `admin@igla.local` / `igla-admin-2026` (override with
 
 | Flow | Where |
 |---|---|
-| Author a guide | Dashboard → New guild (identity is dropdown-only) → editor: page surface + chat surface, autosave, publish = version snapshot, rollback in History |
+| Author a guide | Dashboard → New guild: type make/model + years (auto-created if new, no taxonomy pre-setup) → editor: page surface + chat surface, autosave, publish = version snapshot, rollback in History |
 | Photos & wiring annotations | Any image block → camera/upload → “Annotate wires” (points/arrows/boxes, labels, editable forever). Works offline: queued in IndexedDB, syncs when back online |
 | Give an installer access | Access links → label + mobile + expiry (+ max views) → send the one-time URL. Installer verifies via SMS code, sees a watermarked view-only page. Revoke any time |
 | Installer accounts | Users → role INSTALLER → grant guilds; they log in at `/` and see `/my-guilds` |
 | Watch for leaks | Alerts (burst views, cross-make, probing, new device) + Audit log; one-click revoke from an alert |
-| Igla app auto-pull | `GET /api/guild/resolve?vin=…&make=…&model=…&year=…&serial=…` with `Authorization: Bearer <token>` (`npm run token:service`). VIN first, alias-normalized free text fallback, serial → product |
+| Igla app auto-pull | `GET /api/taxonomy?published=1` feeds the portal's dropdowns (only cars with published guides); `GET /api/guild/resolve?makeId=…&modelId=…&year=…&serial=…` then matches exactly. VIN and alias-normalized free text remain as fallbacks. Both use `Authorization: Bearer <token>` (`npm run token:service`) |
 | Internal PDF/archival | Editor → Export (`/print/<id>`), admin/tech only — installer paths never expose downloads |
 
 ## Deploying to Vercel + Supabase

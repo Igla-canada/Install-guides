@@ -105,9 +105,9 @@ export default function IdentityPanel({
             options={taxonomy.regions.map((r) => ({ value: r.id, label: r.name }))}
           />
           <p className="text-xs text-zinc-400 sm:col-span-2">
-            These fields drive the Igla app&apos;s automatic guide lookup. If a
-            make/model/generation is missing, add it in Taxonomy — identity is
-            never free text.
+            These fields drive the Igla app&apos;s automatic guide lookup. New
+            makes/models/years are created from the New-guild form; this panel
+            re-points an existing guild.
           </p>
         </div>
       )}

@@ -31,15 +31,17 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const yearRaw = sp.get("year");
   const input = {
+    makeId: sp.get("makeId") ?? undefined,
+    modelId: sp.get("modelId") ?? undefined,
     vin: sp.get("vin") ?? undefined,
     make: sp.get("make") ?? undefined,
     model: sp.get("model") ?? undefined,
     year: yearRaw ? parseInt(yearRaw, 10) || undefined : undefined,
     serial: sp.get("serial") ?? undefined,
   };
-  if (!input.vin && !input.make && !input.model) {
+  if (!input.makeId && !input.vin && !input.make && !input.model) {
     return NextResponse.json(
-      { error: "provide at least vin or make/model" },
+      { error: "provide makeId/modelId, vin, or make/model" },
       { status: 400 }
     );
   }

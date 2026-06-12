@@ -1,4 +1,7 @@
 "use client";
+// Type-or-pick guild creation: free typing with suggestions from the existing
+// taxonomy (datalists). Anything new is auto-created server-side — no
+// taxonomy pre-setup. The product list stays a fixed dropdown (real catalog).
 
 import { useMemo, useState } from "react";
 import type { Taxonomy } from "@/lib/taxonomy";
@@ -10,137 +13,124 @@ export default function NewGuildForm({
   taxonomy: Taxonomy;
   action: (formData: FormData) => Promise<void>;
 }) {
-  const [makeId, setMakeId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [generationId, setGenerationId] = useState("");
-  const [trimId, setTrimId] = useState("");
+  const [makeName, setMakeName] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
   const [productId, setProductId] = useState("");
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
 
-  const make = taxonomy.makes.find((m) => m.id === makeId);
-  const model = make?.models.find((m) => m.id === modelId);
-  const generation = model?.generations.find((g) => g.id === generationId);
+  const knownMake = taxonomy.makes.find(
+    (m) => m.name.toLowerCase() === makeName.trim().toLowerCase()
+  );
+  const modelSuggestions = knownMake
+    ? knownMake.models.map((m) => m.name)
+    : taxonomy.makes.flatMap((m) => m.models.map((x) => x.name));
+  const knownModel = knownMake?.models.find(
+    (m) => m.name.toLowerCase() === modelName.trim().toLowerCase()
+  );
+  const yearHints = knownModel
+    ? knownModel.generations.map((g) =>
+        g.yearEnd ? `${g.yearStart}–${g.yearEnd}` : `${g.yearStart}+`
+      )
+    : [];
 
-  // Auto-suggest a title like "BMW 4 Series II (G22) — IGLA Alarm".
   const suggestedTitle = useMemo(() => {
-    if (!make || !model || !generation) return "";
+    if (!makeName.trim() || !modelName.trim()) return "";
     const product = taxonomy.productLines
-      .flatMap((pl) => pl.products.map((p) => ({ ...p, line: pl.name })))
+      .flatMap((pl) => pl.products)
       .find((p) => p.id === productId);
-    const trim = generation.trims.find((t) => t.id === trimId);
     return [
-      make.name,
-      model.name,
-      generation.name,
-      trim ? `(${trim.name})` : "",
+      makeName.trim(),
+      modelName.trim(),
+      yearFrom ? (yearTo ? `${yearFrom}–${yearTo}` : yearFrom) : "",
       product ? `— ${product.name}` : "",
     ]
       .filter(Boolean)
       .join(" ");
-  }, [make, model, generation, trimId, productId, taxonomy.productLines]);
+  }, [makeName, modelName, yearFrom, yearTo, productId, taxonomy.productLines]);
 
   const effectiveTitle = titleTouched ? title : suggestedTitle;
 
   return (
     <form action={action} className="mt-6 space-y-4 rounded-xl border border-zinc-200 bg-white p-6">
-      <Field label="Region">
-        <select name="regionId" required className={selectCls} defaultValue={taxonomy.regions[0]?.id}>
-          {taxonomy.regions.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Make">
+          <input
+            name="makeName"
+            required
+            list="make-list"
+            value={makeName}
+            onChange={(e) => setMakeName(e.target.value)}
+            placeholder="e.g. BMW"
+            className={inputCls}
+            autoComplete="off"
+          />
+          <datalist id="make-list">
+            {taxonomy.makes.map((m) => (
+              <option key={m.id} value={m.name} />
+            ))}
+          </datalist>
+        </Field>
+        <Field label="Model">
+          <input
+            name="modelName"
+            required
+            list="model-list"
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+            placeholder="e.g. X5"
+            className={inputCls}
+            autoComplete="off"
+          />
+          <datalist id="model-list">
+            {[...new Set(modelSuggestions)].map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </Field>
+      </div>
 
-      <Field label="Make">
-        <select
-          name="makeId"
-          required
-          className={selectCls}
-          value={makeId}
-          onChange={(e) => {
-            setMakeId(e.target.value);
-            setModelId("");
-            setGenerationId("");
-            setTrimId("");
-          }}
-        >
-          <option value="">Select make…</option>
-          {taxonomy.makes.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Model">
-        <select
-          name="modelId"
-          required
-          disabled={!make}
-          className={selectCls}
-          value={modelId}
-          onChange={(e) => {
-            setModelId(e.target.value);
-            setGenerationId("");
-            setTrimId("");
-          }}
-        >
-          <option value="">Select model…</option>
-          {make?.models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Generation">
-        <select
-          name="generationId"
-          required
-          disabled={!model}
-          className={selectCls}
-          value={generationId}
-          onChange={(e) => {
-            setGenerationId(e.target.value);
-            setTrimId("");
-          }}
-        >
-          <option value="">Select generation…</option>
-          {model?.generations.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name} ({g.yearStart}–{g.yearEnd ?? "now"})
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Trim / engine (optional — only if wiring differs per trim)">
-        <select
-          name="trimId"
-          disabled={!generation}
-          className={selectCls}
-          value={trimId}
-          onChange={(e) => setTrimId(e.target.value)}
-        >
-          <option value="">Whole generation</option>
-          {generation?.trims.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="From year">
+          <input
+            name="yearFrom"
+            required
+            type="number"
+            min={1950}
+            max={2100}
+            value={yearFrom}
+            onChange={(e) => setYearFrom(e.target.value)}
+            placeholder="e.g. 2021"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="To year (blank = still current)">
+          <input
+            name="yearTo"
+            type="number"
+            min={1950}
+            max={2100}
+            value={yearTo}
+            onChange={(e) => setYearTo(e.target.value)}
+            placeholder="optional"
+            className={inputCls}
+          />
+        </Field>
+      </div>
+      {yearHints.length > 0 && (
+        <p className="-mt-2 text-xs text-zinc-400">
+          Existing year ranges for {modelName.trim()}: {yearHints.join(", ")} —
+          a matching range is reused automatically.
+        </p>
+      )}
 
       <Field label="Igla product">
         <select
           name="iglaProductId"
           required
-          className={selectCls}
+          className={inputCls}
           value={productId}
           onChange={(e) => setProductId(e.target.value)}
         >
@@ -161,13 +151,13 @@ export default function NewGuildForm({
         <input
           name="title"
           required
-          className={selectCls}
+          className={inputCls}
           value={effectiveTitle}
           onChange={(e) => {
             setTitleTouched(true);
             setTitle(e.target.value);
           }}
-          placeholder="Auto-filled from identity"
+          placeholder="Auto-filled"
         />
       </Field>
 
@@ -181,8 +171,8 @@ export default function NewGuildForm({
   );
 }
 
-const selectCls =
-  "mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none disabled:bg-zinc-100 disabled:text-zinc-400";
+const inputCls =
+  "mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

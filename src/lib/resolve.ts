@@ -9,6 +9,10 @@ import { decodeVin } from "./vin";
 import { productFromSerial } from "./inventory";
 
 export type ResolveInput = {
+  // Exact ids from the portal's dropdowns (fed by GET /api/taxonomy) — the
+  // deterministic path, takes precedence over everything else.
+  makeId?: string;
+  modelId?: string;
   vin?: string;
   make?: string;
   model?: string;
@@ -32,7 +36,7 @@ export type ResolveResult = {
   match: ResolveCandidate | null; // set when exactly one confident hit
   candidates: ResolveCandidate[]; // ranked alternatives (or all, when ambiguous)
   diagnostics: {
-    vehicleSource: "vin" | "free_text" | "none";
+    vehicleSource: "ids" | "vin" | "free_text" | "none";
     makeResolved: string | null;
     modelResolved: string | null;
     generationMatched: boolean;
@@ -44,13 +48,23 @@ const normalize = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> {
-  // --- 1+2: vehicle identity ----------------------------------------------
+  // --- 0: exact dropdown ids (portal fed by /api/taxonomy) ------------------
   let makeText = input.make ?? null;
   let modelText = input.model ?? null;
   let year = input.year ?? null;
-  let vehicleSource: "vin" | "free_text" | "none" = "none";
+  let vehicleSource: "ids" | "vin" | "free_text" | "none" = "none";
 
-  if (input.vin) {
+  let makeById = input.makeId
+    ? await prisma.make.findUnique({ where: { id: input.makeId } })
+    : null;
+  let modelById =
+    input.modelId && makeById
+      ? await prisma.model.findUnique({ where: { id: input.modelId } })
+      : null;
+  if (modelById && modelById.makeId !== makeById?.id) modelById = null;
+  if (makeById) vehicleSource = "ids";
+
+  if (!makeById && input.vin) {
     const decoded = await decodeVin(input.vin);
     if (decoded?.make) {
       makeText = decoded.make;
@@ -63,12 +77,14 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
     vehicleSource = "free_text";
   }
 
-  // Resolve make: exact name (ci) → alias table.
-  let make = makeText
-    ? await prisma.make.findFirst({
-        where: { name: { equals: makeText.trim(), mode: "insensitive" } },
-      })
-    : null;
+  // Resolve make: exact id → exact name (ci) → alias table.
+  let make =
+    makeById ??
+    (makeText
+      ? await prisma.make.findFirst({
+          where: { name: { equals: makeText.trim(), mode: "insensitive" } },
+        })
+      : null);
   if (!make && makeText) {
     const alias = await prisma.vehicleAlias.findFirst({
       where: { aliasText: makeText.trim().toLowerCase(), modelId: null },
@@ -77,16 +93,17 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
     make = alias?.make ?? null;
   }
 
-  // Resolve model within the make: exact (ci) → alias → fuzzy normalized.
+  // Resolve model within the make: exact id → exact (ci) → alias → fuzzy.
   let model =
-    make && modelText
+    modelById ??
+    (make && modelText
       ? await prisma.model.findFirst({
           where: {
             makeId: make.id,
             name: { equals: modelText.trim(), mode: "insensitive" },
           },
         })
-      : null;
+      : null);
   if (!model && make && modelText) {
     const alias = await prisma.vehicleAlias.findFirst({
       where: {
@@ -146,7 +163,7 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
   });
 
   const baseConfidence: "high" | "medium" | "low" =
-    vehicleSource === "vin" && model && year
+    (vehicleSource === "ids" || vehicleSource === "vin") && model && year
       ? "high"
       : model
       ? "medium"
