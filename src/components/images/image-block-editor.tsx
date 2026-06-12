@@ -1,16 +1,18 @@
 "use client";
-// Photo capture/upload + (optionally) annotation entry point for image,
-// annotated_image and gallery blocks. Capture works offline: the blob is
-// queued in IndexedDB and the block holds a pending:<uuid> reference until
-// sync (see src/lib/client/offline.ts).
+// Photo capture/upload + annotation entry for image, annotated_image and
+// gallery blocks. A photo is ONE unit with its red heading banner (the
+// connection-point label) and caption — reference-page style. Tapping the
+// photo opens the annotator; saved annotations render right on the editor
+// thumbnail so you see the work without opening anything. Capture works
+// offline (queued in IndexedDB, see src/lib/client/offline.ts).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadImage } from "@/lib/client/offline";
 import { useImageUrl } from "./use-image-url";
-import Annotator from "./annotator";
+import Annotator, { AnnoShape, type Anno } from "./annotator";
 
-type SingleContent = { imageAssetId?: string; caption?: string };
+type SingleContent = { imageAssetId?: string; heading?: string; caption?: string };
 type GalleryContent = { gallery: true; items: Array<{ imageAssetId: string; caption?: string }> };
 
 export default function ImageBlockEditor({
@@ -81,6 +83,37 @@ export default function ImageBlockEditor({
   );
 }
 
+/** Saved annotations rendered over the editor thumbnail (reference look). */
+function AnnotationOverlay({
+  assetId,
+  version,
+}: {
+  assetId: string;
+  version: number;
+}) {
+  const [annos, setAnnos] = useState<Anno[]>([]);
+  useEffect(() => {
+    if (!assetId || assetId.startsWith("pending:")) return;
+    let cancelled = false;
+    void fetch(`/api/images/${assetId}/annotations`)
+      .then((r) => (r.ok ? r.json() : { annotations: [] }))
+      .then((d) => {
+        if (!cancelled) setAnnos(d.annotations ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, version]);
+  if (annos.length === 0) return null;
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full">
+      {annos.map((a, i) => (
+        <AnnoShape key={i} anno={a} index={i} callout />
+      ))}
+    </svg>
+  );
+}
+
 function SingleEditor({
   content,
   annotatable,
@@ -96,6 +129,7 @@ function SingleEditor({
 }) {
   const url = useImageUrl(content.imageAssetId);
   const [annotating, setAnnotating] = useState(false);
+  const [annoVersion, setAnnoVersion] = useState(0);
   const pending = content.imageAssetId?.startsWith("pending:");
 
   if (!content.imageAssetId) {
@@ -113,14 +147,36 @@ function SingleEditor({
 
   return (
     <div>
-      <div className="relative">
+      {/* Red banner heading — the connection-point label, one unit with the photo */}
+      <input
+        defaultValue={content.heading ?? ""}
+        placeholder="Heading — e.g. Installation Location: (1) Passenger Side Foot Well"
+        onBlur={(e) => {
+          if (e.target.value !== (content.heading ?? ""))
+            onChange({ ...content, heading: e.target.value });
+        }}
+        className="mb-1 w-full rounded-md border-2 border-red-500 bg-white px-3 py-1.5 text-center text-sm font-bold text-red-600 placeholder:font-normal placeholder:text-red-300 focus:outline-none"
+      />
+      <div
+        className="group/img relative cursor-pointer"
+        onClick={() => annotatable && url && setAnnotating(true)}
+        title={annotatable ? "Tap to annotate wires" : undefined}
+      >
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={content.caption ?? ""} className="max-h-96 rounded-lg" />
+          <img src={url} alt={content.caption ?? ""} className="w-full rounded-lg" />
         ) : (
           <div className="flex h-40 items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-400">
             Loading image…
           </div>
+        )}
+        {annotatable && content.imageAssetId && (
+          <AnnotationOverlay assetId={content.imageAssetId} version={annoVersion} />
+        )}
+        {annotatable && url && (
+          <span className="absolute bottom-2 right-2 hidden rounded-md bg-black/70 px-2 py-1 text-xs text-white group-hover/img:block">
+            ✏ Tap to annotate
+          </span>
         )}
         {pending && (
           <span className="absolute left-2 top-2 rounded bg-orange-500/90 px-2 py-0.5 text-xs text-white">
@@ -131,30 +187,25 @@ function SingleEditor({
       <div className="mt-1 flex items-center gap-2">
         <input
           defaultValue={content.caption ?? ""}
-          placeholder="Caption…"
+          placeholder="Caption / note under the photo…"
           onBlur={(e) => {
-            if (e.target.value !== content.caption)
+            if (e.target.value !== (content.caption ?? ""))
               onChange({ ...content, caption: e.target.value });
           }}
           className="flex-1 border-0 bg-transparent text-xs text-zinc-500 focus:outline-none"
         />
-        {annotatable && url && (
-          <button
-            onClick={() => setAnnotating(true)}
-            className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-          >
-            ✏ Annotate wires
-          </button>
-        )}
         <button onClick={onPick} className="text-xs text-zinc-400 hover:text-zinc-600">
-          Replace
+          Replace photo
         </button>
       </div>
       {annotating && url && content.imageAssetId && (
         <Annotator
           imageRef={content.imageAssetId}
           imageUrl={url}
-          onClose={() => setAnnotating(false)}
+          onClose={() => {
+            setAnnotating(false);
+            setAnnoVersion((v) => v + 1);
+          }}
         />
       )}
     </div>
@@ -214,6 +265,14 @@ function GalleryItem({
   const url = useImageUrl(item.imageAssetId);
   return (
     <div className="group relative">
+      <input
+        defaultValue={item.caption ?? ""}
+        placeholder="LABEL"
+        onBlur={(e) => {
+          if (e.target.value !== (item.caption ?? "")) onCaption(e.target.value);
+        }}
+        className="mb-0.5 w-full border-0 bg-transparent text-center text-xs font-bold uppercase tracking-wide text-red-500 placeholder:font-normal placeholder:text-zinc-300 focus:outline-none"
+      />
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt={item.caption ?? ""} className="h-24 w-full rounded-lg object-cover" />
@@ -222,18 +281,10 @@ function GalleryItem({
       )}
       <button
         onClick={onRemove}
-        className="absolute right-1 top-1 hidden rounded bg-black/60 px-1 text-xs text-white group-hover:block"
+        className="absolute right-1 top-6 hidden rounded bg-black/60 px-1 text-xs text-white group-hover:block"
       >
         ✕
       </button>
-      <input
-        defaultValue={item.caption ?? ""}
-        placeholder="Caption…"
-        onBlur={(e) => {
-          if (e.target.value !== item.caption) onCaption(e.target.value);
-        }}
-        className="mt-0.5 w-full border-0 bg-transparent text-xs text-zinc-500 focus:outline-none"
-      />
     </div>
   );
 }

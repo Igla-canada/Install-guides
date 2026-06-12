@@ -99,7 +99,27 @@ async function createGuildAction(formData: FormData) {
       sections: {
         create: [
           { order: 0, title: "Connection location(s)", type: "installation_point" },
-          { order: 1, title: "Connections", type: "connections" },
+          {
+            order: 1,
+            title: "Connections",
+            type: "connections",
+            blocks: {
+              create: [
+                {
+                  order: 0,
+                  type: "connections_table",
+                  content: {
+                    rows: [
+                      { name: "CAN-H", location: "", color: "", pin: "", note: "" },
+                      { name: "CAN-L", location: "", color: "", pin: "", note: "" },
+                      { name: "Ground", location: "", color: "", pin: "", note: "" },
+                      { name: "12V Constant", location: "", color: "", pin: "", note: "" },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
           { order: 2, title: "IGLA Settings", type: "settings" },
           { order: 3, title: "Software", type: "software" },
           { order: 4, title: "Buttons and Indication", type: "buttons_indications" },

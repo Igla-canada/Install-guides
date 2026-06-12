@@ -203,15 +203,35 @@ async function blocksToContent(notionBlocks: any[]): Promise<{
         ensureSection().blocks.push({ type: "divider", content: {} });
       } else if (t === "table") {
         const rows = await allChildren(b.id);
-        const kv = rows
+        const cells: string[][] = rows
           .map((r) => (r.table_row?.cells ?? []).map((c: any[]) => plain(c)))
-          .filter((cells: string[]) => cells.some((x) => x.trim()))
-          .map((cells: string[]) => ({
-            key: cells[0] ?? "",
-            value: cells.slice(1).filter(Boolean).join(" · "),
+          .filter((cs: string[]) => cs.some((x) => x.trim()));
+        const header = cells[0]?.map((x) => x.toLowerCase()) ?? [];
+        // The reference "IGLA Connections" tables → our connections_table block.
+        if (header.some((h) => h.includes("location")) && header.some((h) => h.includes("color"))) {
+          const col = (name: string) => header.findIndex((h) => h.includes(name));
+          const iLoc = col("location"), iColor = col("color"), iPin = col("pin"), iNote = col("note");
+          const connRows = cells.slice(1).map((cs) => ({
+            name: cs[0] ?? "",
+            location: iLoc >= 0 ? cs[iLoc] ?? "" : "",
+            color: iColor >= 0 ? cs[iColor] ?? "" : "",
+            pin: iPin >= 0 ? cs[iPin] ?? "" : "",
+            note: iNote >= 0 ? cs[iNote] ?? "" : "",
           }));
-        if (kv.length) {
-          ensureSection().blocks.push({ type: "key_value_table", content: { rows: kv } });
+          if (connRows.length) {
+            ensureSection().blocks.push({
+              type: "connections_table",
+              content: { rows: connRows },
+            });
+          }
+        } else {
+          const kv = cells.map((cs) => ({
+            key: cs[0] ?? "",
+            value: cs.slice(1).filter(Boolean).join(" · "),
+          }));
+          if (kv.length) {
+            ensureSection().blocks.push({ type: "key_value_table", content: { rows: kv } });
+          }
         }
       } else if (t === "column_list" || t === "column" || t === "synced_block") {
         if (b.has_children) await walk(await allChildren(b.id));

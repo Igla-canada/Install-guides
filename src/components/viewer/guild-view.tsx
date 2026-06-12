@@ -201,6 +201,11 @@ function BlockView({
       const annos = type === "annotated_image" ? annoMap.get(id) ?? [] : [];
       return (
         <figure>
+          {Boolean(c.heading) && (
+            <div className="mb-1 rounded-md border-2 border-red-500 bg-zinc-900/90 px-3 py-1.5 text-center text-sm font-bold text-red-400">
+              {String(c.heading)}
+            </div>
+          )}
           <div className="relative inline-block w-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={url} alt={String(c.caption ?? "")} className="w-full rounded-lg" data-zoomable />
@@ -256,6 +261,47 @@ function BlockView({
               </figure>
             );
           })}
+        </div>
+      );
+    }
+    case "connections_table": {
+      const rows =
+        (c.rows as Array<{
+          name: string;
+          location: string;
+          color: string;
+          pin: string;
+          note: string;
+        }>) ?? [];
+      const filled = rows.filter((r) => r.name || r.location || r.color);
+      if (filled.length === 0) return null;
+      return (
+        <div className={`overflow-hidden rounded-lg border ${t.tableBorder}`}>
+          <div className={`px-3 py-1.5 text-sm font-semibold ${t.tableHead}`}>
+            📊 IGLA Connections
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={`border-b text-left text-xs uppercase ${t.tableBorder} ${t.muted}`}>
+                <th className="px-3 py-1.5 font-medium"></th>
+                <th className="px-3 py-1.5 font-medium">Location</th>
+                <th className="px-3 py-1.5 font-medium">Color</th>
+                <th className="px-3 py-1.5 font-medium">Pin</th>
+                <th className="px-3 py-1.5 font-medium">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filled.map((r, i) => (
+                <tr key={i} className={`border-b last:border-0 ${t.tableBorder}`}>
+                  <td className="px-3 py-1.5 font-semibold">{r.name}</td>
+                  <td className="px-3 py-1.5">{r.location || "–"}</td>
+                  <td className="px-3 py-1.5">{r.color || "–"}</td>
+                  <td className="px-3 py-1.5">{r.pin || "–"}</td>
+                  <td className="px-3 py-1.5">{r.note || "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       );
     }

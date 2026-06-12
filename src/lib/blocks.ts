@@ -6,9 +6,19 @@
 export type BlockContent =
   | { kind: "text"; text: string }
   | { kind: "key_value_table"; rows: Array<{ key: string; value: string }> }
-  | { kind: "image"; imageAssetId: string; caption?: string }
-  | { kind: "annotated_image"; imageAssetId: string; caption?: string }
+  // heading = the red banner over the photo, e.g. "Passenger Foot Well
+  // Harness" or "Installation Location: (1) Passenger Side Foot Well" —
+  // ties the photo to its connection point.
+  | { kind: "image"; imageAssetId: string; heading?: string; caption?: string }
+  | { kind: "annotated_image"; imageAssetId: string; heading?: string; caption?: string }
   | { kind: "gallery"; items: Array<{ imageAssetId: string; caption?: string }> }
+  // The "IGLA Connections" table from the reference pages. `location` ties a
+  // row to the photo heading it belongs to when a car has multiple
+  // connection points.
+  | {
+      kind: "connections_table";
+      rows: Array<{ name: string; location: string; color: string; pin: string; note: string }>;
+    }
   | { kind: "checklist"; items: Array<{ text: string; checked: boolean }> }
   | { kind: "callout"; style: "info" | "warning" | "danger"; text: string }
   | { kind: "code_value"; label?: string; value: string }
@@ -17,6 +27,7 @@ export type BlockContent =
 
 export const BLOCK_TYPES = [
   { type: "text", label: "Text" },
+  { type: "connections_table", label: "Connections table" },
   { type: "key_value_table", label: "Key / value table" },
   { type: "annotated_image", label: "Photo with annotations" },
   { type: "image", label: "Photo" },
@@ -46,9 +57,19 @@ export function defaultContent(type: string): object {
       return { rows: [{ key: "", value: "" }] };
     case "image":
     case "annotated_image":
-      return { imageAssetId: "", caption: "" };
+      return { imageAssetId: "", heading: "", caption: "" };
     case "gallery":
       return { items: [] };
+    case "connections_table":
+      // Pre-filled with the standard IGLA hookups — fastest path in the car.
+      return {
+        rows: [
+          { name: "CAN-H", location: "", color: "", pin: "", note: "" },
+          { name: "CAN-L", location: "", color: "", pin: "", note: "" },
+          { name: "Ground", location: "", color: "", pin: "", note: "" },
+          { name: "12V Constant", location: "", color: "", pin: "", note: "" },
+        ],
+      };
     case "checklist":
       return { items: [{ text: "", checked: false }] };
     case "callout":
