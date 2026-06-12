@@ -35,6 +35,53 @@ async function toggleUser(formData: FormData) {
   revalidatePath("/users");
 }
 
+async function addProduct(formData: FormData) {
+  "use server";
+  await requireRole("ADMIN");
+  const productLineId = String(formData.get("productLineId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!productLineId || !name) return;
+  await prisma.iglaProduct.create({
+    data: {
+      productLineId,
+      name,
+      modelCode: String(formData.get("modelCode") ?? "").trim() || null,
+    },
+  });
+  revalidatePath("/users");
+}
+
+async function deleteProduct(formData: FormData) {
+  "use server";
+  await requireRole("ADMIN");
+  // Fails (silently here) if any guild references it — that's the safe default.
+  await prisma.iglaProduct
+    .delete({ where: { id: String(formData.get("id")) } })
+    .catch(() => null);
+  revalidatePath("/users");
+}
+
+async function addInventoryUnit(formData: FormData) {
+  "use server";
+  await requireRole("ADMIN");
+  const serial = String(formData.get("serial") ?? "").trim();
+  const iglaProductId = String(formData.get("iglaProductId") ?? "");
+  if (!serial || !iglaProductId) return;
+  await prisma.inventoryUnit
+    .create({ data: { serial, iglaProductId } })
+    .catch(() => null);
+  revalidatePath("/users");
+}
+
+async function deleteInventoryUnit(formData: FormData) {
+  "use server";
+  await requireRole("ADMIN");
+  await prisma.inventoryUnit
+    .delete({ where: { id: String(formData.get("id")) } })
+    .catch(() => null);
+  revalidatePath("/users");
+}
+
 async function setInstallerGuilds(formData: FormData) {
   "use server";
   await requireRole("ADMIN");
@@ -61,6 +108,15 @@ export default async function UsersPage() {
     select: { id: true, title: true },
   });
   const installerAccess = await prisma.installerGuild.findMany();
+  const productLines = await prisma.productLine.findMany({
+    orderBy: { name: "asc" },
+    include: { products: { orderBy: { name: "asc" } } },
+  });
+  const inventory = await prisma.inventoryUnit.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    include: { iglaProduct: { include: { productLine: true } } },
+  });
 
   return (
     <div>
@@ -173,6 +229,80 @@ export default async function UsersPage() {
           Create user
         </button>
       </form>
+
+      {/* Product catalog — the only thing that needs pre-managing (a fixed
+          device list). Vehicles are auto-created from the New-guild form. */}
+      <div className="mt-10 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <h2 className="text-sm font-semibold">Igla product catalog</h2>
+          {productLines.map((pl) => (
+            <div key={pl.id} className="mt-2">
+              <div className="text-xs font-medium uppercase text-zinc-400">{pl.name}</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {pl.products.map((p) => (
+                  <span key={p.id} className="flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs">
+                    {p.name}
+                    <form action={deleteProduct} className="inline">
+                      <input type="hidden" name="id" value={p.id} />
+                      <button className="text-zinc-300 hover:text-red-500" title="Delete (blocked if any guild uses it)">
+                        ✕
+                      </button>
+                    </form>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+          <form action={addProduct} className="mt-3 flex flex-wrap gap-2">
+            <select name="productLineId" required className="rounded-md border border-zinc-300 px-2 py-1 text-sm">
+              {productLines.map((pl) => (
+                <option key={pl.id} value={pl.id}>
+                  {pl.name}
+                </option>
+              ))}
+            </select>
+            <input name="name" required placeholder="Product name" className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm" />
+            <button className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100">
+              Add
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <h2 className="text-sm font-semibold">Unit serials (serial → product)</h2>
+          <p className="mt-1 text-xs text-zinc-400">
+            Lets the Igla app identify the product from a scanned unit serial.
+            Replaced by the portal inventory API when available.
+          </p>
+          <ul className="mt-2 max-h-48 overflow-y-auto text-sm">
+            {inventory.map((u) => (
+              <li key={u.id} className="flex items-center border-b border-zinc-50 py-1">
+                <span className="font-mono text-xs">{u.serial}</span>
+                <span className="ml-2 text-zinc-500">→ {u.iglaProduct.name}</span>
+                <form action={deleteInventoryUnit} className="ml-auto">
+                  <input type="hidden" name="id" value={u.id} />
+                  <button className="px-1 text-zinc-300 hover:text-red-500">✕</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <form action={addInventoryUnit} className="mt-2 flex flex-wrap gap-2">
+            <input name="serial" required placeholder="Unit serial" className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm" />
+            <select name="iglaProductId" required className="rounded-md border border-zinc-300 px-2 py-1 text-sm">
+              {productLines.flatMap((pl) =>
+                pl.products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))
+              )}
+            </select>
+            <button className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100">
+              Add
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

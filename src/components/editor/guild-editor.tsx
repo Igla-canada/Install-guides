@@ -42,7 +42,8 @@ export default function GuildEditor({
 }) {
   const [doc, setDoc] = useState<ClientDoc>(initialDoc);
   const [pending, setPending] = useState(0);
-  const [tab, setTab] = useState<"edit" | "chat">("edit");
+  const [tab, setTab] = useState<"edit" | "preview" | "chat">("edit");
+  const [previewNonce, setPreviewNonce] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   const [showIdentity, setShowIdentity] = useState(false);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
@@ -103,6 +104,20 @@ export default function GuildEditor({
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => {
+              setPreviewNonce((n) => n + 1);
+              setTab(tab === "preview" ? "edit" : "preview");
+            }}
+            className={`rounded-md px-3 py-1.5 text-sm ${
+              tab === "preview"
+                ? "bg-zinc-900 text-white"
+                : "border border-zinc-300 hover:bg-zinc-100"
+            }`}
+            title="See exactly what an installer will see"
+          >
+            {tab === "preview" ? "← Back to editing" : "👁 Preview"}
+          </button>
           <Link
             href={`/print/${doc.id}`}
             target="_blank"
@@ -165,20 +180,33 @@ export default function GuildEditor({
 
       {/* Mobile tab switch */}
       <div className="mt-4 flex gap-1 rounded-lg bg-zinc-200 p-1 lg:hidden">
-        {(["edit", "chat"] as const).map((t) => (
+        {(["edit", "preview", "chat"] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              if (t === "preview") setPreviewNonce((n) => n + 1);
+              setTab(t);
+            }}
             className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium ${
               tab === t ? "bg-white shadow-sm" : "text-zinc-600"
             }`}
           >
-            {t === "edit" ? "Page" : "Chat"}
+            {t === "edit" ? "Edit" : t === "preview" ? "Preview" : "Chat"}
           </button>
         ))}
       </div>
 
-      <div className="mt-4 flex gap-6">
+      {/* Installer-eye preview: the real renderer, dark theme, in an iframe */}
+      {tab === "preview" && (
+        <iframe
+          key={previewNonce}
+          src={`/preview/${doc.id}`}
+          className="mt-4 h-[78vh] w-full rounded-xl border border-zinc-300 bg-zinc-900"
+          title="Installer preview"
+        />
+      )}
+
+      <div className={`mt-4 flex gap-6 ${tab === "preview" ? "hidden" : ""}`}>
         {/* Document (preview editor) */}
         <div className={`min-w-0 flex-1 ${tab === "chat" ? "hidden lg:block" : ""}`}>
           <IdentityPanel

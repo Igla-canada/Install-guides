@@ -38,7 +38,9 @@ Default admin: `admin@igla.local` / `igla-admin-2026` (override with
 | Installer accounts | Users → role INSTALLER → grant guilds; they log in at `/` and see `/my-guilds` |
 | Watch for leaks | Alerts (burst views, cross-make, probing, new device) + Audit log; one-click revoke from an alert |
 | Igla app auto-pull | `GET /api/taxonomy?published=1` feeds the portal's dropdowns (only cars with published guides); `GET /api/guild/resolve?makeId=…&modelId=…&year=…&serial=…` then matches exactly. VIN and alias-normalized free text remain as fallbacks. Both use `Authorization: Bearer <token>` (`npm run token:service`) |
+| See it as the installer will | Editor → 👁 Preview tab — the exact dark installer rendering (drafts included) |
 | Internal PDF/archival | Editor → Export (`/print/<id>`), admin/tech only — installer paths never expose downloads |
+| Migrate from Notion | `npm run import:notion -- <parent-page-id>` with `NOTION_TOKEN` set (share the guides page with a Notion integration first). Pages → draft guilds: sections, photos, tables, callouts, properties, file attachments. Review + publish each |
 
 ## Deploying to Vercel + Supabase
 

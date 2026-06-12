@@ -10,7 +10,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "token:service": "tsx scripts/create-service-token.ts"
+    "token:service": "tsx scripts/create-service-token.ts",
+    "import:notion": "tsx --env-file=.env scripts/import-notion.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
