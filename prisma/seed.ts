@@ -83,20 +83,26 @@ async function main() {
   }
 
   // --- Admin account ---
-  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@igla.local";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "igla-admin-2026";
-  await prisma.userAccount.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: {
-      email: adminEmail,
-      name: "Admin",
-      role: "ADMIN",
-      passwordHash: await bcrypt.hash(adminPassword, 12),
-    },
+  // Only created when NO admin exists yet (fresh database). Never re-creates
+  // a default-password account on a live system that already has admins.
+  const existingAdmin = await prisma.userAccount.findFirst({
+    where: { role: "ADMIN" },
   });
-
-  console.log(`Seed complete. Admin login: ${adminEmail} / ${adminPassword}`);
+  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@igla.local";
+  if (existingAdmin) {
+    console.log(`Admin already exists (${existingAdmin.email}) — skipping admin creation.`);
+  } else {
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "igla-admin-2026";
+    await prisma.userAccount.create({
+      data: {
+        email: adminEmail,
+        name: "Admin",
+        role: "ADMIN",
+        passwordHash: await bcrypt.hash(adminPassword, 12),
+      },
+    });
+    console.log(`Seed complete. Admin login: ${adminEmail} / ${adminPassword}`);
+  }
   console.log(`Region: ${canada.name}. Product lines: IGLA, Compass.`);
 }
 
