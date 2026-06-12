@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: igla-guilds-db
+    environment:
+      POSTGRES_USER: igla
+      POSTGRES_PASSWORD: igla_dev_password
+      POSTGRES_DB: igla_guilds
+    ports:
+      # 5442 on the host: this machine's native PostgreSQL occupies 5432 AND 5433.
+      - "5442:5432"
+    volumes:
+      - igla_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U igla -d igla_guilds"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible object storage for local dev.
+  # Production uses real Amazon S3 (ca-central-1) — only env vars change.
+  minio:
+    image: minio/minio:latest
+    container_name: igla-guilds-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: igla-minio
+      MINIO_ROOT_PASSWORD: igla_dev_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - igla_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  igla_pgdata:
+  igla_minio:

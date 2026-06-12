@@ -1,0 +1,145 @@
+"use client";
+// Identity layer editor — dropdown-only (AGENTS.md #1). "Go back and fix" for
+// the wizard answers: any identity field is editable here at any time.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import type { ClientDoc } from "./types";
+import type { Taxonomy } from "@/lib/taxonomy";
+
+export default function IdentityPanel({
+  doc,
+  taxonomy,
+  open,
+  onToggle,
+  dispatch,
+}: {
+  doc: ClientDoc;
+  taxonomy: Taxonomy;
+  open: boolean;
+  onToggle: () => void;
+  dispatch: (ops: any[]) => Promise<void>;
+}) {
+  const make = taxonomy.makes.find((m) => m.id === doc.makeId);
+  const model = make?.models.find((m) => m.id === doc.modelId);
+  const generation = model?.generations.find((g) => g.id === doc.generationId);
+
+  const set = (data: Record<string, string | null>) =>
+    void dispatch([{ op: "update_identity", data }]);
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left"
+      >
+        <div className="min-w-0 flex-1">
+          <input
+            value={doc.title}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => set({ title: e.target.value })}
+            className="w-full truncate border-0 bg-transparent text-xl font-semibold focus:outline-none"
+          />
+          <p className="truncate text-xs text-zinc-500">
+            {doc.make.name} {doc.model.name} {doc.generation.name}
+            {doc.trim ? ` · ${doc.trim.name}` : ""} ·{" "}
+            {doc.iglaProduct.productLine.name} {doc.iglaProduct.name} ·{" "}
+            {doc.region.name}
+          </p>
+        </div>
+        <span className="text-sm text-zinc-400">{open ? "▲" : "▼ identity"}</span>
+      </button>
+
+      {open && (
+        <div className="grid grid-cols-1 gap-3 border-t border-zinc-100 p-4 sm:grid-cols-2">
+          <Select
+            label="Make"
+            value={doc.makeId}
+            onChange={(v) => set({ makeId: v })}
+            options={taxonomy.makes.map((m) => ({ value: m.id, label: m.name }))}
+          />
+          <Select
+            label="Model"
+            value={doc.modelId}
+            onChange={(v) => set({ modelId: v })}
+            options={(make?.models ?? []).map((m) => ({
+              value: m.id,
+              label: m.name,
+            }))}
+          />
+          <Select
+            label="Generation"
+            value={doc.generationId}
+            onChange={(v) => set({ generationId: v })}
+            options={(model?.generations ?? []).map((g) => ({
+              value: g.id,
+              label: `${g.name} (${g.yearStart}–${g.yearEnd ?? "now"})`,
+            }))}
+          />
+          <Select
+            label="Trim (optional)"
+            value={doc.trimId ?? ""}
+            onChange={(v) => set({ trimId: v || null })}
+            options={[
+              { value: "", label: "Whole generation" },
+              ...(generation?.trims ?? []).map((t) => ({
+                value: t.id,
+                label: t.name,
+              })),
+            ]}
+          />
+          <Select
+            label="Igla product"
+            value={doc.iglaProductId}
+            onChange={(v) => set({ iglaProductId: v })}
+            options={taxonomy.productLines.flatMap((pl) =>
+              pl.products.map((p) => ({
+                value: p.id,
+                label: `${pl.name} — ${p.name}`,
+              }))
+            )}
+          />
+          <Select
+            label="Region"
+            value={doc.regionId}
+            onChange={(v) => set({ regionId: v })}
+            options={taxonomy.regions.map((r) => ({ value: r.id, label: r.name }))}
+          />
+          <p className="text-xs text-zinc-400 sm:col-span-2">
+            These fields drive the Igla app&apos;s automatic guide lookup. If a
+            make/model/generation is missing, add it in Taxonomy — identity is
+            never free text.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-zinc-500">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}

@@ -1,0 +1,420 @@
+// Igla Installation Guilds — data model.
+//
+// Spine of the system (do not erode): a guild has a STRICT identity layer
+// (taxonomy FKs below — dropdown-driven, admin-curated, never free text) and a
+// FREE-FORM content body (Section/Block with JSONB content). The identity layer
+// is what makes the Igla app's auto-pull resolve deterministic; the body is
+// what keeps authoring unlimited.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity / taxonomy (strict, admin-curated)
+// ---------------------------------------------------------------------------
+
+model Make {
+  id      String         @id @default(cuid())
+  name    String         @unique
+  models  Model[]
+  aliases VehicleAlias[]
+  guilds  Guild[]
+  quickPicks QuickPick[]
+}
+
+model Model {
+  id          String       @id @default(cuid())
+  makeId      String
+  make        Make         @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  name        String
+  generations Generation[]
+  aliases     VehicleAlias[]
+  guilds      Guild[]
+
+  @@unique([makeId, name])
+}
+
+model Generation {
+  id        String  @id @default(cuid())
+  modelId   String
+  model     Model   @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  name      String // e.g. "II (G22)"
+  yearStart Int
+  yearEnd   Int? // null = still in production
+  trims     Trim[]
+  guilds    Guild[]
+
+  @@unique([modelId, name])
+}
+
+model Trim {
+  id           String     @id @default(cuid())
+  generationId String
+  generation   Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  name         String // engine/variant when it changes the wiring
+  guilds       Guild[]
+
+  @@unique([generationId, name])
+}
+
+model Region {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  guilds Guild[]
+}
+
+model ProductLine {
+  id       String        @id @default(cuid())
+  name     String        @unique // IGLA | Compass
+  products IglaProduct[]
+}
+
+model IglaProduct {
+  id            String         @id @default(cuid())
+  productLineId String
+  productLine   ProductLine    @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  name          String
+  modelCode     String?
+  guilds        Guild[]
+  inventoryUnits InventoryUnit[]
+
+  @@unique([productLineId, name])
+}
+
+// Internal stand-in for the Igla portal's inventory: maps a unit serial number
+// to the product variant being installed. Replace/augment with the portal's
+// inventory API via the adapter in src/lib/inventory.ts when it exists.
+model InventoryUnit {
+  id            String      @id @default(cuid())
+  serial        String      @unique
+  iglaProductId String
+  iglaProduct   IglaProduct @relation(fields: [iglaProductId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+}
+
+// Normalizes the portal's free-text Make/Model before matching.
+// e.g. "VW" -> Volkswagen, "4 series" -> "4 Series", common typos.
+model VehicleAlias {
+  id        String  @id @default(cuid())
+  makeId    String
+  make      Make    @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  modelId   String?
+  model     Model?  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  aliasText String
+  source    String  @default("manual") // manual | learned
+
+  @@index([aliasText])
+}
+
+// ---------------------------------------------------------------------------
+// Guild + content body (flexible)
+// ---------------------------------------------------------------------------
+
+enum GuildStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Guild {
+  id            String      @id @default(cuid())
+  regionId      String
+  region        Region      @relation(fields: [regionId], references: [id])
+  makeId        String
+  make          Make        @relation(fields: [makeId], references: [id])
+  modelId       String
+  model         Model       @relation(fields: [modelId], references: [id])
+  generationId  String
+  generation    Generation  @relation(fields: [generationId], references: [id])
+  trimId        String?
+  trim          Trim?       @relation(fields: [trimId], references: [id])
+  iglaProductId String
+  iglaProduct   IglaProduct @relation(fields: [iglaProductId], references: [id])
+
+  title            String
+  status           GuildStatus @default(DRAFT)
+  currentVersionId String?
+  coverImageId     String?
+  coverImage       ImageAsset? @relation("GuildCover", fields: [coverImageId], references: [id])
+  properties       Json? // the grey metadata box at the top of the reference pages
+
+  createdById String
+  createdBy   UserAccount @relation("GuildCreatedBy", fields: [createdById], references: [id])
+  updatedById String
+  updatedBy   UserAccount @relation("GuildUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  sections    Section[]
+  versions    GuildVersion[]
+  grantGuilds GrantGuild[]
+  auditEvents AuditEvent[]
+
+  // One published guild per identity tuple is enforced in application logic at
+  // publish time (Postgres treats NULL trimId as distinct, so a DB unique
+  // constraint alone can't express it across draft/published states).
+  @@index([makeId, modelId, generationId, trimId, iglaProductId, regionId, status])
+}
+
+model Section {
+  id               String  @id @default(cuid())
+  guildId          String
+  guild            Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  order            Int
+  title            String
+  // Styling hint, NOT a hard limit: installation_point | connections |
+  // settings | software | buttons_indications | warning | custom
+  type             String  @default("custom")
+  collapsedDefault Boolean @default(false)
+  blocks           Block[]
+
+  @@index([guildId, order])
+}
+
+model Block {
+  id        String  @id @default(cuid())
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  order     Int
+  // text | key_value_table | image | annotated_image | gallery | checklist |
+  // callout | code_value | divider — new types need no schema change.
+  type      String
+  content   Json
+
+  @@index([sectionId, order])
+}
+
+// ---------------------------------------------------------------------------
+// Images & annotations
+// ---------------------------------------------------------------------------
+
+model ImageAsset {
+  id           String       @id @default(cuid())
+  s3Key        String       @unique
+  width        Int?
+  height       Int?
+  mime         String
+  uploadedById String?
+  uploadedBy   UserAccount? @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime     @default(now())
+  annotations  Annotation[]
+  coverOf      Guild[]      @relation("GuildCover")
+}
+
+model Annotation {
+  id           String     @id @default(cuid())
+  imageAssetId String
+  imageAsset   ImageAsset @relation(fields: [imageAssetId], references: [id], onDelete: Cascade)
+  shape        String // point | arrow | line | box | freehand
+  coords       Json // normalized 0–1 so they survive resizing
+  label        String
+  description  String?
+  color        String     @default("#ef4444")
+  order        Int        @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// Quick picks (reusable snippets)
+// ---------------------------------------------------------------------------
+
+model QuickPick {
+  id        String       @id @default(cuid())
+  ownerId   String?
+  owner     UserAccount? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  scope     String       @default("personal") // personal | org | per_make
+  makeId    String?
+  make      Make?        @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  kind      String // section_template | block_template | text_value | settings_preset
+  label     String
+  payload   Json
+  useCount  Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Versioning
+// ---------------------------------------------------------------------------
+
+model GuildVersion {
+  id          String      @id @default(cuid())
+  guildId     String
+  guild       Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  versionNo   Int
+  snapshot    Json // full document: identity + properties + sections + blocks
+  note        String?
+  createdById String
+  createdBy   UserAccount @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  @@unique([guildId, versionNo])
+}
+
+// ---------------------------------------------------------------------------
+// Users, sessions, access grants
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  TECH
+  INSTALLER // persistent-login installer: view-only, still watermarked + logged
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model UserAccount {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  role         UserRole
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+
+  sessions       Session[]
+  guildsCreated  Guild[]        @relation("GuildCreatedBy")
+  guildsUpdated  Guild[]        @relation("GuildUpdatedBy")
+  versions       GuildVersion[]
+  imagesUploaded ImageAsset[]
+  quickPicks     QuickPick[]
+  grantsIssued   AccessGrant[]
+  auditEvents    AuditEvent[]
+  installerGrants InstallerGuild[]
+}
+
+model Session {
+  id        String      @id @default(cuid())
+  userId    String
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String      @unique
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+  ip        String?
+  userAgent String?
+}
+
+// Which guilds a persistent-login INSTALLER account may view.
+model InstallerGuild {
+  userId  String
+  user    UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guildId String
+
+  @@id([userId, guildId])
+}
+
+// Time-limited one-time-link access for installers without accounts.
+model AccessGrant {
+  id             String       @id @default(cuid())
+  granteeLabel   String // who this is for, e.g. "Mike @ DT Auto"
+  granteePhone   String // SMS one-time-code destination
+  grantedById    String
+  grantedBy      UserAccount  @relation(fields: [grantedById], references: [id])
+  tokenHash      String       @unique // the link token, hashed
+  expiresAt      DateTime
+  maxViews       Int?
+  viewsUsed      Int          @default(0)
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  guilds      GrantGuild[]
+  otpCodes    OtpCode[]
+  sessions    GrantSession[]
+  auditEvents AuditEvent[]
+}
+
+model GrantGuild {
+  grantId String
+  grant   AccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  guildId String
+  guild   Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([grantId, guildId])
+}
+
+model OtpCode {
+  id         String      @id @default(cuid())
+  grantId    String
+  grant      AccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int         @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime    @default(now())
+}
+
+// Short-lived viewing session created after a grant's OTP is verified.
+model GrantSession {
+  id        String      @id @default(cuid())
+  grantId   String
+  grant     AccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  tokenHash String      @unique
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+  ip        String?
+  userAgent String?
+}
+
+// Bearer tokens for the Igla portal/app calling the resolve API.
+model ServiceToken {
+  id        String    @id @default(cuid())
+  name      String
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+}
+
+// ---------------------------------------------------------------------------
+// Audit & alerts
+// ---------------------------------------------------------------------------
+
+model AuditEvent {
+  id      String       @id @default(cuid())
+  // Actor is a staff/installer account OR an access grant — never both.
+  userId  String?
+  user    UserAccount? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  grantId String?
+  grant   AccessGrant? @relation(fields: [grantId], references: [id], onDelete: SetNull)
+  guildId String?
+  guild   Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  // view | open_section | image_zoom | pdf_download | denied | login |
+  // otp_sent | otp_failed | grant_created | grant_revoked | resolve | ...
+  action  String
+  ip      String?
+  userAgent         String?
+  deviceFingerprint String?
+  meta    Json?
+  ts      DateTime     @default(now())
+
+  @@index([guildId, ts])
+  @@index([grantId, ts])
+  @@index([userId, ts])
+  @@index([action, ts])
+}
+
+enum AlertStatus {
+  NEW
+  ACK
+  RESOLVED
+}
+
+model Alert {
+  id        String      @id @default(cuid())
+  rule      String // burst_views | cross_make | repeated_denied | new_device | pdf_download
+  severity  String      @default("medium") // low | medium | high
+  userId    String?
+  grantId   String?
+  details   Json
+  status    AlertStatus @default(NEW)
+  createdAt DateTime    @default(now())
+
+  @@index([status, createdAt])
+}

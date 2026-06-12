@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f7f5;
+  --foreground: #1f1f1f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Installer viewer: suppress printing — the watermark overlay still renders,
+   but we make print a dead end on view-only pages. */
+@media print {
+  .no-print-page {
+    display: none !important;
+  }
+  .print-blocked-notice {
+    display: block !important;
+  }
+}
+
+.print-blocked-notice {
+  display: none;
+}
+
+/* Repeating diagonal watermark for installer views (serve-time, per view). */
+.watermark-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
+  user-select: none;
+}
