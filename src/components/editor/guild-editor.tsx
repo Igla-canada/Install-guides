@@ -29,6 +29,9 @@ export default function GuildEditor({
   quickPicks,
   publishAction,
   rollbackAction,
+  archiveAction,
+  deleteAction,
+  isAdmin,
   publishError,
 }: {
   initialDoc: ClientDoc;
@@ -37,6 +40,9 @@ export default function GuildEditor({
   quickPicks: ClientQuickPick[];
   publishAction: () => Promise<void>;
   rollbackAction: (formData: FormData) => Promise<void>;
+  archiveAction: () => Promise<void>;
+  deleteAction: () => Promise<void>;
+  isAdmin: boolean;
   publishError?: string;
   currentUserId: string;
 }) {
@@ -47,6 +53,7 @@ export default function GuildEditor({
   const [showHistory, setShowHistory] = useState(false);
   const [showIdentity, setShowIdentity] = useState(false);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const dispatch = useCallback(
     async (ops: any[]) => {
@@ -137,8 +144,59 @@ export default function GuildEditor({
               {doc.status === "PUBLISHED" ? "Publish update" : "Publish"}
             </button>
           </form>
+          <div className="relative">
+            <button
+              onClick={() => setMoreOpen((v) => !v)}
+              className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm hover:bg-zinc-100"
+              title="More actions"
+            >
+              ⋯
+            </button>
+            {moreOpen && (
+              <div className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
+                <form action={archiveAction}>
+                  <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100">
+                    {doc.status === "ARCHIVED" ? "↩ Restore from archive" : "🗄 Archive"}
+                    <span className="block text-xs text-zinc-400">
+                      {doc.status === "ARCHIVED"
+                        ? "Back to draft — publish again to serve it"
+                        : "Hide from installers & the Igla app; nothing is lost"}
+                    </span>
+                  </button>
+                </form>
+                {isAdmin && (
+                  <form
+                    action={deleteAction}
+                    onSubmit={(e) => {
+                      if (
+                        !confirm(
+                          `Permanently delete "${doc.title}"?\n\nThis removes the guide, its photos, versions and access links. It cannot be undone — use Archive if you might need it again.`
+                        )
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
+                    <button className="w-full rounded-md px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50">
+                      🗑 Delete permanently
+                      <span className="block text-xs text-red-300">
+                        Admin only · cannot be undone
+                      </span>
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {doc.status === "ARCHIVED" && (
+        <p className="mt-3 rounded-md bg-zinc-200 px-3 py-2 text-sm text-zinc-600">
+          🗄 This guild is archived — installers and the Igla app can&apos;t see
+          it. Restore it from the ⋯ menu, or publish to make it live again.
+        </p>
+      )}
 
       {publishError === "conflict" && (
         <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
