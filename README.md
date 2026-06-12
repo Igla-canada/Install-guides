@@ -42,35 +42,78 @@ Default admin: `admin@igla.local` / `igla-admin-2026` (override with
 | Internal PDF/archival | Editor → Export (`/print/<id>`), admin/tech only — installer paths never expose downloads |
 | Migrate from Notion | `npm run import:notion -- <parent-page-id>` with `NOTION_TOKEN` set (share the guides page with a Notion integration first). Pages → draft guilds: sections, photos, tables, callouts, properties, file attachments. Review + publish each |
 
-## Deploying to Vercel + Supabase
+## Setup: Supabase (database) + AWS S3 `igla-guides` (storage)
 
-The app is built for this target — serverless-safe (`after()` keeps alert
-evaluation alive past the response) and storage-agnostic (any S3-compatible
-endpoint).
+`.env` is pre-structured — fill the four `<PASTE-…>` values, then:
 
-1. **Supabase project** → copy from *Settings → Database*:
-   - `DATABASE_URL` = the **Transaction pooler** string (port 6543) with
-     `?pgbouncer=true` appended
-   - `DIRECT_URL` = the **direct/Session** string (port 5432) — used only by
-     `prisma migrate deploy`
-2. **Supabase Storage** → create a **private** bucket (e.g. `igla-guilds`),
-   then *Settings → Storage → S3 access keys*:
-   - `S3_ENDPOINT` = `https://<project-ref>.storage.supabase.co/storage/v1/s3`
-   - `S3_REGION` = your project region, `S3_FORCE_PATH_STYLE=true`
-   - `S3_ACCESS_KEY` / `S3_SECRET_KEY` = the generated S3 keys
-   - `S3_BUCKET` = the bucket name
-   (Plain Amazon S3 in `ca-central-1` works identically if preferred for data
-   residency — only these env vars change.)
-3. **Vercel** → import the repo, set all `.env` values (`SESSION_SECRET` to a
-   fresh 32+ char secret, `SMS_PROVIDER=twilio` + `TWILIO_*`,
-   `APP_BASE_URL=https://<your-domain>`, optionally `IGLA_SERVICE_TOKEN`).
-4. **Migrate + seed** once against the direct URL:
-   `npx prisma migrate deploy` then `npm run db:seed`.
+```powershell
+npm run db:deploy      # creates all tables on Supabase
+npm run db:seed        # admin login + Canada + IGLA/Compass products
+npx tsx --env-file=.env scripts/probe-s3.ts   # verifies S3 upload/download
+npm run dev
+```
 
-Notes: Supabase Postgres region selection covers the Canada data-residency
-requirement (`ca-central-1`). SMS in dev prints codes to the server console
-(`SMS_PROVIDER=console`). Replace the internal inventory table with the Igla
-portal inventory API in `src/lib/inventory.ts` when it exists (open item #2).
+### Supabase (2 values)
+
+Dashboard → **Connect** → connection strings:
+- `DATABASE_URL` = the **Transaction pooler** string (port 6543) with
+  `?pgbouncer=true` appended
+- `DIRECT_URL` = the **Session pooler / direct** string (port 5432)
+
+Replace `[YOUR-PASSWORD]` inside both with the database password.
+
+### AWS S3 (2 values + 2 one-time bucket configs)
+
+Everything the system stores — install photos, annotated images, firmware
+files, covers — goes into the **`igla-guides`** bucket (us-east-1), under
+`images/…` and `notion-import/…` prefixes. The other igla-* buckets are
+untouched.
+
+- `S3_ACCESS_KEY` / `S3_SECRET_KEY` = an IAM access key whose user has this
+  policy (only this bucket):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": "arn:aws:s3:::igla-guides/*"
+    },
+    { "Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::igla-guides" }
+  ]
+}
+```
+
+- **Bucket CORS** (S3 console → igla-guides → Permissions → CORS) — required
+  for browser photo uploads via presigned URLs:
+
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["PUT", "GET"],
+    "AllowedOrigins": ["http://localhost:3000", "https://YOUR-VERCEL-DOMAIN"],
+    "ExposeHeaders": []
+  }
+]
+```
+
+- Keep **Block Public Access ON** — the app only ever serves short-lived
+  signed URLs; nothing is public.
+
+### Vercel (when ready to host)
+
+Import the repo, paste the same `.env` values into Project → Environment
+Variables, set `APP_BASE_URL=https://<your-domain>`, add the domain to the
+bucket CORS, and (for real SMS) set `SMS_PROVIDER=twilio` + `TWILIO_*`.
+
+Other notes: SMS codes print to the server console while
+`SMS_PROVIDER=console`. The Igla app's bearer token for /api/guild/resolve
+and /api/taxonomy is `IGLA_SERVICE_TOKEN` in `.env` (or mint DB-managed,
+revocable ones with `npm run token:service`). Replace the internal inventory
+table with the portal inventory API in `src/lib/inventory.ts` when available.
 
 ## Open items from the plan (owner input)
 
