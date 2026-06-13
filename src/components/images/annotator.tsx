@@ -1,18 +1,24 @@
 "use client";
-// Annotation canvas: points/arrows/boxes dropped over the original photo, each
-// with a label + description ("CAN-H — splice to pin 6, blue/white wire").
-// Coordinates are stored normalized (0–1) so they survive any resize.
-// Annotations are DATA over the image, never burned in — editable forever.
+// Annotation canvas. The primary tool is a LEADER-LINE CALLOUT (data shape
+// "arrow"): you drag from where you want the label box to where the wire is —
+// a white, slightly-transparent label box sits at the start end with the text
+// inside it, and an arrow points to the wire at the other end. This mirrors
+// the original Notion install pages.
+//
+// Everything is editable after the fact: tap a marker to select it, then drag
+// the whole thing (grab the line) or any handle (the label box, the arrow tip,
+// a point, or a box-rect corner). Coordinates are normalized 0–1 so they
+// survive any resize. Annotations are DATA over the image, never burned in.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { saveAnnotations } from "@/lib/client/offline";
 
 type Shape = "point" | "arrow" | "box";
 
 export type Anno = {
   shape: Shape;
-  coords: any; // point: {x,y}; arrow: {x1,y1,x2,y2}; box: {x,y,w,h}
+  coords: any; // point:{x,y}; arrow:{x1,y1,x2,y2} (1=box, 2=wire); box:{x,y,w,h}
   label: string;
   description?: string;
   color: string;
@@ -20,6 +26,74 @@ export type Anno = {
 };
 
 const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7"];
+
+const pct = (v: number) => `${v * 100}%`;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** Size of the label box (in px) for a given label, sized to its longest line. */
+function boxGeom(label: string | undefined, fallback: string) {
+  const text = label && label.trim() ? label.trim() : fallback;
+  const lines = text.split("\n");
+  const maxLen = Math.max(1, ...lines.map((l) => l.length));
+  const boxW = Math.max(34, Math.round(maxLen * 7.4 + 16));
+  const boxH = lines.length * 16 + 10;
+  return { lines, boxW, boxH };
+}
+
+/** The white, slightly-transparent label box with colored border + text. */
+function LabelBox({
+  cx,
+  cy,
+  label,
+  fallback,
+  color,
+}: {
+  cx: number;
+  cy: number;
+  label: string | undefined;
+  fallback: string;
+  color: string;
+}) {
+  const { lines, boxW, boxH } = boxGeom(label, fallback);
+  return (
+    <svg x={pct(cx)} y={pct(cy)} overflow="visible" style={{ pointerEvents: "none" }}>
+      <g transform={`translate(${-boxW / 2}, ${-boxH / 2})`}>
+        <rect
+          width={boxW}
+          height={boxH}
+          rx={5}
+          fill="rgba(255,255,255,0.85)"
+          stroke={color}
+          strokeWidth={2}
+        />
+        {lines.map((ln, i) => (
+          <text
+            key={i}
+            x={boxW / 2}
+            y={15 + i * 16}
+            textAnchor="middle"
+            fontSize={12.5}
+            fontWeight={700}
+            fill={color}
+          >
+            {ln}
+          </text>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Editor
+// ---------------------------------------------------------------------------
+
+type Mode = "box" | "tip" | "point" | "move" | "resize" | "body";
+type Drag =
+  | { kind: "create"; startX: number; startY: number }
+  | { kind: "handle"; index: number; mode: Mode }
+  | { kind: "translate"; index: number; lastX: number; lastY: number }
+  | null;
 
 export default function Annotator({
   imageRef,
@@ -31,13 +105,14 @@ export default function Annotator({
   onClose: () => void;
 }) {
   const [annos, setAnnos] = useState<Anno[]>([]);
-  const [tool, setTool] = useState<Shape>("point");
+  const [tool, setTool] = useState<Shape>("arrow");
   const [color, setColor] = useState(COLORS[0]);
   const [selected, setSelected] = useState<number | null>(null);
-  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const [draft, setDraft] = useState<Anno | null>(null);
   const [saving, setSaving] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<Drag>(null);
+  const lastPt = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   useEffect(() => {
     if (imageRef.startsWith("pending:")) return; // nothing server-side yet
@@ -57,69 +132,162 @@ export default function Annotator({
       );
   }, [imageRef]);
 
-  const norm = (e: React.PointerEvent): { x: number; y: number } => {
+  const norm = (e: React.PointerEvent) => {
     const rect = svgRef.current!.getBoundingClientRect();
     return {
-      x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
-      y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+      x: clamp01((e.clientX - rect.left) / rect.width),
+      y: clamp01((e.clientY - rect.top) / rect.height),
     };
   };
+  const rectWH = () => {
+    const r = svgRef.current!.getBoundingClientRect();
+    return { RW: r.width, RH: r.height };
+  };
+
+  function hitTest(p: { x: number; y: number }): { index: number; mode: Mode } | null {
+    const { RW, RH } = rectWH();
+    const PX = p.x * RW;
+    const PY = p.y * RH;
+    const near = (ax: number, ay: number, r = 16) =>
+      Math.hypot(ax * RW - PX, ay * RH - PY) < r;
+
+    // Topmost first; the selected one wins ties so its handles are reachable.
+    const ordered = annos.map((_, i) => i).reverse();
+    if (selected != null)
+      ordered.sort((a, b) => (a === selected ? -1 : b === selected ? 1 : 0));
+
+    for (const i of ordered) {
+      const a = annos[i];
+      if (a.shape === "point") {
+        if (near(a.coords.x, a.coords.y, 18)) return { index: i, mode: "point" };
+      } else if (a.shape === "arrow") {
+        if (near(a.coords.x2, a.coords.y2, 16)) return { index: i, mode: "tip" };
+        const { boxW, boxH } = boxGeom(a.label, `${i + 1}`);
+        const cx = a.coords.x1 * RW;
+        const cy = a.coords.y1 * RH;
+        if (Math.abs(PX - cx) <= boxW / 2 + 4 && Math.abs(PY - cy) <= boxH / 2 + 4)
+          return { index: i, mode: "box" };
+        if (segDistPx(p, a.coords, RW, RH) < 12) return { index: i, mode: "body" };
+      } else {
+        const { x, y, w, h } = a.coords;
+        if (near(x + w, y + h, 16)) return { index: i, mode: "resize" };
+        if (PX >= x * RW && PX <= (x + w) * RW && PY >= y * RH && PY <= (y + h) * RH)
+          return { index: i, mode: "move" };
+      }
+    }
+    return null;
+  }
 
   const onPointerDown = (e: React.PointerEvent) => {
     const p = norm(e);
+    lastPt.current = p;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const hit = hitTest(p);
+    if (hit) {
+      setSelected(hit.index);
+      if (hit.mode === "move" || hit.mode === "body") {
+        dragRef.current = { kind: "translate", index: hit.index, lastX: p.x, lastY: p.y };
+      } else {
+        dragRef.current = { kind: "handle", index: hit.index, mode: hit.mode };
+      }
+      return;
+    }
+    // Empty space → create with the current tool.
+    setSelected(null);
     if (tool === "point") {
-      const a: Anno = {
-        shape: "point",
-        coords: p,
-        label: `${annos.length + 1}`,
-        description: "",
-        color,
-        order: annos.length,
-      };
-      setAnnos([...annos, a]);
+      setAnnos((prev) => [
+        ...prev,
+        { shape: "point", coords: p, label: "", description: "", color, order: prev.length },
+      ]);
       setSelected(annos.length);
+      dragRef.current = null;
     } else {
-      setDrag(p);
+      dragRef.current = { kind: "create", startX: p.x, startY: p.y };
     }
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag) return;
+    const d = dragRef.current;
+    if (!d) return;
     const p = norm(e);
-    setDraft(
-      tool === "arrow"
-        ? {
-            shape: "arrow",
-            coords: { x1: drag.x, y1: drag.y, x2: p.x, y2: p.y },
-            label: `${annos.length + 1}`,
-            description: "",
-            color,
-            order: annos.length,
-          }
-        : {
-            shape: "box",
-            coords: {
-              x: Math.min(drag.x, p.x),
-              y: Math.min(drag.y, p.y),
-              w: Math.abs(p.x - drag.x),
-              h: Math.abs(p.y - drag.y),
-            },
-            label: `${annos.length + 1}`,
-            description: "",
-            color,
-            order: annos.length,
-          }
-    );
+    lastPt.current = p;
+    if (d.kind === "create") {
+      setDraft(
+        tool === "arrow"
+          ? {
+              shape: "arrow",
+              coords: { x1: d.startX, y1: d.startY, x2: p.x, y2: p.y },
+              label: "",
+              description: "",
+              color,
+              order: annos.length,
+            }
+          : {
+              shape: "box",
+              coords: {
+                x: Math.min(d.startX, p.x),
+                y: Math.min(d.startY, p.y),
+                w: Math.abs(p.x - d.startX),
+                h: Math.abs(p.y - d.startY),
+              },
+              label: "",
+              description: "",
+              color,
+              order: annos.length,
+            }
+      );
+    } else if (d.kind === "handle") {
+      setAnnos((prev) => prev.map((a, i) => (i === d.index ? applyHandle(a, d.mode, p) : a)));
+    } else if (d.kind === "translate") {
+      const dx = p.x - d.lastX;
+      const dy = p.y - d.lastY;
+      d.lastX = p.x;
+      d.lastY = p.y;
+      setAnnos((prev) => prev.map((a, i) => (i === d.index ? translate(a, dx, dy) : a)));
+    }
   };
 
   const onPointerUp = () => {
-    if (drag && draft) {
-      setAnnos([...annos, draft]);
-      setSelected(annos.length);
+    const d = dragRef.current;
+    if (d?.kind === "create") {
+      // Build from refs, not from `draft` state — robust even if React hasn't
+      // flushed the in-drag preview render yet.
+      const end = lastPt.current;
+      const dist = Math.hypot(end.x - d.startX, end.y - d.startY);
+      if (dist > 0.01) {
+        const made: Anno =
+          tool === "arrow"
+            ? {
+                shape: "arrow",
+                coords: { x1: d.startX, y1: d.startY, x2: end.x, y2: end.y },
+                label: "",
+                description: "",
+                color,
+                order: annos.length,
+              }
+            : {
+                shape: "box",
+                coords: {
+                  x: Math.min(d.startX, end.x),
+                  y: Math.min(d.startY, end.y),
+                  w: Math.abs(end.x - d.startX),
+                  h: Math.abs(end.y - d.startY),
+                },
+                label: "",
+                description: "",
+                color,
+                order: annos.length,
+              };
+        setAnnos((prev) => [...prev, made]);
+        setSelected(annos.length);
+      }
     }
-    setDrag(null);
     setDraft(null);
+    dragRef.current = null;
   };
+
+  const update = (i: number, patch: Partial<Anno>) =>
+    setAnnos((prev) => prev.map((a, j) => (j === i ? { ...a, ...patch } : a)));
 
   const save = async () => {
     setSaving(true);
@@ -134,13 +302,19 @@ export default function Annotator({
     onClose();
   };
 
+  const toolLabel: Record<Shape, string> = {
+    arrow: "↘ Label",
+    point: "• Point",
+    box: "▭ Box",
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/80 p-2 sm:p-6">
       <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col overflow-hidden rounded-xl bg-white">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2">
           <span className="text-sm font-medium">Annotate</span>
-          {(["point", "arrow", "box"] as const).map((t) => (
+          {(["arrow", "point", "box"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTool(t)}
@@ -148,14 +322,17 @@ export default function Annotator({
                 tool === t ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
               }`}
             >
-              {t === "point" ? "● Point" : t === "arrow" ? "→ Arrow" : "▭ Box"}
+              {toolLabel[t]}
             </button>
           ))}
           <div className="flex items-center gap-1">
             {COLORS.map((c) => (
               <button
                 key={c}
-                onClick={() => setColor(c)}
+                onClick={() => {
+                  setColor(c);
+                  if (selected != null) update(selected, { color: c });
+                }}
                 className={`h-5 w-5 rounded-full border-2 ${
                   color === c ? "border-zinc-900" : "border-transparent"
                 }`}
@@ -190,85 +367,184 @@ export default function Annotator({
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
               >
-                {[...annos, ...(draft ? [draft] : [])].map((a, i) => (
-                  <AnnoShape
-                    key={i}
-                    anno={a}
-                    index={i}
-                    selected={selected === i}
-                    onSelect={() => setSelected(i)}
-                  />
+                {annos.map((a, i) => (
+                  <EditorAnno key={i} anno={a} index={i} selected={selected === i} />
                 ))}
+                {draft && <EditorAnno anno={draft} index={annos.length} selected={false} />}
               </svg>
             </div>
           </div>
 
           {/* Label list */}
           <div className="max-h-56 w-full overflow-y-auto border-t border-zinc-200 sm:max-h-none sm:w-72 sm:border-l sm:border-t-0">
-            {annos.length === 0 ? (
-              <p className="p-4 text-sm text-zinc-400">
-                Tap the photo to drop a point, or drag for arrows/boxes. Then
-                label each marker here.
-              </p>
-            ) : (
-              annos.map((a, i) => (
-                <div
-                  key={i}
-                  className={`border-b border-zinc-100 p-3 ${
-                    selected === i ? "bg-amber-50" : ""
-                  }`}
-                  onClick={() => setSelected(i)}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                      style={{ backgroundColor: a.color }}
-                    >
-                      {i + 1}
-                    </span>
-                    <input
-                      value={a.label}
-                      onChange={(e) =>
-                        setAnnos(
-                          annos.map((x, j) => (j === i ? { ...x, label: e.target.value } : x))
-                        )
-                      }
-                      placeholder="Label (e.g. CAN-H)"
-                      className="min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAnnos(annos.filter((_, j) => j !== i));
-                        setSelected(null);
-                      }}
-                      className="text-zinc-300 hover:text-red-500"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <textarea
-                    value={a.description ?? ""}
-                    onChange={(e) =>
-                      setAnnos(
-                        annos.map((x, j) =>
-                          j === i ? { ...x, description: e.target.value } : x
-                        )
-                      )
-                    }
-                    placeholder="Description (e.g. splice to pin 6, blue/white wire)"
-                    rows={2}
-                    className="mt-1 w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+            <p className="border-b border-zinc-100 p-3 text-xs text-zinc-400">
+              Pick a color, then drag from where you want the label to the wire it
+              points at. Tap any marker to select it, then drag the line to move
+              it, or its box / arrow-tip handle to fine-tune.
+            </p>
+            {annos.map((a, i) => (
+              <div
+                key={i}
+                className={`border-b border-zinc-100 p-3 ${selected === i ? "bg-amber-50" : ""}`}
+                onClick={() => setSelected(i)}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                    style={{ backgroundColor: a.color }}
+                  >
+                    {i + 1}
+                  </span>
+                  <input
+                    value={a.label}
+                    onChange={(e) => update(i, { label: e.target.value })}
+                    placeholder="Label (shown in the box, e.g. CAN-H)"
+                    className="min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
                   />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAnnos(annos.filter((_, j) => j !== i));
+                      setSelected(null);
+                    }}
+                    className="text-zinc-300 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
                 </div>
-              ))
-            )}
+                <textarea
+                  value={a.description ?? ""}
+                  onChange={(e) => update(i, { description: e.target.value })}
+                  placeholder="Note shown under the photo (e.g. splice to pin 6)"
+                  rows={2}
+                  className="mt-1 w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                />
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+function applyHandle(a: Anno, mode: Mode, p: { x: number; y: number }): Anno {
+  if (mode === "point") return { ...a, coords: { x: p.x, y: p.y } };
+  if (mode === "box") return { ...a, coords: { ...a.coords, x1: p.x, y1: p.y } };
+  if (mode === "tip") return { ...a, coords: { ...a.coords, x2: p.x, y2: p.y } };
+  if (mode === "resize")
+    return {
+      ...a,
+      coords: {
+        ...a.coords,
+        w: Math.max(0.02, p.x - a.coords.x),
+        h: Math.max(0.02, p.y - a.coords.y),
+      },
+    };
+  return a;
+}
+
+function translate(a: Anno, dx: number, dy: number): Anno {
+  if (a.shape === "point")
+    return { ...a, coords: { x: clamp01(a.coords.x + dx), y: clamp01(a.coords.y + dy) } };
+  if (a.shape === "arrow")
+    return {
+      ...a,
+      coords: {
+        x1: clamp01(a.coords.x1 + dx),
+        y1: clamp01(a.coords.y1 + dy),
+        x2: clamp01(a.coords.x2 + dx),
+        y2: clamp01(a.coords.y2 + dy),
+      },
+    };
+  return { ...a, coords: { ...a.coords, x: clamp01(a.coords.x + dx), y: clamp01(a.coords.y + dy) } };
+}
+
+function segDistPx(
+  p: { x: number; y: number },
+  c: any,
+  RW: number,
+  RH: number
+): number {
+  const ax = c.x1 * RW,
+    ay = c.y1 * RH,
+    bx = c.x2 * RW,
+    by = c.y2 * RH,
+    px = p.x * RW,
+    py = p.y * RH;
+  const dx = bx - ax,
+    dy = by - ay;
+  const len2 = dx * dx + dy * dy || 1;
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** Editor-side rendering of one annotation, with drag handles when selected. */
+function EditorAnno({
+  anno,
+  index,
+  selected,
+}: {
+  anno: Anno;
+  index: number;
+  selected: boolean;
+}) {
+  const color = anno.color || "#ef4444";
+  const mid = `eah-${index}`;
+
+  if (anno.shape === "point") {
+    return (
+      <g>
+        {selected && (
+          <circle cx={pct(anno.coords.x)} cy={pct(anno.coords.y)} r={16} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3 3" />
+        )}
+        <circle cx={pct(anno.coords.x)} cy={pct(anno.coords.y)} r={11} fill={color} fillOpacity={0.9} stroke="#fff" strokeWidth={2} />
+        <text x={pct(anno.coords.x)} y={pct(anno.coords.y)} dy="0.35em" textAnchor="middle" fill="#fff" fontSize={12} fontWeight={700}>
+          {index + 1}
+        </text>
+      </g>
+    );
+  }
+
+  if (anno.shape === "arrow") {
+    const { x1, y1, x2, y2 } = anno.coords;
+    return (
+      <g>
+        <defs>
+          <marker id={mid} markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill={color} />
+          </marker>
+        </defs>
+        <line x1={pct(x1)} y1={pct(y1)} x2={pct(x2)} y2={pct(y2)} stroke={color} strokeWidth={2.5} markerEnd={`url(#${mid})`} />
+        <circle cx={pct(x2)} cy={pct(y2)} r={3.5} fill={color} />
+        <LabelBox cx={x1} cy={y1} label={anno.label} fallback={`${index + 1}`} color={color} />
+        {selected && (
+          <>
+            {/* arrow-tip handle */}
+            <circle cx={pct(x2)} cy={pct(y2)} r={8} fill="#fff" stroke={color} strokeWidth={2} />
+            {/* box-end handle */}
+            <circle cx={pct(x1)} cy={pct(y1)} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />
+          </>
+        )}
+      </g>
+    );
+  }
+
+  // box rect
+  const { x, y, w, h } = anno.coords;
+  return (
+    <g>
+      <rect x={pct(x)} y={pct(y)} width={pct(w)} height={pct(h)} fill="none" stroke={color} strokeWidth={2.5} rx={4} />
+      <LabelBox cx={x + w / 2} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} />
+      {selected && <circle cx={pct(x + w)} cy={pct(y + h)} r={7} fill="#fff" stroke={color} strokeWidth={2} />}
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Read-only rendering (viewer + editor thumbnails) — must match EditorAnno.
+// ---------------------------------------------------------------------------
 
 export function AnnoShape({
   anno,
@@ -281,10 +557,14 @@ export function AnnoShape({
   index: number;
   selected?: boolean;
   onSelect?: () => void;
-  /** Viewer style: red-bordered label box with a leader line (reference look). */
+  /** Reference-page look: white label box + leader line. */
   callout?: boolean;
 }) {
-  if (callout) return <CalloutShape anno={anno} index={index} />;
+  const uid = useId().replace(/:/g, "");
+  if (callout) return <CalloutShape anno={anno} index={index} uid={uid} />;
+
+  // Plain fallback (unused by current callers, kept for safety).
+  const color = anno.color || "#ef4444";
   const common = {
     onPointerDown: (e: React.PointerEvent) => {
       if (onSelect) {
@@ -294,128 +574,33 @@ export function AnnoShape({
     },
     style: { cursor: onSelect ? "pointer" : undefined },
   };
-  const pct = (v: number) => `${v * 100}%`;
-  const stroke = selected ? 4 : 2.5;
-
   if (anno.shape === "point") {
     return (
       <g {...common}>
-        <circle
-          cx={pct(anno.coords.x)}
-          cy={pct(anno.coords.y)}
-          r={12}
-          fill={anno.color}
-          fillOpacity={0.9}
-          stroke="#fff"
-          strokeWidth={2}
-        />
-        <text
-          x={pct(anno.coords.x)}
-          y={pct(anno.coords.y)}
-          dy="0.35em"
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={12}
-          fontWeight={700}
-        >
+        <circle cx={pct(anno.coords.x)} cy={pct(anno.coords.y)} r={12} fill={color} fillOpacity={0.9} stroke="#fff" strokeWidth={2} />
+        <text x={pct(anno.coords.x)} y={pct(anno.coords.y)} dy="0.35em" textAnchor="middle" fill="#fff" fontSize={12} fontWeight={700}>
           {index + 1}
         </text>
       </g>
     );
   }
-  if (anno.shape === "arrow") {
-    const { x1, y1, x2, y2 } = anno.coords;
-    return (
-      <g {...common}>
-        <defs>
-          <marker
-            id={`arrowhead-${index}`}
-            markerWidth="8"
-            markerHeight="8"
-            refX="6"
-            refY="3"
-            orient="auto"
-          >
-            <path d="M0,0 L6,3 L0,6 Z" fill={anno.color} />
-          </marker>
-        </defs>
-        <line
-          x1={pct(x1)}
-          y1={pct(y1)}
-          x2={pct(x2)}
-          y2={pct(y2)}
-          stroke={anno.color}
-          strokeWidth={stroke}
-          markerEnd={`url(#arrowhead-${index})`}
-        />
-        <circle cx={pct(x1)} cy={pct(y1)} r={10} fill={anno.color} stroke="#fff" strokeWidth={1.5} />
-        <text
-          x={pct(x1)}
-          y={pct(y1)}
-          dy="0.35em"
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={11}
-          fontWeight={700}
-        >
-          {index + 1}
-        </text>
-      </g>
-    );
-  }
-  // box
-  const { x, y, w, h } = anno.coords;
-  return (
-    <g {...common}>
-      <rect
-        x={pct(x)}
-        y={pct(y)}
-        width={pct(w)}
-        height={pct(h)}
-        fill="none"
-        stroke={anno.color}
-        strokeWidth={stroke}
-        rx={4}
-      />
-      <circle cx={pct(x)} cy={pct(y)} r={10} fill={anno.color} stroke="#fff" strokeWidth={1.5} />
-      <text
-        x={pct(x)}
-        y={pct(y)}
-        dy="0.35em"
-        textAnchor="middle"
-        fill="#fff"
-        fontSize={11}
-        fontWeight={700}
-      >
-        {index + 1}
-      </text>
-    </g>
-  );
+  return <CalloutShape anno={anno} index={index} uid={uid} />;
 }
 
-/**
- * The reference-page look: a red-bordered label box with a leader line down to
- * the wire/point. Multi-line labels supported via "\n" — the box grows.
- * Uses a nested <svg> so the box can be laid out in px around a % anchor.
- */
-function CalloutShape({ anno, index }: { anno: Anno; index: number }) {
+function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: string }) {
   const color = anno.color || "#ef4444";
-  const label = (anno.label || `${index + 1}`).trim();
-  const lines = label.split("\n").filter(Boolean);
-  const boxW = Math.max(56, Math.max(...lines.map((l) => l.length)) * 7.2 + 18);
-  const boxH = lines.length * 16 + 12;
-  const pct = (v: number) => `${v * 100}%`;
+  const mid = `vah-${uid}-${index}`;
 
-  // Anchor (target on the photo) + where the label box sits.
-  let target: { x: number; y: number };
-  if (anno.shape === "point") target = anno.coords;
-  else if (anno.shape === "arrow") target = { x: anno.coords.x2, y: anno.coords.y2 };
-  else target = { x: anno.coords.x + anno.coords.w / 2, y: anno.coords.y };
-  const labelOrigin =
-    anno.shape === "arrow" ? { x: anno.coords.x1, y: anno.coords.y1 } : target;
-  const below = labelOrigin.y < 0.18; // near the top edge → box goes below
-  const gap = 28;
-  const boxOffsetY = below ? gap : -(gap + boxH);
+  let origin: { x: number; y: number };
+  let target: { x: number; y: number } | null = null;
+  if (anno.shape === "arrow") {
+    origin = { x: anno.coords.x1, y: anno.coords.y1 };
+    target = { x: anno.coords.x2, y: anno.coords.y2 };
+  } else if (anno.shape === "point") {
+    origin = { x: anno.coords.x, y: anno.coords.y };
+  } else {
+    origin = { x: anno.coords.x + anno.coords.w / 2, y: anno.coords.y };
+  }
 
   return (
     <g>
@@ -431,51 +616,26 @@ function CalloutShape({ anno, index }: { anno: Anno; index: number }) {
           rx={4}
         />
       )}
-      {/* leader line + dot at the target */}
-      <svg x={pct(labelOrigin.x)} y={pct(labelOrigin.y)} overflow="visible">
-        <line
-          x1={0}
-          y1={below ? boxOffsetY : boxOffsetY + boxH}
-          x2={0}
-          y2={0}
-          stroke={color}
-          strokeWidth={2}
-        />
-        <g transform={`translate(${-boxW / 2}, ${boxOffsetY})`}>
-          <rect
-            width={boxW}
-            height={boxH}
-            rx={4}
-            fill="rgba(20,20,20,0.92)"
+      {target && (
+        <>
+          <defs>
+            <marker id={mid} markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+              <path d="M0,0 L7,3 L0,6 Z" fill={color} />
+            </marker>
+          </defs>
+          <line
+            x1={pct(origin.x)}
+            y1={pct(origin.y)}
+            x2={pct(target.x)}
+            y2={pct(target.y)}
             stroke={color}
-            strokeWidth={2}
+            strokeWidth={2.5}
+            markerEnd={`url(#${mid})`}
           />
-          {lines.map((line, i) => (
-            <text
-              key={i}
-              x={boxW / 2}
-              y={16 + i * 16}
-              textAnchor="middle"
-              fill="#fff"
-              fontSize={12}
-              fontWeight={700}
-            >
-              {line}
-            </text>
-          ))}
-        </g>
-      </svg>
-      <circle cx={pct(target.x)} cy={pct(target.y)} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />
-      {anno.shape === "arrow" && (
-        <line
-          x1={pct(anno.coords.x1)}
-          y1={pct(anno.coords.y1)}
-          x2={pct(anno.coords.x2)}
-          y2={pct(anno.coords.y2)}
-          stroke={color}
-          strokeWidth={2}
-        />
+          <circle cx={pct(target.x)} cy={pct(target.y)} r={3.5} fill={color} />
+        </>
       )}
+      <LabelBox cx={origin.x} cy={origin.y} label={anno.label} fallback={`${index + 1}`} color={color} />
     </g>
   );
 }
