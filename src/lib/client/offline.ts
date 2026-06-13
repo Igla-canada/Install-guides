@@ -130,16 +130,19 @@ export async function uploadImage(
   file: Blob,
   name: string
 ): Promise<{ assetId: string; pending: boolean }> {
+  // Downscale photos so they upload fast and stay under the serverless body
+  // limit. Non-image files (firmware .bin, settings) pass through untouched.
+  const prepared = await maybeDownscale(file);
   try {
-    return { assetId: await uploadNow(file, name), pending: false };
+    return { assetId: await uploadNow(prepared, name), pending: false };
   } catch {
     const uuid = crypto.randomUUID();
     const db = await openDb();
     await tx(db, "uploads", "readwrite", (s) =>
       s.add({
         uuid,
-        blob: file,
-        mime: file.type || "application/octet-stream",
+        blob: prepared,
+        mime: prepared.type || "application/octet-stream",
         name,
         ts: Date.now(),
       } satisfies QueuedUpload)
@@ -149,34 +152,50 @@ export async function uploadImage(
   }
 }
 
+// Upload through OUR server (same origin) — no browser→S3 CORS. The server
+// puts the object in S3 and creates the ImageAsset row, returning its id.
 async function uploadNow(file: Blob, name: string): Promise<string> {
-  const presign = await fetch("/api/images/presign", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mime: file.type || "application/octet-stream", name }),
-  });
-  if (!presign.ok) throw new Error("presign failed");
-  const { uploadUrl, s3Key } = await presign.json();
-  const put = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  if (!put.ok) throw new Error("upload failed");
   const dims = await imageDimensions(file).catch(() => null);
-  const created = await fetch("/api/images", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      s3Key,
-      mime: file.type || "application/octet-stream",
-      width: dims?.width,
-      height: dims?.height,
-    }),
-  });
-  if (!created.ok) throw new Error("asset create failed");
-  const { assetId } = await created.json();
+  const form = new FormData();
+  form.append("file", file, name);
+  form.append("name", name);
+  if (dims) {
+    form.append("width", String(dims.width));
+    form.append("height", String(dims.height));
+  }
+  const res = await fetch("/api/images/upload", { method: "POST", body: form });
+  if (!res.ok) throw new Error(`upload failed (${res.status})`);
+  const { assetId } = await res.json();
   return assetId;
+}
+
+/** Downscale an image blob to a max edge so uploads are small and quick. */
+const MAX_EDGE = 1920;
+async function maybeDownscale(file: Blob): Promise<Blob> {
+  if (!file.type?.startsWith("image/")) return file;
+  try {
+    const dims = await imageDimensions(file);
+    if (Math.max(dims.width, dims.height) <= MAX_EDGE && file.size < 2_500_000) {
+      return file; // already small enough
+    }
+    const scale = MAX_EDGE / Math.max(dims.width, dims.height);
+    const w = Math.round(dims.width * Math.min(1, scale));
+    const h = Math.round(dims.height * Math.min(1, scale));
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const out = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.82)
+    );
+    return out && out.size < file.size ? out : file;
+  } catch {
+    return file; // any failure → upload the original
+  }
 }
 
 function imageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
@@ -218,7 +237,8 @@ export async function flushQueue(): Promise<void> {
       s.getAll() as IDBRequest<QueuedUpload[]>
     );
     for (const u of uploads.sort((a, b) => a.ts - b.ts)) {
-      const assetId = await uploadNow(u.blob, u.name); // throws on failure → abort flush
+      const blob = await maybeDownscale(u.blob); // shrink large queued photos
+      const assetId = await uploadNow(blob, u.name); // throws on failure → abort flush
       await tx(db, "idmap", "readwrite", (s) => s.put(assetId, u.uuid));
       await tx(db, "uploads", "readwrite", (s) => s.delete(u.uuid));
     }
