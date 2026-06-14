@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Igla Guilds",
-    short_name: "Igla Guilds",
+    name: "Igla Guides",
+    short_name: "Igla Guides",
     description: "Igla installation guides — authoring and controlled access",
     start_url: "/",
     display: "standalone",

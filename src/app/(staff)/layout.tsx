@@ -10,9 +10,10 @@ async function logoutAction() {
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", roles: ["ADMIN", "TECH"] },
-  { href: "/guilds", label: "Guilds", roles: ["ADMIN", "TECH"] },
+  { href: "/guilds", label: "Guides", roles: ["ADMIN", "TECH"] },
   { href: "/grants", label: "Access links", roles: ["ADMIN", "TECH"] },
   { href: "/quick-picks", label: "Quick picks", roles: ["ADMIN", "TECH"] },
+  { href: "/export", label: "Export PDF", roles: ["ADMIN", "TECH"] },
   { href: "/alerts", label: "Alerts", roles: ["ADMIN"] },
   { href: "/audit", label: "Audit log", roles: ["ADMIN"] },
   { href: "/users", label: "Admin", roles: ["ADMIN"] },
@@ -32,7 +33,7 @@ export default async function StaffLayout({
       <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-2">
           <Link href="/dashboard" className="mr-4 shrink-0 font-semibold">
-            Igla Guilds
+            Igla Guides
           </Link>
           {NAV.filter((n) => (n.roles as readonly string[]).includes(user.role)).map(
             (n) => (

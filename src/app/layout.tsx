@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Igla Guilds",
+  title: "Igla Guides",
   description: "Igla installation guides — authoring and controlled access",
   manifest: "/manifest.webmanifest",
 };

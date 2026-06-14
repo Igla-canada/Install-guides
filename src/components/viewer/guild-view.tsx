@@ -3,7 +3,7 @@
 // photos, dark theme for installer views (light for print/export).
 // Image URLs are short-lived signed URLs generated server-side at render time.
 import { prisma } from "@/lib/db";
-import { signedViewUrl } from "@/lib/s3";
+import { signedViewUrl, getObjectDataUrl } from "@/lib/s3";
 import type { GuildDoc } from "@/lib/guild-doc";
 import { sectionColors } from "@/lib/blocks";
 import { AnnoShape, type Anno } from "@/components/images/annotator";
@@ -24,9 +24,12 @@ type Theme = "dark" | "light";
 export default async function GuildView({
   doc,
   theme = "dark",
+  inlineImages = false,
 }: {
   doc: GuildDoc;
   theme?: Theme;
+  /** Embed images as data URLs (for the admin PDF export — no canvas taint). */
+  inlineImages?: boolean;
 }) {
   // Collect every asset reference, sign URLs and fetch annotations in bulk.
   const imageIds = new Set<string>();
@@ -53,7 +56,10 @@ export default async function GuildView({
   const annoMap = new Map<string, AnnotationRow[]>();
   await Promise.all(
     assets.map(async (a) => {
-      urlMap.set(a.id, await signedViewUrl(a.s3Key, 300));
+      const url = inlineImages
+        ? await getObjectDataUrl(a.s3Key)
+        : await signedViewUrl(a.s3Key, 300);
+      if (url) urlMap.set(a.id, url);
       annoMap.set(a.id, a.annotations as AnnotationRow[]);
     })
   );

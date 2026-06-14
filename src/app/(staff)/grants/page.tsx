@@ -154,7 +154,7 @@ export default async function GrantsPage(props: {
               </label>
             </div>
             <div>
-              <span className="text-xs text-zinc-500">Guilds (published only)</span>
+              <span className="text-xs text-zinc-500">Guides (published only)</span>
               <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-zinc-200 p-2">
                 {publishedGuilds.length === 0 ? (
                   <p className="text-sm text-zinc-400">

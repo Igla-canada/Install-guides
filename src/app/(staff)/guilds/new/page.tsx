@@ -135,7 +135,7 @@ export default async function NewGuildPage() {
   const taxonomy = await loadTaxonomy();
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="text-2xl font-semibold">New guild</h1>
+      <h1 className="text-2xl font-semibold">New guide</h1>
       <p className="mt-1 text-sm text-zinc-500">
         Type the car and pick the product — that&apos;s it. New makes, models
         and year ranges are created automatically.

@@ -203,7 +203,7 @@ function Shell({
             href="/guilds/new"
             className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
           >
-            + New guild
+            + New guide
           </Link>
         </div>
       </div>

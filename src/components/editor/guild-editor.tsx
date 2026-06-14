@@ -126,12 +126,12 @@ export default function GuildEditor({
             {tab === "preview" ? "← Back to editing" : "👁 Preview"}
           </button>
           <Link
-            href={`/print/${doc.id}`}
+            href={`/export/pdf?ids=${doc.id}`}
             target="_blank"
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
             title="Internal export — installer-facing views never offer downloads"
           >
-            Export
+            ⬇ PDF
           </Link>
           <button
             onClick={() => setShowHistory((v) => !v)}
@@ -193,15 +193,15 @@ export default function GuildEditor({
 
       {doc.status === "ARCHIVED" && (
         <p className="mt-3 rounded-md bg-zinc-200 px-3 py-2 text-sm text-zinc-600">
-          🗄 This guild is archived — installers and the Igla app can&apos;t see
+          🗄 This guide is archived — installers and the Igla app can&apos;t see
           it. Restore it from the ⋯ menu, or publish to make it live again.
         </p>
       )}
 
       {publishError === "conflict" && (
         <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          Another <strong>published</strong> guild already exists for this exact
-          vehicle + product + region. Archive it or change this guild&apos;s
+          Another <strong>published</strong> guide already exists for this exact
+          vehicle + product + region. Archive it or change this guide&apos;s
           identity before publishing.
         </p>
       )}

@@ -62,3 +62,22 @@ export async function signedViewUrl(key: string, expiresIn = 300) {
     expiresIn,
   });
 }
+
+/**
+ * Fetch an object and return it as a `data:` URL. Used by the admin PDF export
+ * so the rendered page has fully-inlined images (no cross-origin canvas taint
+ * when rasterizing to PDF). Returns null if the object can't be read.
+ */
+export async function getObjectDataUrl(key: string): Promise<string | null> {
+  try {
+    await ensureBucket();
+    const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+    const bytes = await res.Body!.transformToByteArray();
+    const mime = res.ContentType || "image/jpeg";
+    const b64 = Buffer.from(bytes).toString("base64");
+    return `data:${mime};base64,${b64}`;
+  } catch (e) {
+    console.error("getObjectDataUrl failed", key, e);
+    return null;
+  }
+}

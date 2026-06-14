@@ -132,7 +132,7 @@ export default async function UsersPage() {
             <tr>
               <th className="px-4 py-2">User</th>
               <th className="px-4 py-2">Role</th>
-              <th className="hidden px-4 py-2 md:table-cell">Guild access (installers)</th>
+              <th className="hidden px-4 py-2 md:table-cell">Guide access (installers)</th>
               <th className="px-4 py-2 text-right">Status</th>
             </tr>
           </thead>
@@ -154,7 +154,7 @@ export default async function UsersPage() {
                     {u.role === "INSTALLER" ? (
                       <details>
                         <summary className="cursor-pointer text-xs text-zinc-500">
-                          {access.length} guild{access.length === 1 ? "" : "s"} granted
+                          {access.length} guide{access.length === 1 ? "" : "s"} granted
                         </summary>
                         <form action={setInstallerGuilds} className="mt-2 space-y-1">
                           <input type="hidden" name="userId" value={u.id} />
@@ -171,7 +171,7 @@ export default async function UsersPage() {
                               </label>
                             ))}
                             {publishedGuilds.length === 0 && (
-                              <p className="text-xs text-zinc-400">No published guilds yet.</p>
+                              <p className="text-xs text-zinc-400">No published guides yet.</p>
                             )}
                           </div>
                           <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">

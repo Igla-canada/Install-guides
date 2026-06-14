@@ -208,7 +208,7 @@ export default function ChatPanel({
       { label: "📝 Add text", onClick: () => { echo("Add text"); setMode({ kind: "pick_target_section", then: "text" }); say("Which section?"); } },
       { label: "☑ Add a checklist", onClick: () => { echo("Add a checklist"); setMode({ kind: "pick_target_section", then: "checklist" }); say("Which section?"); } },
       { label: "⚠ Add a warning", onClick: () => { echo("Add a warning"); setMode({ kind: "pick_target_section", then: "callout" }); say("Which section?"); } },
-      { label: "✏ Rename guild", onClick: () => { echo("Rename guild"); setMode({ kind: "rename_title" }); say("What should the new title be?"); } },
+      { label: "✏ Rename guide", onClick: () => { echo("Rename guide"); setMode({ kind: "rename_title" }); say("What should the new title be?"); } },
       ...quickPicks.slice(0, 3).map((p) => ({
         label: `☆ Insert "${p.label}"`,
         onClick: () => {

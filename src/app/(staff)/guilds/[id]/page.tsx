@@ -28,7 +28,7 @@ export default async function GuildPreviewPage(props: {
       {/* Staff action bar */}
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/guilds" className="text-sm text-zinc-500 hover:underline">
-          ← Guilds
+          ← Guides
         </Link>
         <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
           {doc.status.toLowerCase()}
@@ -38,12 +38,12 @@ export default async function GuildPreviewPage(props: {
         </span>
         <div className="ml-auto flex items-center gap-2">
           <Link
-            href={`/print/${id}`}
+            href={`/export/pdf?ids=${id}`}
             target="_blank"
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
             title="Internal export — installer-facing views never offer downloads"
           >
-            Export
+            ⬇ PDF
           </Link>
           <Link
             href={`/guilds/${id}/edit`}
