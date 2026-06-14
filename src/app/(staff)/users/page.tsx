@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import MakeLogo from "@/components/guilds/make-logo";
+import NotifyTest from "@/components/admin/notify-test";
 
 async function setMakeLogo(formData: FormData) {
   "use server";
@@ -343,6 +344,10 @@ export default async function UsersPage() {
           Create user
         </button>
       </form>
+
+      <div className="mt-8">
+        <NotifyTest />
+      </div>
 
       {/* Product catalog — the only thing that needs pre-managing (a fixed
           device list). Vehicles are auto-created from the New-guild form. */}
