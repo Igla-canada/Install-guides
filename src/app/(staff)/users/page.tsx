@@ -2,6 +2,17 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
+import MakeLogo from "@/components/guilds/make-logo";
+
+async function setMakeLogo(formData: FormData) {
+  "use server";
+  await requireRole("ADMIN");
+  const id = String(formData.get("id"));
+  const logoUrl = String(formData.get("logoUrl") ?? "").trim() || null;
+  await prisma.make.update({ where: { id }, data: { logoUrl } });
+  revalidatePath("/users");
+  revalidatePath("/guilds");
+}
 
 async function createUser(formData: FormData) {
   "use server";
@@ -108,6 +119,7 @@ export default async function UsersPage() {
     select: { id: true, title: true },
   });
   const installerAccess = await prisma.installerGuild.findMany();
+  const makes = await prisma.make.findMany({ orderBy: { name: "asc" } });
   const productLines = await prisma.productLine.findMany({
     orderBy: { name: "asc" },
     include: { products: { orderBy: { name: "asc" } } },
@@ -302,6 +314,42 @@ export default async function UsersPage() {
             </button>
           </form>
         </div>
+      </div>
+
+      {/* Manufacturer logos — shown on the Guides menu tiles. Known brands get
+          a logo automatically; paste a URL to set or fix any of them. */}
+      <div className="mt-10 rounded-xl border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold">Manufacturer logos</h2>
+        <p className="mt-1 text-xs text-zinc-400">
+          Shown on the Guides menu. Leave blank to auto-detect by brand name;
+          paste an image URL to override (e.g. a transparent PNG/SVG).
+        </p>
+        {makes.length === 0 ? (
+          <p className="mt-3 text-sm text-zinc-400">
+            No makes yet — they appear as you create guides.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {makes.map((m) => (
+              <li key={m.id} className="flex items-center gap-3">
+                <MakeLogo name={m.name} logoUrl={m.logoUrl} size={32} />
+                <span className="w-28 shrink-0 truncate text-sm font-medium">{m.name}</span>
+                <form action={setMakeLogo} className="flex flex-1 items-center gap-2">
+                  <input type="hidden" name="id" value={m.id} />
+                  <input
+                    name="logoUrl"
+                    defaultValue={m.logoUrl ?? ""}
+                    placeholder="Logo image URL (optional)"
+                    className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                  />
+                  <button className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100">
+                    Save
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

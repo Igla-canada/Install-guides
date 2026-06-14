@@ -3,6 +3,7 @@
 // Search (?q=) falls back to a flat filtered table.
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import MakeLogo from "@/components/guilds/make-logo";
 
 export default async function GuildsPage(props: {
   searchParams: Promise<{ make?: string; year?: string; model?: string; q?: string; status?: string }>;
@@ -151,9 +152,14 @@ export default async function GuildsPage(props: {
   }
 
   // ---- Level 1: manufacturers -------------------------------------------------
-  const byMake = new Map<string, { name: string; count: number; models: Set<string> }>();
+  const byMake = new Map<
+    string,
+    { name: string; logoUrl: string | null; count: number; models: Set<string> }
+  >();
   for (const g of guilds) {
-    const m = byMake.get(g.makeId) ?? { name: g.make.name, count: 0, models: new Set() };
+    const m =
+      byMake.get(g.makeId) ??
+      { name: g.make.name, logoUrl: g.make.logoUrl, count: 0, models: new Set<string>() };
     m.count++;
     m.models.add(g.modelId);
     byMake.set(g.makeId, m);
@@ -169,6 +175,7 @@ export default async function GuildsPage(props: {
             sub: `${m.models.size} model${m.models.size === 1 ? "" : "s"} · ${m.count} guide${
               m.count === 1 ? "" : "s"
             }`,
+            logo: { name: m.name, logoUrl: m.logoUrl },
           }))}
         empty="No guides yet — create the first one."
       />
@@ -227,7 +234,12 @@ function TileGrid({
   empty,
   small = false,
 }: {
-  items: Array<{ href: string; title: string; sub: string }>;
+  items: Array<{
+    href: string;
+    title: string;
+    sub: string;
+    logo?: { name: string; logoUrl: string | null };
+  }>;
   empty: string;
   small?: boolean;
 }) {
@@ -252,10 +264,22 @@ function TileGrid({
           href={it.href}
           className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-400 hover:shadow"
         >
-          <div className={small ? "text-lg font-semibold" : "text-xl font-semibold"}>
-            {it.title}
-          </div>
-          <div className="mt-0.5 text-xs text-zinc-500">{it.sub}</div>
+          {it.logo ? (
+            <div className="flex items-center gap-3">
+              <MakeLogo name={it.logo.name} logoUrl={it.logo.logoUrl} size={44} />
+              <div className="min-w-0">
+                <div className="truncate text-xl font-semibold">{it.title}</div>
+                <div className="mt-0.5 text-xs text-zinc-500">{it.sub}</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={small ? "text-lg font-semibold" : "text-xl font-semibold"}>
+                {it.title}
+              </div>
+              <div className="mt-0.5 text-xs text-zinc-500">{it.sub}</div>
+            </>
+          )}
         </Link>
       ))}
     </div>

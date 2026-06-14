@@ -18,6 +18,7 @@ import type { ClientDoc, ClientQuickPick, ClientVersion } from "./types";
 import type { Taxonomy } from "@/lib/taxonomy";
 import SectionCard from "./section-card";
 import IdentityPanel from "./identity-panel";
+import CoverEditor from "./cover-editor";
 import PropertiesEditor from "./properties-editor";
 import ChatPanel from "./chat-panel";
 import { SECTION_TYPES } from "@/lib/blocks";
@@ -276,6 +277,7 @@ export default function GuildEditor({
       <div className={`mt-4 flex gap-6 ${tab === "preview" ? "hidden" : ""}`}>
         {/* Document (preview editor) */}
         <div className={`min-w-0 flex-1 ${tab === "chat" ? "hidden lg:block" : ""}`}>
+          <CoverEditor doc={doc} dispatch={dispatch} />
           <IdentityPanel
             doc={doc}
             taxonomy={taxonomy}
