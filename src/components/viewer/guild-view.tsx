@@ -406,7 +406,9 @@ function BlockView({
           <div className={`px-3 py-1.5 text-sm font-semibold ${t.tableHead}`}>
             📊 IGLA Connections
           </div>
-          <table className="w-full text-sm">
+          {/* Scrolls sideways on narrow phones so Pin/Note are never cut off */}
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[34rem] text-sm">
             <thead>
               <tr className={`border-b text-left text-xs uppercase ${t.tableBorder} ${t.muted}`}>
                 <th className="px-3 py-1.5 font-medium"></th>
@@ -428,6 +430,7 @@ function BlockView({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       );
     }
