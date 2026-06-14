@@ -65,11 +65,12 @@ export default function ImageBlockEditor({
 
   return (
     <div>
+      {/* No `capture` attr → on mobile the OS picker offers BOTH "Take Photo"
+          and "Choose from Library/Files", not just the camera. */}
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         multiple={isGallery}
         hidden
         onChange={(e) => void handleFiles(e.target.files)}

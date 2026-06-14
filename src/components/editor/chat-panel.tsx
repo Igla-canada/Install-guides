@@ -321,11 +321,11 @@ export default function ChatPanel({
           </div>
         )}
       </div>
+      {/* no `capture` → mobile offers camera AND existing photos/files */}
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         hidden
         onChange={(e) => void handlePhoto(e.target.files)}
       />

@@ -36,11 +36,11 @@ export default function CoverEditor({
 
   return (
     <div className="mb-3">
+      {/* no `capture` → mobile offers camera AND existing photos/files */}
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         hidden
         onChange={(e) => void handle(e.target.files)}
       />
