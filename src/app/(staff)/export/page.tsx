@@ -16,11 +16,23 @@ export default async function ExportPage() {
     },
   });
 
+  // Last PDF export per guide (from the audit log).
+  const exportRows = await prisma.auditEvent.groupBy({
+    by: ["guildId"],
+    where: { action: "pdf_download", guildId: { in: guilds.map((g) => g.id) } },
+    _max: { ts: true },
+  });
+  const lastExport = new Map(
+    exportRows.map((r) => [r.guildId, r._max.ts?.toISOString() ?? null])
+  );
+
   const items = guilds.map((g) => ({
     id: g.id,
     title: g.title,
     sub: `${g.make.name} ${g.model.name} ${g.generation.name} · ${g.iglaProduct.productLine.name} ${g.iglaProduct.name}`,
     status: g.status,
+    createdAt: g.createdAt.toISOString(),
+    lastExportedAt: lastExport.get(g.id) ?? null,
   }));
 
   return (
