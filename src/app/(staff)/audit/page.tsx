@@ -79,6 +79,8 @@ export default async function AuditPage(props: {
                         ? "bg-red-100 text-red-800"
                         : e.action === "view"
                         ? "bg-blue-100 text-blue-800"
+                        : e.action === "revisit"
+                        ? "bg-indigo-100 text-indigo-800"
                         : "bg-zinc-100 text-zinc-600"
                     }`}
                   >

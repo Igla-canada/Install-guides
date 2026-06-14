@@ -29,11 +29,29 @@ export default function ViewerShield({ guildId }: { guildId: string }) {
       if (target) track("image_zoom");
     };
 
+    // Count returns to this guide: the first open is logged server-side as
+    // "view"; coming back to the tab (visibility) or via back/forward (bfcache)
+    // is logged here as "revisit" so we know how often it's re-opened.
+    let hidden = document.visibilityState === "hidden";
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        if (hidden) track("revisit", { reason: "refocus" });
+        hidden = false;
+      } else {
+        hidden = true;
+      }
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) track("revisit", { reason: "restored" });
+    };
+
     document.addEventListener("contextmenu", onContext);
     document.addEventListener("dragstart", onDrag);
     document.addEventListener("keydown", onKey);
     document.addEventListener("copy", onCopy);
     document.addEventListener("click", onClick);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
     document.body.style.userSelect = "none";
     return () => {
       document.removeEventListener("contextmenu", onContext);
@@ -41,6 +59,8 @@ export default function ViewerShield({ guildId }: { guildId: string }) {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("copy", onCopy);
       document.removeEventListener("click", onClick);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
       document.body.style.userSelect = "";
     };
   }, [guildId]);

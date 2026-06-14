@@ -9,7 +9,7 @@ import { logEvent } from "@/lib/audit";
 
 const schema = z.object({
   guildId: z.string(),
-  action: z.enum(["image_zoom", "open_section", "denied"]),
+  action: z.enum(["image_zoom", "open_section", "denied", "revisit"]),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 
