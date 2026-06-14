@@ -89,8 +89,8 @@ export default function GuildEditor({
     <div className="mx-auto max-w-6xl">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/guilds" className="text-sm text-zinc-500 hover:underline">
-          ← Guilds
+        <Link href={`/guilds/${doc.id}`} className="text-sm text-zinc-500 hover:underline">
+          ← Done / preview
         </Link>
         <span
           className={`rounded-full px-2 py-0.5 text-xs ${

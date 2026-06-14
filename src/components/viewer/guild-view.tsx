@@ -244,8 +244,15 @@ function BlockView({
     }
     case "gallery": {
       const items = (c.items as Array<{ imageAssetId: string; caption?: string }>) ?? [];
+      const galleryCols: Record<number, string> = {
+        1: "grid-cols-1",
+        2: "grid-cols-2",
+        3: "grid-cols-3",
+        4: "grid-cols-4",
+      };
+      const cols = galleryCols[Number(c.columns) || 2] ?? "grid-cols-2";
       return (
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid gap-3 ${cols}`}>
           {items.map((it, i) => {
             const url = urlMap.get(it.imageAssetId);
             if (!url) return null;

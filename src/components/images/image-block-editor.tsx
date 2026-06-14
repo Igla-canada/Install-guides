@@ -13,7 +13,18 @@ import { useImageUrl } from "./use-image-url";
 import Annotator, { AnnoShape, type Anno } from "./annotator";
 
 type SingleContent = { imageAssetId?: string; heading?: string; caption?: string };
-type GalleryContent = { gallery: true; items: Array<{ imageAssetId: string; caption?: string }> };
+type GalleryContent = {
+  gallery: true;
+  items: Array<{ imageAssetId: string; caption?: string }>;
+  columns?: number;
+};
+
+const GRID_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+};
 
 export default function ImageBlockEditor({
   content,
@@ -224,8 +235,9 @@ function GalleryEditor({
   busy: boolean;
 }) {
   const items = content.items ?? [];
+  const cols = GRID_COLS[content.columns ?? 2] ?? GRID_COLS[2];
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div className={`grid gap-2 ${cols}`}>
       {items.map((item, i) => (
         <GalleryItem
           key={`${item.imageAssetId}-${i}`}

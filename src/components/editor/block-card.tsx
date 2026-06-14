@@ -205,12 +205,37 @@ function BlockBody({
 
     case "gallery": {
       const items: Array<{ imageAssetId: string; caption?: string }> = c.items ?? [];
+      const columns: number = c.columns ?? 2;
+      const layouts: Array<{ cols: number; label: string }> = [
+        { cols: 1, label: "1 wide" },
+        { cols: 2, label: "2 × grid" },
+        { cols: 3, label: "3 × grid" },
+        { cols: 4, label: "4 × grid" },
+      ];
       return (
-        <ImageBlockEditor
-          content={{ gallery: true, items }}
-          annotatable={false}
-          onChange={(next: any) => update({ ...c, items: next.items })}
-        />
+        <div>
+          <div className="mb-2 flex items-center gap-1">
+            <span className="mr-1 text-xs text-zinc-400">Layout:</span>
+            {layouts.map((l) => (
+              <button
+                key={l.cols}
+                onClick={() => update({ ...c, columns: l.cols })}
+                className={`rounded-md px-2 py-1 text-xs ${
+                  columns === l.cols
+                    ? "bg-zinc-900 text-white"
+                    : "border border-zinc-200 hover:bg-zinc-100"
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <ImageBlockEditor
+            content={{ gallery: true, items, columns }}
+            annotatable={false}
+            onChange={(next: any) => update({ ...c, items: next.items, columns })}
+          />
+        </div>
       );
     }
 

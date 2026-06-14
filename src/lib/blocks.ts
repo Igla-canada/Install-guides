@@ -11,7 +11,13 @@ export type BlockContent =
   // ties the photo to its connection point.
   | { kind: "image"; imageAssetId: string; heading?: string; caption?: string }
   | { kind: "annotated_image"; imageAssetId: string; heading?: string; caption?: string }
-  | { kind: "gallery"; items: Array<{ imageAssetId: string; caption?: string }> }
+  // columns = how many across in the grid (1–4); lets the author pick the
+  // layout for the PDF/view (2×grid, 3×grid, single-wide, …).
+  | {
+      kind: "gallery";
+      items: Array<{ imageAssetId: string; caption?: string }>;
+      columns?: number;
+    }
   // The "IGLA Connections" table from the reference pages. `location` ties a
   // row to the photo heading it belongs to when a car has multiple
   // connection points.
@@ -59,7 +65,7 @@ export function defaultContent(type: string): object {
     case "annotated_image":
       return { imageAssetId: "", heading: "", caption: "" };
     case "gallery":
-      return { items: [] };
+      return { items: [], columns: 2 };
     case "connections_table":
       // Pre-filled with the standard IGLA hookups — fastest path in the car.
       return {
