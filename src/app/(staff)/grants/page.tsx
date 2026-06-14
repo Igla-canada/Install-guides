@@ -1,48 +1,23 @@
-import { requireRole, hashToken, newToken, requestMeta } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logEvent } from "@/lib/audit";
+import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
+import { requestMeta } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-
-const EXPIRY_OPTIONS = [
-  { label: "2 hours", hours: 2 },
-  { label: "8 hours", hours: 8 },
-  { label: "1 day", hours: 24 },
-  { label: "3 days", hours: 72 },
-  { label: "1 week", hours: 168 },
-];
 
 async function createGrant(formData: FormData) {
   "use server";
   const user = await requireRole("ADMIN", "TECH");
   const granteeLabel = String(formData.get("granteeLabel") ?? "").trim();
-  const granteePhone = String(formData.get("granteePhone") ?? "").trim();
-  const hours = Number(formData.get("hours") ?? 24);
   const maxViewsRaw = String(formData.get("maxViews") ?? "").trim();
-  const guildIds = formData.getAll("guildIds").map(String);
-  if (!granteeLabel || !granteePhone || guildIds.length === 0) {
-    throw new Error("label, phone and at least one guild are required");
-  }
-
-  const token = newToken();
-  const grant = await prisma.accessGrant.create({
-    data: {
-      granteeLabel,
-      granteePhone,
-      grantedById: user.id,
-      tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + hours * 3600_000),
-      maxViews: maxViewsRaw ? parseInt(maxViewsRaw, 10) : null,
-      guilds: { create: guildIds.map((guildId) => ({ guildId })) },
-    },
-  });
-  const meta = await requestMeta();
-  await logEvent({
-    actor: { userId: user.id },
-    action: "grant_created",
-    ip: meta.ip,
-    userAgent: meta.userAgent,
-    meta: { grantId: grant.id, granteeLabel, guildIds },
+  const token = await createAccessGrant({
+    userId: user.id,
+    granteeLabel,
+    granteePhone: String(formData.get("granteePhone") ?? "").trim(),
+    hours: Number(formData.get("hours") ?? 24),
+    maxViews: maxViewsRaw ? parseInt(maxViewsRaw, 10) : null,
+    guildIds: formData.getAll("guildIds").map(String),
   });
   // Token shown exactly once, via query param to the confirmation banner.
   redirect(`/grants?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`);

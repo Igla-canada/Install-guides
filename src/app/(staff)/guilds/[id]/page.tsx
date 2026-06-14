@@ -1,20 +1,45 @@
 // Clicking a guild shows the PREVIEW (what installers see) as the main view,
-// with an Edit button into the authoring editor.
+// with an Edit button into the authoring editor and a per-guide Share panel.
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { loadGuildDoc } from "@/lib/guild-doc";
+import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
+import GrantPanel from "@/components/guilds/grant-panel";
 
 export const dynamic = "force-dynamic";
 
 export default async function GuildPreviewPage(props: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ created?: string; label?: string }>;
 }) {
-  await requireRole("ADMIN", "TECH");
+  const user = await requireRole("ADMIN", "TECH");
   const { id } = await props.params;
+  const { created, label } = await props.searchParams;
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
+
+  const baseUrl = process.env.APP_BASE_URL ?? "";
+
+  // Create a one-time access link scoped to THIS guide.
+  async function shareAction(formData: FormData) {
+    "use server";
+    const u = await requireRole("ADMIN", "TECH");
+    const granteeLabel = String(formData.get("granteeLabel") ?? "").trim();
+    const maxViewsRaw = String(formData.get("maxViews") ?? "").trim();
+    const token = await createAccessGrant({
+      userId: u.id,
+      granteeLabel,
+      granteePhone: String(formData.get("granteePhone") ?? "").trim(),
+      hours: Number(formData.get("hours") ?? 24),
+      maxViews: maxViewsRaw ? parseInt(maxViewsRaw, 10) : null,
+      guildIds: [id],
+    });
+    redirect(
+      `/guilds/${id}?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`
+    );
+  }
 
   const statusClass =
     doc.status === "PUBLISHED"
@@ -37,6 +62,19 @@ export default async function GuildPreviewPage(props: {
           Preview — what the installer sees
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {doc.status === "PUBLISHED" ? (
+            <GrantPanel
+              action={shareAction}
+              created={created}
+              label={label}
+              link={created ? `${baseUrl}/g/${created}` : undefined}
+              expiryOptions={EXPIRY_OPTIONS}
+            />
+          ) : (
+            <span className="text-xs text-zinc-400" title="Publish the guide before sharing">
+              Publish to share
+            </span>
+          )}
           <Link
             href={`/export/pdf?ids=${id}`}
             target="_blank"
