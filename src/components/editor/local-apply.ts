@@ -19,6 +19,19 @@ function applyOne(doc: ClientDoc, op: any): ClientDoc {
   switch (op.op) {
     case "update_identity":
       return { ...doc, ...op.data };
+    case "set_products": {
+      const ids: string[] = op.productIds ?? [];
+      const products = ids.map((id) => {
+        const existing = doc.products.find((p) => p.iglaProductId === id);
+        return (
+          existing ?? {
+            iglaProductId: id,
+            iglaProduct: { name: "…", productLine: { name: "" } },
+          }
+        );
+      });
+      return { ...doc, products, iglaProductId: ids[0] ?? doc.iglaProductId };
+    }
     case "update_generation":
       return {
         ...doc,

@@ -61,9 +61,12 @@ export async function POST(req: NextRequest) {
         generation: true,
         trim: true,
         iglaProduct: { include: { productLine: true } },
+        products: { include: { iglaProduct: { include: { productLine: true } } } },
       },
     });
     if (!g) return NextResponse.json({ ok: false, error: "no_guide" });
+    const productNames = g.products.map((p) => p.iglaProduct.name);
+    const lineNames = [...new Set(g.products.map((p) => p.iglaProduct.productLine.name))];
     chosen = {
       guildId: g.id,
       title: g.title,
@@ -73,6 +76,8 @@ export async function POST(req: NextRequest) {
       trim: g.trim?.name ?? null,
       product: g.iglaProduct.name,
       productLine: g.iglaProduct.productLine.name,
+      products: productNames.length ? productNames : [g.iglaProduct.name],
+      productLines: lineNames.length ? lineNames : [g.iglaProduct.productLine.name],
       confidence: "high",
     };
   } else {

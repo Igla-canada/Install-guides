@@ -35,6 +35,10 @@ export type ClientDoc = {
   generation: { name: string; yearStart: number; yearEnd: number | null };
   trim: { name: string } | null;
   iglaProduct: { name: string; productLine: { name: string } };
+  products: Array<{
+    iglaProductId: string;
+    iglaProduct: { name: string; productLine: { name: string } };
+  }>;
   sections: ClientSection[];
   updatedAt: string;
 };

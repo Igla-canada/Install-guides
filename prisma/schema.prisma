@@ -86,10 +86,25 @@ model IglaProduct {
   productLine   ProductLine    @relation(fields: [productLineId], references: [id], onDelete: Cascade)
   name          String
   modelCode     String?
-  guilds        Guild[]
+  guilds        Guild[] // guilds whose PRIMARY product this is
+  guildLinks    GuildProduct[] // all guilds that cover this product (incl. primary)
   inventoryUnits InventoryUnit[]
 
   @@unique([productLineId, name])
+}
+
+// A guide can cover several products (e.g. 231 + Alarm) — one canonical document
+// served whenever the unit is any of them. Guild.iglaProductId stays the PRIMARY
+// (display/title default); this lists every product the guide covers (the
+// primary is always included). The resolver matches on this set.
+model GuildProduct {
+  guildId       String
+  guild         Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  iglaProductId String
+  iglaProduct   IglaProduct @relation(fields: [iglaProductId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, iglaProductId])
+  @@index([iglaProductId])
 }
 
 // Internal stand-in for the Igla portal's inventory: maps a unit serial number
@@ -160,6 +175,7 @@ model Guild {
   versions    GuildVersion[]
   grantGuilds GrantGuild[]
   auditEvents AuditEvent[]
+  products    GuildProduct[] // every product this guide covers (primary included)
 
   // One published guild per identity tuple is enforced in application logic at
   // publish time (Postgres treats NULL trimId as distinct, so a DB unique

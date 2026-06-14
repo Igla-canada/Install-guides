@@ -17,7 +17,9 @@ export default function NewGuildForm({
   const [modelName, setModelName] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
-  const [productId, setProductId] = useState("");
+  const [productIds, setProductIds] = useState<string[]>([]);
+  const toggleProduct = (id: string) =>
+    setProductIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
 
@@ -38,18 +40,18 @@ export default function NewGuildForm({
 
   const suggestedTitle = useMemo(() => {
     if (!makeName.trim() || !modelName.trim()) return "";
-    const product = taxonomy.productLines
+    const selected = taxonomy.productLines
       .flatMap((pl) => pl.products)
-      .find((p) => p.id === productId);
+      .filter((p) => productIds.includes(p.id));
     return [
       makeName.trim(),
       modelName.trim(),
       yearFrom ? (yearTo ? `${yearFrom}–${yearTo}` : yearFrom) : "",
-      product ? `— ${product.name}` : "",
+      selected.length ? `— ${selected.map((p) => p.name).join(" + ")}` : "",
     ]
       .filter(Boolean)
       .join(" ");
-  }, [makeName, modelName, yearFrom, yearTo, productId, taxonomy.productLines]);
+  }, [makeName, modelName, yearFrom, yearTo, productIds, taxonomy.productLines]);
 
   const effectiveTitle = titleTouched ? title : suggestedTitle;
 
@@ -126,26 +128,33 @@ export default function NewGuildForm({
         </p>
       )}
 
-      <Field label="Igla product">
-        <select
-          name="iglaProductId"
-          required
-          className={inputCls}
-          value={productId}
-          onChange={(e) => setProductId(e.target.value)}
-        >
-          <option value="">Select product…</option>
+      <fieldset>
+        <legend className="text-sm font-medium">Igla product(s)</legend>
+        <p className="text-xs text-zinc-400">
+          Tick every product this one guide covers (e.g. 231 + Alarm).
+        </p>
+        <div className="mt-1 space-y-2 rounded-md border border-zinc-300 p-3">
           {taxonomy.productLines.map((pl) => (
-            <optgroup key={pl.id} label={pl.name}>
-              {pl.products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </optgroup>
+            <div key={pl.id}>
+              <div className="text-xs font-medium uppercase text-zinc-400">{pl.name}</div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                {pl.products.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name="iglaProductIds"
+                      value={p.id}
+                      checked={productIds.includes(p.id)}
+                      onChange={() => toggleProduct(p.id)}
+                    />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
+            </div>
           ))}
-        </select>
-      </Field>
+        </div>
+      </fieldset>
 
       <Field label="Title">
         <input
@@ -163,7 +172,8 @@ export default function NewGuildForm({
 
       <button
         type="submit"
-        className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+        disabled={productIds.length === 0}
+        className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
       >
         Create draft guide
       </button>

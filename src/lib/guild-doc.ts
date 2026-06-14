@@ -34,6 +34,8 @@ export const opSchema = z.discriminatedUnion("op", [
     yearStart: z.number().int().optional(),
     yearEnd: z.number().int().nullable().optional(),
   }),
+  // The set of products this guide covers (first = primary, used for display).
+  z.object({ op: z.literal("set_products"), productIds: z.array(z.string().min(1)).min(1) }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
   z.object({ op: z.literal("set_cover"), imageAssetId: z.string().nullable() }),
   z.object({
@@ -117,6 +119,18 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
           ...(op.yearStart !== undefined ? { yearStart: op.yearStart } : {}),
           ...(op.yearEnd !== undefined ? { yearEnd: op.yearEnd } : {}),
         },
+      });
+      return;
+    }
+    case "set_products": {
+      const ids = [...new Set(op.productIds)];
+      await tx.guild.update({
+        where: { id: guildId },
+        data: { iglaProductId: ids[0] }, // first = primary
+      });
+      await tx.guildProduct.deleteMany({ where: { guildId } });
+      await tx.guildProduct.createMany({
+        data: ids.map((iglaProductId) => ({ guildId, iglaProductId })),
       });
       return;
     }
@@ -295,6 +309,7 @@ export async function loadGuildDoc(guildId: string) {
       generation: true,
       trim: true,
       iglaProduct: { include: { productLine: true } },
+      products: { include: { iglaProduct: { include: { productLine: true } } } },
       coverImage: true,
       sections: {
         orderBy: { order: "asc" },
@@ -352,6 +367,11 @@ export async function publishGuild(
   const doc = await loadGuildDoc(guildId);
   if (!doc) throw new Error("guild not found");
 
+  // A guide covers a SET of products; another published guide for the same
+  // vehicle may not claim ANY of the same products.
+  const myProductIds = [
+    ...new Set([doc.iglaProductId, ...doc.products.map((p) => p.iglaProductId)]),
+  ];
   const conflict = await prisma.guild.findFirst({
     where: {
       id: { not: guildId },
@@ -360,8 +380,8 @@ export async function publishGuild(
       modelId: doc.modelId,
       generationId: doc.generationId,
       trimId: doc.trimId,
-      iglaProductId: doc.iglaProductId,
       regionId: doc.regionId,
+      products: { some: { iglaProductId: { in: myProductIds } } },
     },
   });
   if (conflict) throw new PublishConflictError(conflict.id, conflict.title);
@@ -416,6 +436,12 @@ export async function duplicateGuild(
       properties: (doc.properties ?? undefined) as Prisma.InputJsonValue | undefined,
       createdById: actorUserId,
       updatedById: actorUserId,
+      products: {
+        create: (doc.products.length
+          ? doc.products.map((p) => p.iglaProductId)
+          : [doc.iglaProductId]
+        ).map((iglaProductId) => ({ iglaProductId })),
+      },
       sections: {
         create: doc.sections.map((s) => ({
           order: s.order,

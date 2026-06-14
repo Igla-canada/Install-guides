@@ -592,6 +592,8 @@ async function importGuildRow(
       properties: properties as Prisma.InputJsonValue,
       createdById: admin.id,
       updatedById: admin.id,
+      // A guide covers every IGLA Type it was tagged with (resolver matches the set).
+      products: { create: products.map((p) => ({ iglaProductId: p.id })) },
       sections: {
         create: sections.map((s, i) => ({
           order: i,

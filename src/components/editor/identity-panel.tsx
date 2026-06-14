@@ -29,6 +29,17 @@ export default function IdentityPanel({
   const setGen = (data: { name?: string; yearStart?: number; yearEnd?: number | null }) =>
     void dispatch([{ op: "update_generation", ...data }]);
 
+  const selectedProductIds = doc.products?.length
+    ? doc.products.map((p) => p.iglaProductId)
+    : [doc.iglaProductId];
+  const toggleProduct = (id: string) => {
+    const next = selectedProductIds.includes(id)
+      ? selectedProductIds.filter((x) => x !== id)
+      : [...selectedProductIds, id];
+    if (next.length === 0) return; // keep at least one
+    void dispatch([{ op: "set_products", productIds: next }]);
+  };
+
   return (
     <div className="rounded-xl border border-zinc-200 bg-white">
       <button
@@ -149,17 +160,31 @@ export default function IdentityPanel({
               })),
             ]}
           />
-          <Select
-            label="Igla product"
-            value={doc.iglaProductId}
-            onChange={(v) => set({ iglaProductId: v })}
-            options={taxonomy.productLines.flatMap((pl) =>
-              pl.products.map((p) => ({
-                value: p.id,
-                label: `${pl.name} — ${p.name}`,
-              }))
-            )}
-          />
+          <div className="sm:col-span-2">
+            <span className="text-xs font-medium text-zinc-500">Igla product(s)</span>
+            <div className="mt-1 space-y-2 rounded-md border border-zinc-300 bg-white p-2">
+              {taxonomy.productLines.map((pl) => (
+                <div key={pl.id}>
+                  <div className="text-xs font-medium uppercase text-zinc-400">{pl.name}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                    {pl.products.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedProductIds.includes(p.id)}
+                          onChange={() => toggleProduct(p.id)}
+                        />
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">
+              The guide is served for any ticked product. First ticked is the primary.
+            </p>
+          </div>
           <Select
             label="Region"
             value={doc.regionId}

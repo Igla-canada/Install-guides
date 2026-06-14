@@ -27,8 +27,10 @@ export type ResolveCandidate = {
   model: string;
   generation: string;
   trim: string | null;
-  product: string;
-  productLine: string;
+  product: string; // primary product (display/back-compat)
+  productLine: string; // primary product's line
+  products: string[]; // every product this guide covers
+  productLines: string[]; // distinct lines across those products
   confidence: "high" | "medium" | "low";
 };
 
@@ -150,7 +152,8 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
       ...(matchedGenerations.length > 0
         ? { generationId: { in: matchedGenerations.map((g) => g.id) } }
         : {}),
-      ...(product ? { iglaProductId: product.id } : {}),
+      // A guide covers a SET of products — match if the resolved product is in it.
+      ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
     },
     include: {
       make: true,
@@ -158,6 +161,7 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
       generation: true,
       trim: true,
       iglaProduct: { include: { productLine: true } },
+      products: { include: { iglaProduct: { include: { productLine: true } } } },
     },
     take: 10,
   });
@@ -169,17 +173,23 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
       ? "medium"
       : "low";
 
-  const candidates: ResolveCandidate[] = guilds.map((g) => ({
-    guildId: g.id,
-    title: g.title,
-    make: g.make.name,
-    model: g.model.name,
-    generation: g.generation.name,
-    trim: g.trim?.name ?? null,
-    product: g.iglaProduct.name,
-    productLine: g.iglaProduct.productLine.name,
-    confidence: baseConfidence,
-  }));
+  const candidates: ResolveCandidate[] = guilds.map((g) => {
+    const productNames = g.products.map((p) => p.iglaProduct.name);
+    const lineNames = [...new Set(g.products.map((p) => p.iglaProduct.productLine.name))];
+    return {
+      guildId: g.id,
+      title: g.title,
+      make: g.make.name,
+      model: g.model.name,
+      generation: g.generation.name,
+      trim: g.trim?.name ?? null,
+      product: g.iglaProduct.name,
+      productLine: g.iglaProduct.productLine.name,
+      products: productNames.length ? productNames : [g.iglaProduct.name],
+      productLines: lineNames.length ? lineNames : [g.iglaProduct.productLine.name],
+      confidence: baseConfidence,
+    };
+  });
 
   // Single confident hit only when the vehicle resolved to a model and, if
   // multiple guilds exist, the product disambiguated them.

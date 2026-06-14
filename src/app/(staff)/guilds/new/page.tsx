@@ -10,7 +10,7 @@ const createSchema = z.object({
   modelName: z.string().min(1),
   yearFrom: z.coerce.number().int().min(1950).max(2100),
   yearTo: z.coerce.number().int().min(1950).max(2100).optional(),
-  iglaProductId: z.string().min(1),
+  iglaProductIds: z.array(z.string().min(1)).min(1),
   title: z.string().min(1),
 });
 
@@ -34,7 +34,7 @@ async function createGuildAction(formData: FormData) {
     modelName: formData.get("modelName"),
     yearFrom: formData.get("yearFrom"),
     yearTo: String(formData.get("yearTo") ?? "").trim() || undefined,
-    iglaProductId: formData.get("iglaProductId"),
+    iglaProductIds: formData.getAll("iglaProductIds").map(String).filter(Boolean),
     title: formData.get("title"),
   });
 
@@ -71,10 +71,16 @@ async function createGuildAction(formData: FormData) {
     }));
 
   const region = await prisma.region.findFirstOrThrow();
-  const product = await prisma.iglaProduct.findUniqueOrThrow({
-    where: { id: parsed.iglaProductId },
+  const found = await prisma.iglaProduct.findMany({
+    where: { id: { in: parsed.iglaProductIds } },
     include: { productLine: true },
   });
+  // Keep the order the user ticked; first is the primary (display/title default).
+  const products = parsed.iglaProductIds
+    .map((id) => found.find((p) => p.id === id))
+    .filter((p): p is (typeof found)[number] => Boolean(p));
+  if (products.length === 0) throw new Error("pick at least one product");
+  const primary = products[0];
 
   const guild = await prisma.guild.create({
     data: {
@@ -83,17 +89,16 @@ async function createGuildAction(formData: FormData) {
       modelId: model.id,
       generationId: generation.id,
       trimId: null,
-      iglaProductId: product.id,
+      iglaProductId: primary.id,
       title: parsed.title,
       status: "DRAFT",
       createdById: user.id,
       updatedById: user.id,
+      products: { create: products.map((p) => ({ iglaProductId: p.id })) },
       // Reference-page properties box, pre-filled from identity.
       properties: {
         Years: parsed.yearTo ? `${parsed.yearFrom}–${parsed.yearTo}` : `${parsed.yearFrom}`,
-        "IGLA Type": product.name.startsWith(product.productLine.name)
-          ? product.name
-          : `${product.productLine.name} ${product.name}`,
+        "IGLA Type": products.map((p) => p.name).join(", "),
         Status: "Stable",
       },
       sections: {
