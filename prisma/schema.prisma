@@ -321,10 +321,14 @@ model InstallerGuild {
 model AccessGrant {
   id             String       @id @default(cuid())
   granteeLabel   String // who this is for, e.g. "Mike @ DT Auto"
-  granteePhone   String // SMS one-time-code destination
+  granteePhone   String? // SMS one-time-code destination (null for portal-issued direct links)
   granteeEmail   String? // optional: where the access link is emailed at creation
-  grantedById    String
-  grantedBy      UserAccount  @relation(fields: [grantedById], references: [id])
+  // Portal-issued (Igla install) links: bound to a device unit serial, opened
+  // directly (no SMS) because the portal already authenticated the installer.
+  granteeUnit    String? // device unit serial this guide link is bound to
+  directOpen     Boolean      @default(false) // skip SMS OTP — establish the view session on open
+  grantedById    String? // null for portal/integration-issued links (no staff author)
+  grantedBy      UserAccount? @relation(fields: [grantedById], references: [id])
   tokenHash      String       @unique // the link token, hashed
   expiresAt      DateTime
   maxViews       Int?

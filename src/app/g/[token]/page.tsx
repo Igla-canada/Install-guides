@@ -123,12 +123,35 @@ export default async function GrantGatePage(props: {
     redirect(`/g/${token}`);
   }
 
+  // Portal-issued links open directly (the portal already authenticated the
+  // installer) — no SMS. The session is established by /g/<token>/auto.
+  if (grant.directOpen) {
+    return (
+      <Shell>
+        <h1 className="text-lg font-semibold">Igla installation guide</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Access for <strong>{grant.granteeLabel}</strong>.
+        </p>
+        <Link
+          href={`/g/${token}/auto`}
+          className="mt-4 block w-full rounded-md bg-zinc-900 px-3 py-2 text-center text-sm font-medium text-white hover:bg-zinc-700"
+        >
+          Open guide
+        </Link>
+        <p className="mt-4 text-xs text-zinc-400">
+          Expires {grant.expiresAt.toLocaleString()}. Access is personal,
+          view-only and logged.
+        </p>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <h1 className="text-lg font-semibold">Igla installation guide</h1>
       <p className="mt-1 text-sm text-zinc-500">
         Access for <strong>{grant.granteeLabel}</strong>. To continue, verify
-        with the code we&apos;ll text to {maskPhone(grant.granteePhone)}.
+        with the code we&apos;ll text to {maskPhone(grant.granteePhone ?? "")}.
       </p>
       {!sent ? (
         <>

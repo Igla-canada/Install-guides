@@ -205,7 +205,8 @@ export default async function GrantsPage(props: {
                   <p className="mt-0.5 text-xs text-zinc-500">
                     {g.guilds.map((x) => x.guild.title).join(", ")} · expires{" "}
                     {g.expiresAt.toLocaleString()} · views {g.viewsUsed}
-                    {g.maxViews != null ? `/${g.maxViews}` : ""} · by {g.grantedBy.name}
+                    {g.maxViews != null ? `/${g.maxViews}` : ""} · by{" "}
+                    {g.grantedBy?.name ?? "Igla portal"}
                   </p>
                 </li>
               );

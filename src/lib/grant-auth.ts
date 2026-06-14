@@ -34,6 +34,10 @@ export async function sendOtp(grantId: string): Promise<void> {
   const grant = await prisma.accessGrant.findUniqueOrThrow({
     where: { id: grantId },
   });
+  if (!grant.granteePhone) {
+    // Direct-open (portal) grants have no phone and never use SMS.
+    throw new Error("grant has no phone number for SMS");
+  }
   const code = randomInt(100000, 1000000).toString();
   await prisma.otpCode.create({
     data: {
@@ -46,6 +50,19 @@ export async function sendOtp(grantId: string): Promise<void> {
     grant.granteePhone,
     `Igla install guide code: ${code}. Valid ${OTP_TTL_MIN} minutes. Do not share.`
   );
+}
+
+/** Mint a short-lived viewing session for a grant and return its raw token. */
+export async function startGrantSession(grantId: string): Promise<string> {
+  const sessionToken = newToken();
+  await prisma.grantSession.create({
+    data: {
+      grantId,
+      tokenHash: hashToken(sessionToken),
+      expiresAt: new Date(Date.now() + GRANT_SESSION_TTL_MIN * 60_000),
+    },
+  });
+  return sessionToken;
 }
 
 export async function verifyOtp(
@@ -69,14 +86,7 @@ export async function verifyOtp(
     where: { id: otp.id },
     data: { consumedAt: new Date() },
   });
-  const sessionToken = newToken();
-  await prisma.grantSession.create({
-    data: {
-      grantId,
-      tokenHash: hashToken(sessionToken),
-      expiresAt: new Date(Date.now() + GRANT_SESSION_TTL_MIN * 60_000),
-    },
-  });
+  const sessionToken = await startGrantSession(grantId);
   return { ok: true, sessionToken };
 }
 

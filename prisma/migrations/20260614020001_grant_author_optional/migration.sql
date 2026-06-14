@@ -1,0 +1,1 @@
+ALTER TABLE "AccessGrant" ALTER COLUMN "grantedById" DROP NOT NULL;
