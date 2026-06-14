@@ -6,6 +6,7 @@ import { requestMeta } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import UserPicker from "@/components/guilds/user-picker";
+import GuildPicker from "@/components/guilds/guild-picker";
 
 async function createGrant(formData: FormData) {
   "use server";
@@ -63,8 +64,13 @@ export default async function GrantsPage(props: {
     }),
     prisma.guild.findMany({
       where: { status: "PUBLISHED" },
-      orderBy: { title: "asc" },
-      select: { id: true, title: true },
+      orderBy: [{ make: { name: "asc" } }, { model: { name: "asc" } }],
+      include: {
+        make: true,
+        model: true,
+        generation: true,
+        iglaProduct: { include: { productLine: true } },
+      },
     }),
     prisma.userAccount.findMany({
       where: { status: "ACTIVE" },
@@ -144,20 +150,13 @@ export default async function GrantsPage(props: {
             </div>
             <div>
               <span className="text-xs text-zinc-500">Guides (published only)</span>
-              <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-zinc-200 p-2">
-                {publishedGuilds.length === 0 ? (
-                  <p className="text-sm text-zinc-400">
-                    Nothing published yet — publish a guild first.
-                  </p>
-                ) : (
-                  publishedGuilds.map((g) => (
-                    <label key={g.id} className="flex items-center gap-2 py-0.5 text-sm">
-                      <input type="checkbox" name="guildIds" value={g.id} />
-                      {g.title}
-                    </label>
-                  ))
-                )}
-              </div>
+              <GuildPicker
+                guilds={publishedGuilds.map((g) => ({
+                  id: g.id,
+                  title: g.title,
+                  sub: `${g.make.name} ${g.model.name} ${g.generation.name} · ${g.iglaProduct.productLine.name} ${g.iglaProduct.name}`,
+                }))}
+              />
             </div>
             <button className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700">
               Create link
