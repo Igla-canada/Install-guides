@@ -84,22 +84,7 @@ export default async function GuildView({
         {doc.iglaProduct.productLine.name} {doc.iglaProduct.name}
       </p>
 
-      {Object.keys(props).length > 0 && (
-        <div className={`mt-4 rounded-xl p-4 ${t.card}`}>
-          <table className="w-full text-sm">
-            <tbody>
-              {Object.entries(props).map(([k, v]) => (
-                <tr key={k}>
-                  <td className={`w-1/3 py-1 pr-3 font-medium ${t.muted}`}>{k}</td>
-                  <td className="py-1">
-                    <span className={`rounded px-1.5 py-0.5 ${t.pill}`}>{v}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <PropertiesBox props={props} theme={theme} t={t} />
 
       <div className="mt-6 space-y-8">
         {doc.sections.map((s) => {
@@ -134,6 +119,123 @@ export default async function GuildView({
         })}
       </div>
     </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Properties box — Notion-style: ordered rows, an icon per field and coloured
+// value tags (multi-values split into individual chips). Years/Version show as
+// plain text (they're not select-style values), everything else as a tag.
+// ---------------------------------------------------------------------------
+
+const PROP_ORDER = ["Years", "Fuel", "Ignition Type", "IGLA Type", "Status", "Version"];
+const PROP_ICONS: Record<string, string> = {
+  Years: "📅",
+  Fuel: "⛽",
+  "Ignition Type": "🔑",
+  "IGLA Type": "🛡️",
+  Status: "📍",
+  Version: "🏷️",
+};
+const PLAIN_KEYS = new Set(["Years", "Version"]);
+
+type Palette =
+  | "amber" | "orange" | "blue" | "purple" | "red" | "green" | "teal" | "pink" | "gray";
+
+const PALETTE_DARK: Record<Palette, string> = {
+  amber: "bg-amber-400/15 text-amber-300",
+  orange: "bg-orange-400/15 text-orange-300",
+  blue: "bg-blue-400/15 text-blue-300",
+  purple: "bg-purple-400/20 text-purple-200",
+  red: "bg-red-400/15 text-red-300",
+  green: "bg-green-400/15 text-green-300",
+  teal: "bg-teal-400/15 text-teal-300",
+  pink: "bg-pink-400/15 text-pink-300",
+  gray: "bg-zinc-500/25 text-zinc-200",
+};
+const PALETTE_LIGHT: Record<Palette, string> = {
+  amber: "bg-amber-100 text-amber-800",
+  orange: "bg-orange-100 text-orange-800",
+  blue: "bg-blue-100 text-blue-800",
+  purple: "bg-purple-100 text-purple-800",
+  red: "bg-red-100 text-red-800",
+  green: "bg-green-100 text-green-800",
+  teal: "bg-teal-100 text-teal-800",
+  pink: "bg-pink-100 text-pink-800",
+  gray: "bg-zinc-200 text-zinc-700",
+};
+const HASH_PALETTE: Palette[] = ["blue", "purple", "pink", "teal", "amber", "orange", "green"];
+const KNOWN_VALUE: Record<string, Palette> = {
+  diesel: "amber", gas: "blue", gasoline: "blue", petrol: "blue",
+  hybrid: "green", electric: "teal", ev: "teal",
+  "push start": "purple", "push-start": "purple", "push button start": "purple",
+  key: "blue", "turn key": "blue", "key start": "blue",
+  stable: "green", beta: "amber", testing: "amber", wip: "orange", draft: "gray",
+  alarm: "red", "231": "purple", "251": "pink", "key access": "blue",
+};
+
+function paletteFor(value: string): Palette {
+  const v = value.trim().toLowerCase();
+  if (KNOWN_VALUE[v]) return KNOWN_VALUE[v];
+  let h = 0;
+  for (let i = 0; i < v.length; i++) h = (h * 31 + v.charCodeAt(i)) >>> 0;
+  return HASH_PALETTE[h % HASH_PALETTE.length];
+}
+
+function PropertiesBox({
+  props,
+  theme,
+  t,
+}: {
+  props: Record<string, string>;
+  theme: Theme;
+  t: ReturnType<typeof themeClasses>;
+}) {
+  const entries = Object.entries(props).filter(([k]) => !k.startsWith("_") && props[k]);
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => {
+    const ia = PROP_ORDER.indexOf(a[0]);
+    const ib = PROP_ORDER.indexOf(b[0]);
+    if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    return a[0].localeCompare(b[0]);
+  });
+  const palette = theme === "dark" ? PALETTE_DARK : PALETTE_LIGHT;
+
+  return (
+    <dl className={`mt-4 space-y-1.5 rounded-xl p-4 text-sm ${t.card}`}>
+      {entries.map(([k, v]) => {
+        const isPlain = PLAIN_KEYS.has(k);
+        const tags = String(v)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        return (
+          <div key={k} className="flex items-start gap-3">
+            <dt className={`flex w-32 shrink-0 items-center gap-2 ${t.muted}`}>
+              <span className="text-base leading-none">{PROP_ICONS[k] ?? "•"}</span>
+              <span className="truncate">{k}</span>
+            </dt>
+            <dd className="flex flex-1 flex-wrap items-center gap-1.5">
+              {isPlain ? (
+                <span>{v}</span>
+              ) : (
+                tags.map((tag, i) => (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${palette[paletteFor(tag)]}`}
+                  >
+                    {k === "Status" && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                    )}
+                    {tag}
+                  </span>
+                ))
+              )}
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
   );
 }
 
@@ -394,14 +496,14 @@ function BlockView({
       const text = String(c.text ?? "");
       const size = typeof c.size === "number" ? formatSize(c.size) : null;
       return (
-        <div className="space-y-2">
+        <div className={`rounded-lg border p-3 ${t.tableBorder} ${t.card}`}>
           {text && (
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
           )}
           {assetId && (
             <a
               href={`/api/files/${assetId}/download?guild=${guildId}`}
-              className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-sm ${t.attachment}`}
+              className={`${text ? "mt-2 " : ""}flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${t.attachment}`}
             >
               <span className="text-lg">📄</span>
               <span className="min-w-0 flex-1 truncate font-medium">
