@@ -19,6 +19,16 @@ function applyOne(doc: ClientDoc, op: any): ClientDoc {
   switch (op.op) {
     case "update_identity":
       return { ...doc, ...op.data };
+    case "update_generation":
+      return {
+        ...doc,
+        generation: {
+          ...doc.generation,
+          ...(op.name !== undefined ? { name: op.name } : {}),
+          ...(op.yearStart !== undefined ? { yearStart: op.yearStart } : {}),
+          ...(op.yearEnd !== undefined ? { yearEnd: op.yearEnd } : {}),
+        },
+      };
     case "update_properties":
       return { ...doc, properties: op.properties };
     case "set_cover":

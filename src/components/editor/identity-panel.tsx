@@ -26,6 +26,9 @@ export default function IdentityPanel({
   const set = (data: Record<string, string | null>) =>
     void dispatch([{ op: "update_identity", data }]);
 
+  const setGen = (data: { name?: string; yearStart?: number; yearEnd?: number | null }) =>
+    void dispatch([{ op: "update_generation", ...data }]);
+
   return (
     <div className="rounded-xl border border-zinc-200 bg-white">
       <button
@@ -75,6 +78,65 @@ export default function IdentityPanel({
               label: `${g.name} (${g.yearStart}–${g.yearEnd ?? "now"})`,
             }))}
           />
+          {/* Adjust the selected generation's real years so the Igla app stops
+              matching it past its end (e.g. a 2023–2025 guide shouldn't answer
+              for a 2027). Remounts when you switch generation. */}
+          <div
+            key={doc.generationId}
+            className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <span className="text-xs font-medium text-zinc-500">Generation years</span>
+              <span className="text-xs text-zinc-400">
+                which model-years the Igla app matches
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <label className="flex flex-col text-xs text-zinc-500">
+                Label
+                <input
+                  defaultValue={doc.generation.name}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== doc.generation.name) setGen({ name: v });
+                  }}
+                  className="mt-1 w-40 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs text-zinc-500">
+                From
+                <input
+                  type="number"
+                  defaultValue={doc.generation.yearStart}
+                  onBlur={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (!Number.isNaN(n) && n !== doc.generation.yearStart)
+                      setGen({ yearStart: n });
+                  }}
+                  className="mt-1 w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="flex flex-col text-xs text-zinc-500">
+                To (blank = now)
+                <input
+                  type="number"
+                  defaultValue={doc.generation.yearEnd ?? ""}
+                  placeholder="now"
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    const next = raw ? parseInt(raw, 10) : null;
+                    if (next !== null && Number.isNaN(next)) return;
+                    if (next !== doc.generation.yearEnd) setGen({ yearEnd: next });
+                  }}
+                  className="mt-1 w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+              </label>
+            </div>
+            <p className="mt-1.5 text-xs text-zinc-400">
+              Shared across every guide that uses the {doc.model.name}{" "}
+              “{doc.generation.name}” generation.
+            </p>
+          </div>
           <Select
             label="Trim (optional)"
             value={doc.trimId ?? ""}

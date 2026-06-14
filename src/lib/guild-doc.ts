@@ -25,6 +25,15 @@ export const identitySchema = z.object({
 
 export const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("update_identity"), data: identitySchema }),
+  // Adjust THIS guild's generation (shared taxonomy row): rename or set its
+  // year range so it reflects the real model years. yearEnd null = open-ended
+  // ("now") — the Igla resolve API stops matching past yearEnd when it's set.
+  z.object({
+    op: z.literal("update_generation"),
+    name: z.string().min(1).optional(),
+    yearStart: z.number().int().optional(),
+    yearEnd: z.number().int().nullable().optional(),
+  }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
   z.object({ op: z.literal("set_cover"), imageAssetId: z.string().nullable() }),
   z.object({
@@ -93,6 +102,21 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
       await tx.guild.update({
         where: { id: guildId },
         data: { ...rest, ...(trimId !== undefined ? { trimId } : {}) },
+      });
+      return;
+    }
+    case "update_generation": {
+      const guild = await tx.guild.findUniqueOrThrow({
+        where: { id: guildId },
+        select: { generationId: true },
+      });
+      await tx.generation.update({
+        where: { id: guild.generationId },
+        data: {
+          ...(op.name !== undefined ? { name: op.name } : {}),
+          ...(op.yearStart !== undefined ? { yearStart: op.yearStart } : {}),
+          ...(op.yearEnd !== undefined ? { yearEnd: op.yearEnd } : {}),
+        },
       });
       return;
     }
