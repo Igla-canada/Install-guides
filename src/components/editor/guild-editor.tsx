@@ -223,12 +223,21 @@ export default function GuildEditor({
                     {new Date(v.createdAt).toLocaleString()} · {v.createdBy.name}
                     {v.note ? ` · ${v.note}` : ""}
                   </span>
-                  <form action={rollbackAction} className="ml-auto">
-                    <input type="hidden" name="versionNo" value={v.versionNo} />
-                    <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
-                      Restore this version
-                    </button>
-                  </form>
+                  <div className="ml-auto flex items-center gap-2">
+                    <Link
+                      href={`/guilds/${doc.id}/version/${v.versionNo}`}
+                      target="_blank"
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                    >
+                      👁 Preview
+                    </Link>
+                    <form action={rollbackAction}>
+                      <input type="hidden" name="versionNo" value={v.versionNo} />
+                      <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                        Restore
+                      </button>
+                    </form>
+                  </div>
                 </li>
               ))}
             </ul>

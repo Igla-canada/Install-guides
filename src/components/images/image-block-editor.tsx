@@ -275,6 +275,8 @@ function GalleryItem({
   onRemove: () => void;
 }) {
   const url = useImageUrl(item.imageAssetId);
+  const [annotating, setAnnotating] = useState(false);
+  const [annoVersion, setAnnoVersion] = useState(0);
   return (
     <div className="group relative">
       <input
@@ -285,18 +287,47 @@ function GalleryItem({
         }}
         className="mb-0.5 w-full border-0 bg-transparent text-center text-xs font-bold uppercase tracking-wide text-red-500 placeholder:font-normal placeholder:text-zinc-300 focus:outline-none"
       />
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={item.caption ?? ""} className="h-24 w-full rounded-lg object-cover" />
-      ) : (
-        <div className="h-24 w-full rounded-lg bg-zinc-100" />
-      )}
+      {/* Each gallery image is independently annotatable — tap to mark wires. */}
+      <div
+        className="group/gi relative cursor-pointer"
+        onClick={() => url && setAnnotating(true)}
+        title="Tap to annotate"
+      >
+        {url ? (
+          // natural aspect ratio so images aren't crushed into tiny squares
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={item.caption ?? ""} className="block w-full rounded-lg" />
+        ) : (
+          <div className="aspect-[4/3] w-full rounded-lg bg-zinc-100" />
+        )}
+        {item.imageAssetId && (
+          <AnnotationOverlay assetId={item.imageAssetId} version={annoVersion} />
+        )}
+        {url && (
+          <span className="absolute bottom-1 right-1 hidden rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white group-hover/gi:block">
+            ✏ annotate
+          </span>
+        )}
+      </div>
       <button
-        onClick={onRemove}
-        className="absolute right-1 top-6 hidden rounded bg-black/60 px-1 text-xs text-white group-hover:block"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        className="absolute right-1 top-6 z-10 hidden rounded bg-black/60 px-1 text-xs text-white group-hover:block"
       >
         ✕
       </button>
+      {annotating && url && item.imageAssetId && (
+        <Annotator
+          imageRef={item.imageAssetId}
+          imageUrl={url}
+          onClose={() => {
+            setAnnotating(false);
+            setAnnoVersion((v) => v + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

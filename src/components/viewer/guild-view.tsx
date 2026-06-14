@@ -252,10 +252,11 @@ function BlockView({
       };
       const cols = galleryCols[Number(c.columns) || 2] ?? "grid-cols-2";
       return (
-        <div className={`grid gap-3 ${cols}`}>
+        <div className={`grid items-start gap-3 ${cols}`}>
           {items.map((it, i) => {
             const url = urlMap.get(it.imageAssetId);
             if (!url) return null;
+            const annos = annoMap.get(it.imageAssetId) ?? [];
             return (
               <figure key={i}>
                 {it.caption && (
@@ -263,8 +264,18 @@ function BlockView({
                     {it.caption}
                   </figcaption>
                 )}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={it.caption ?? ""} className="w-full rounded-lg object-cover" data-zoomable />
+                <div className="relative">
+                  {/* natural aspect ratio — not cropped to a square */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={it.caption ?? ""} className="block w-full rounded-lg" data-zoomable />
+                  {annos.length > 0 && (
+                    <svg className="pointer-events-none absolute inset-0 h-full w-full">
+                      {annos.map((a, k) => (
+                        <AnnoShape key={a.id} anno={a as unknown as Anno} index={k} callout />
+                      ))}
+                    </svg>
+                  )}
+                </div>
               </figure>
             );
           })}
