@@ -25,7 +25,7 @@ export default async function GuildPreviewPage(props: {
   const shareUsers = await prisma.userAccount.findMany({
     where: { status: "ACTIVE" },
     orderBy: [{ role: "asc" }, { name: "asc" }],
-    select: { id: true, name: true, phone: true, role: true },
+    select: { id: true, name: true, phone: true, email: true, role: true },
   });
 
   const baseUrl = process.env.APP_BASE_URL ?? "";
@@ -40,6 +40,7 @@ export default async function GuildPreviewPage(props: {
       userId: u.id,
       granteeLabel,
       granteePhone: String(formData.get("granteePhone") ?? "").trim(),
+      granteeEmail: String(formData.get("granteeEmail") ?? "").trim() || null,
       hours: Number(formData.get("hours") ?? 24),
       maxViews: maxViewsRaw ? parseInt(maxViewsRaw, 10) : null,
       guildIds: [id],

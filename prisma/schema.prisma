@@ -322,6 +322,7 @@ model AccessGrant {
   id             String       @id @default(cuid())
   granteeLabel   String // who this is for, e.g. "Mike @ DT Auto"
   granteePhone   String // SMS one-time-code destination
+  granteeEmail   String? // optional: where the access link is emailed at creation
   grantedById    String
   grantedBy      UserAccount  @relation(fields: [grantedById], references: [id])
   tokenHash      String       @unique // the link token, hashed

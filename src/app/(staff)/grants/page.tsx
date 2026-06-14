@@ -16,6 +16,7 @@ async function createGrant(formData: FormData) {
     userId: user.id,
     granteeLabel,
     granteePhone: String(formData.get("granteePhone") ?? "").trim(),
+    granteeEmail: String(formData.get("granteeEmail") ?? "").trim() || null,
     hours: Number(formData.get("hours") ?? 24),
     maxViews: maxViewsRaw ? parseInt(maxViewsRaw, 10) : null,
     guildIds: formData.getAll("guildIds").map(String),
@@ -68,7 +69,7 @@ export default async function GrantsPage(props: {
     prisma.userAccount.findMany({
       where: { status: "ACTIVE" },
       orderBy: [{ role: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, phone: true, role: true },
+      select: { id: true, name: true, phone: true, email: true, role: true },
     }),
   ]);
 
@@ -111,6 +112,12 @@ export default async function GrantsPage(props: {
               name="granteePhone"
               required
               placeholder="Installer mobile (e.g. +1 416 555 0123)"
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+            <input
+              name="granteeEmail"
+              type="email"
+              placeholder="Email the link to (optional)"
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
             />
             <div className="flex gap-3">

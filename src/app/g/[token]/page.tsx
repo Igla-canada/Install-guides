@@ -80,7 +80,12 @@ export default async function GrantGatePage(props: {
     "use server";
     const c = await checkGrantToken(token);
     if (!c.ok) redirect(`/g/${token}`);
-    await sendOtp(c.grant.id);
+    try {
+      await sendOtp(c.grant.id);
+    } catch (err) {
+      console.error("OTP send failed:", (err as Error).message);
+      redirect(`/g/${token}?error=send`);
+    }
     const m = await requestMeta();
     await logEvent({
       actor: { grantId: c.grant.id },
@@ -126,11 +131,19 @@ export default async function GrantGatePage(props: {
         with the code we&apos;ll text to {maskPhone(grant.granteePhone)}.
       </p>
       {!sent ? (
-        <form action={sendCodeAction} className="mt-4">
-          <button className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700">
-            Text me the code
-          </button>
-        </form>
+        <>
+          {error === "send" && (
+            <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              We couldn&apos;t send the code right now. Please try again, or
+              contact whoever sent you this link.
+            </p>
+          )}
+          <form action={sendCodeAction} className="mt-4">
+            <button className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+              Text me the code
+            </button>
+          </form>
+        </>
       ) : (
         <>
           {error && (

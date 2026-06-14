@@ -17,7 +17,13 @@ export default function GrantPanel({
   label?: string;
   link?: string;
   expiryOptions: Array<{ label: string; hours: number }>;
-  users?: Array<{ id: string; name: string; phone: string | null; role: string }>;
+  users?: Array<{
+    id: string;
+    name: string;
+    phone: string | null;
+    email?: string | null;
+    role: string;
+  }>;
 }) {
   const [open, setOpen] = useState(Boolean(created));
 
@@ -66,6 +72,12 @@ export default function GrantPanel({
                 name="granteePhone"
                 required
                 placeholder="Installer mobile (+1 416 555 0123)"
+                className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+              />
+              <input
+                name="granteeEmail"
+                type="email"
+                placeholder="Email the link (optional)"
                 className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
               />
               <div className="flex gap-2">

@@ -5,6 +5,7 @@
 import { prisma } from "./db";
 import { hashToken, newToken, requestMeta } from "./auth";
 import { logEvent } from "./audit";
+import { sendAccessLinkEmail } from "./email";
 
 export const EXPIRY_OPTIONS = [
   { label: "2 hours", hours: 2 },
@@ -18,6 +19,7 @@ export async function createAccessGrant(opts: {
   userId: string;
   granteeLabel: string;
   granteePhone: string;
+  granteeEmail?: string | null;
   hours: number;
   maxViews: number | null;
   guildIds: string[];
@@ -25,14 +27,17 @@ export async function createAccessGrant(opts: {
   if (!opts.granteeLabel || !opts.granteePhone || opts.guildIds.length === 0) {
     throw new Error("label, phone and at least one guide are required");
   }
+  const granteeEmail = opts.granteeEmail?.trim() || null;
+  const expiresAt = new Date(Date.now() + opts.hours * 3600_000);
   const token = newToken();
   const grant = await prisma.accessGrant.create({
     data: {
       granteeLabel: opts.granteeLabel,
       granteePhone: opts.granteePhone,
+      granteeEmail,
       grantedById: opts.userId,
       tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + opts.hours * 3600_000),
+      expiresAt,
       maxViews: opts.maxViews,
       guilds: { create: opts.guildIds.map((guildId) => ({ guildId })) },
     },
@@ -45,5 +50,29 @@ export async function createAccessGrant(opts: {
     userAgent: meta.userAgent,
     meta: { grantId: grant.id, granteeLabel: opts.granteeLabel, guildIds: opts.guildIds },
   });
+
+  // Email the link if an address was given. A failed email must NOT fail grant
+  // creation (the admin still sees the link to send manually) — log and move on.
+  if (granteeEmail) {
+    const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000";
+    try {
+      await sendAccessLinkEmail({
+        to: granteeEmail,
+        granteeLabel: opts.granteeLabel,
+        link: `${baseUrl}/g/${token}`,
+        expiresAt,
+      });
+      await logEvent({
+        actor: { userId: opts.userId },
+        action: "link_emailed",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        meta: { grantId: grant.id, to: granteeEmail },
+      });
+    } catch (e) {
+      console.error("access-link email failed:", (e as Error).message);
+    }
+  }
+
   return token;
 }

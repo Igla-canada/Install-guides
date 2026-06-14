@@ -3,7 +3,13 @@
 // an admin can share an access link with someone on file instead of retyping a
 // phone number. Sets the sibling inputs by name (works in any grant <form>).
 
-type PickUser = { id: string; name: string; phone: string | null; role: string };
+type PickUser = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email?: string | null;
+  role: string;
+};
 
 export default function UserPicker({ users }: { users: PickUser[] }) {
   if (users.length === 0) return null;
@@ -16,9 +22,11 @@ export default function UserPicker({ users }: { users: PickUser[] }) {
         if (!form) return;
         const label = form.querySelector<HTMLInputElement>('[name="granteeLabel"]');
         const phone = form.querySelector<HTMLInputElement>('[name="granteePhone"]');
+        const email = form.querySelector<HTMLInputElement>('[name="granteeEmail"]');
         if (u) {
           if (label) label.value = u.name;
           if (phone && u.phone) phone.value = u.phone;
+          if (email && u.email) email.value = u.email;
         }
         e.target.selectedIndex = 0; // reset so it stays a "picker", not a value
       }}
