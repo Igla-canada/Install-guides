@@ -60,6 +60,31 @@ export default async function GuildEditorPage(props: {
     redirect(`/guilds/${id}/edit`);
   }
 
+  // Unpublish: take a live guide back to DRAFT so it can be edited without
+  // serving a half-finished version. It vanishes from installers, the resolve
+  // API and access-grant views — but unlike archive it stays in the normal
+  // working set, and its published version snapshots are kept for re-publish.
+  async function unpublishAction() {
+    "use server";
+    const u = await requireRole("ADMIN", "TECH");
+    const g = await prisma.guild.findUniqueOrThrow({ where: { id } });
+    if (g.status === "PUBLISHED") {
+      await prisma.guild.update({
+        where: { id },
+        data: { status: "DRAFT", updatedById: u.id },
+      });
+      const meta = await requestMeta();
+      await logEvent({
+        actor: { userId: u.id },
+        guildId: id,
+        action: "guild_unpublished",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+    }
+    redirect(`/guilds/${id}/edit`);
+  }
+
   // Archive keeps everything (content, versions, audit history) but hides the
   // guild from installers, the resolve API and new access grants.
   async function archiveAction() {
@@ -108,6 +133,7 @@ export default async function GuildEditorPage(props: {
       quickPicks={JSON.parse(JSON.stringify(quickPicks))}
       publishAction={publishAction}
       rollbackAction={rollbackAction}
+      unpublishAction={unpublishAction}
       archiveAction={archiveAction}
       deleteAction={deleteAction}
       isAdmin={user.role === "ADMIN"}

@@ -30,6 +30,7 @@ export default function GuildEditor({
   quickPicks,
   publishAction,
   rollbackAction,
+  unpublishAction,
   archiveAction,
   deleteAction,
   isAdmin,
@@ -41,6 +42,7 @@ export default function GuildEditor({
   quickPicks: ClientQuickPick[];
   publishAction: () => Promise<void>;
   rollbackAction: (formData: FormData) => Promise<void>;
+  unpublishAction: () => Promise<void>;
   archiveAction: () => Promise<void>;
   deleteAction: () => Promise<void>;
   isAdmin: boolean;
@@ -155,6 +157,17 @@ export default function GuildEditor({
             </button>
             {moreOpen && (
               <div className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
+                {doc.status === "PUBLISHED" && (
+                  <form action={unpublishAction}>
+                    <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100">
+                      ↩ Unpublish (back to draft)
+                      <span className="block text-xs text-zinc-400">
+                        Take it off installers &amp; the Igla app to keep editing;
+                        nothing is lost
+                      </span>
+                    </button>
+                  </form>
+                )}
                 <form action={archiveAction}>
                   <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100">
                     {doc.status === "ARCHIVED" ? "↩ Restore from archive" : "🗄 Archive"}
