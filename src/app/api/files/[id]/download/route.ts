@@ -42,7 +42,7 @@ export async function GET(
     let referenced = false;
     if (hasAccess) {
       const blocks = await prisma.block.findMany({
-        where: { section: { guildId }, type: "file" },
+        where: { section: { guildId }, type: { in: ["file", "file_text"] } },
         select: { content: true },
       });
       referenced = blocks.some(

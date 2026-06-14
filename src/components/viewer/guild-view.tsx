@@ -389,6 +389,31 @@ function BlockView({
         </a>
       );
     }
+    case "file_text": {
+      const assetId = String(c.assetId ?? "");
+      const text = String(c.text ?? "");
+      const size = typeof c.size === "number" ? formatSize(c.size) : null;
+      return (
+        <div className="space-y-2">
+          {text && (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
+          )}
+          {assetId && (
+            <a
+              href={`/api/files/${assetId}/download?guild=${guildId}`}
+              className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-sm ${t.attachment}`}
+            >
+              <span className="text-lg">📄</span>
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {String(c.name ?? "file")}
+              </span>
+              {size && <span className={`text-xs ${t.muted}`}>{size}</span>}
+              <span className={`text-xs ${t.muted}`}>download</span>
+            </a>
+          )}
+        </div>
+      );
+    }
     case "divider":
       return <hr className={t.tableBorder} />;
     default:

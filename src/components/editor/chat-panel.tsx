@@ -147,8 +147,8 @@ export default function ChatPanel({
         op: "add_block",
         blockId: crypto.randomUUID(),
         sectionId,
-        type: "annotated_image",
-        content: { imageAssetId: assetId, caption: "" },
+        type: "gallery",
+        content: { items: [{ imageAssetId: assetId, caption: "" }], columns: 1 },
       },
     ]);
     backToMenu(
@@ -168,8 +168,8 @@ export default function ChatPanel({
         op: "add_block",
         blockId: crypto.randomUUID(),
         sectionId,
-        type: "file",
-        content: { assetId, name: file.name, size: file.size },
+        type: "file_text",
+        content: { text: "", assetId, name: file.name, size: file.size },
       },
     ]);
     backToMenu(

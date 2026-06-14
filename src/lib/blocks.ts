@@ -29,19 +29,24 @@ export type BlockContent =
   | { kind: "callout"; style: "info" | "warning" | "danger"; text: string }
   | { kind: "code_value"; label?: string; value: string }
   | { kind: "file"; assetId: string; name: string; size?: number } // firmware .bin etc.
+  // File + a description in one block: a text area that carries the attachment
+  // with it (e.g. "231: Stable version" + the .bin). The single file option.
+  | { kind: "file_text"; text: string; assetId: string; name: string; size?: number }
   | { kind: "divider" };
 
+// The block picker. One photo option (gallery — handles single or multiple
+// images, each annotatable) and one file option (file_text). The legacy
+// `image` / `annotated_image` / `file` types still render everywhere for
+// content authored before this change, they're just no longer offered here.
 export const BLOCK_TYPES = [
   { type: "text", label: "Text" },
   { type: "connections_table", label: "Connections table" },
   { type: "key_value_table", label: "Key / value table" },
-  { type: "annotated_image", label: "Photo with annotations" },
-  { type: "image", label: "Photo" },
-  { type: "gallery", label: "Gallery" },
+  { type: "gallery", label: "Photo with annotations" },
   { type: "checklist", label: "Checklist" },
   { type: "callout", label: "Callout / warning" },
   { type: "code_value", label: "Code / value" },
-  { type: "file", label: "File attachment (.bin, …)" },
+  { type: "file_text", label: "File + text" },
   { type: "divider", label: "Divider" },
 ] as const;
 
@@ -84,6 +89,8 @@ export function defaultContent(type: string): object {
       return { label: "", value: "" };
     case "file":
       return { assetId: "", name: "" };
+    case "file_text":
+      return { text: "", assetId: "", name: "" };
     default:
       return {};
   }

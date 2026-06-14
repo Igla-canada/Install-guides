@@ -335,6 +335,22 @@ function BlockBody({
     case "file":
       return <FileBlockEditor content={c} update={update} />;
 
+    case "file_text":
+      return (
+        <div className="space-y-2">
+          <textarea
+            defaultValue={c.text ?? ""}
+            onBlur={(e) => {
+              if (e.target.value !== c.text) update({ ...c, text: e.target.value });
+            }}
+            placeholder="Describe this file (e.g. “231: Stable version”)…"
+            rows={Math.max(2, String(c.text ?? "").split("\n").length)}
+            className="w-full resize-y rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm focus:outline-none"
+          />
+          <FileBlockEditor content={c} update={update} />
+        </div>
+      );
+
     case "divider":
       return <hr className="border-zinc-200" />;
 
