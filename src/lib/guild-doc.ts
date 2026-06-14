@@ -363,6 +363,55 @@ export async function publishGuild(
   return version;
 }
 
+/**
+ * Duplicate a guild into a new DRAFT — same identity, properties, cover and the
+ * full section/block structure — so a similar guide can be built consistently
+ * without rebuilding the scaffold. Photos/files are referenced (not re-uploaded);
+ * replace a photo in the copy and it points at a fresh asset. The copy starts as
+ * a DRAFT titled "Copy of …"; change its identity before publishing (one
+ * published guild per identity is still enforced at publish time).
+ */
+export async function duplicateGuild(
+  guildId: string,
+  actorUserId: string
+): Promise<string> {
+  const doc = await loadGuildDoc(guildId);
+  if (!doc) throw new Error("guild not found");
+
+  const copy = await prisma.guild.create({
+    data: {
+      regionId: doc.regionId,
+      makeId: doc.makeId,
+      modelId: doc.modelId,
+      generationId: doc.generationId,
+      trimId: doc.trimId,
+      iglaProductId: doc.iglaProductId,
+      title: `Copy of ${doc.title}`,
+      status: "DRAFT",
+      coverImageId: doc.coverImageId,
+      properties: (doc.properties ?? undefined) as Prisma.InputJsonValue | undefined,
+      createdById: actorUserId,
+      updatedById: actorUserId,
+      sections: {
+        create: doc.sections.map((s) => ({
+          order: s.order,
+          title: s.title,
+          type: s.type,
+          collapsedDefault: s.collapsedDefault,
+          blocks: {
+            create: s.blocks.map((b) => ({
+              order: b.order,
+              type: b.type,
+              content: b.content as Prisma.InputJsonValue,
+            })),
+          },
+        })),
+      },
+    },
+  });
+  return copy.id;
+}
+
 /** Restore the editable document from a version snapshot (the doc stays canonical). */
 export async function rollbackGuild(
   guildId: string,

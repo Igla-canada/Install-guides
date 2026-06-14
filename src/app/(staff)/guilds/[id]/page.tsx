@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
-import { loadGuildDoc } from "@/lib/guild-doc";
+import { loadGuildDoc, duplicateGuild } from "@/lib/guild-doc";
 import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
 import GrantPanel from "@/components/guilds/grant-panel";
@@ -39,6 +39,14 @@ export default async function GuildPreviewPage(props: {
     redirect(
       `/guilds/${id}?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`
     );
+  }
+
+  // Duplicate the whole structure into a new DRAFT and open it for editing.
+  async function duplicateAction() {
+    "use server";
+    const u = await requireRole("ADMIN", "TECH");
+    const newId = await duplicateGuild(id, u.id);
+    redirect(`/guilds/${newId}/edit`);
   }
 
   const statusClass =
@@ -83,6 +91,15 @@ export default async function GuildPreviewPage(props: {
           >
             ⬇ PDF
           </Link>
+          <form action={duplicateAction}>
+            <button
+              type="submit"
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
+              title="Create a new draft with the same sections, blocks and identity — fastest way to build a consistent guide"
+            >
+              ⧉ Duplicate
+            </button>
+          </form>
           <Link
             href={`/guilds/${id}/edit`}
             className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"

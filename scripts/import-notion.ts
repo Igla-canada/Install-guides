@@ -528,19 +528,9 @@ async function importGuildRow(
   brand: { name: string; logo: string | null },
   admin: { id: string },
   force: boolean
-) {
+): Promise<boolean> {
   const title = titleOf(page);
-
   const make = await findOrCreateMake(brand.name, brand.logo);
-
-  if (!force) {
-    const existing = await prisma.guild.findFirst({ where: { makeId: make.id, title } });
-    if (existing) {
-      console.log(`  - "${brand.name} / ${title}" already exists, skipping (use --force to re-import)`);
-      return;
-    }
-  }
-  console.log(`  + importing "${brand.name} / ${title}"…`);
 
   // Properties box (everything except the title property).
   const properties: Record<string, string> = {};
@@ -557,6 +547,24 @@ async function importGuildRow(
 
   const { model, generation } = await findOrCreateModelGen(make.id, modelName, years, yearFrom);
   const products = await ensureProducts(iglaTypes);
+
+  // Idempotent on the FULL identity (make + title + generation + product) so a
+  // model that repeats across generations/products isn't collapsed into one.
+  if (!force) {
+    const existing = await prisma.guild.findFirst({
+      where: {
+        makeId: make.id,
+        title,
+        generationId: generation.id,
+        iglaProductId: products[0].id,
+      },
+    });
+    if (existing) {
+      console.log(`  - "${brand.name} / ${title}" (${generation.name}) already exists, skipping`);
+      return false;
+    }
+  }
+  console.log(`  + importing "${brand.name} / ${title}" (${generation.name})…`);
   const region =
     (await prisma.region.findFirst()) ??
     (await prisma.region.create({ data: { name: "North America" } }));
@@ -603,6 +611,7 @@ async function importGuildRow(
       .map((p) => p.name)
       .join("+")}, ${sections.length} sections / ${blockCount} blocks`
   );
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -662,10 +671,20 @@ async function main() {
   const admin = await prisma.userAccount.findFirstOrThrow({ where: { role: "ADMIN" } });
 
   let imported = 0;
-  const cap = async (fn: () => Promise<void>) => {
+  let skipped = 0;
+  let failed = 0;
+  const safeImport = async (
+    row: any,
+    brand: { name: string; logo: string | null }
+  ) => {
     if (imported >= limit) return;
-    await fn();
-    imported++;
+    try {
+      if (await importGuildRow(row, brand, admin, force)) imported++;
+      else skipped++;
+    } catch (e) {
+      failed++;
+      console.error(`    ✗ failed "${brand.name} / ${titleOf(row)}":`, (e as Error).message);
+    }
   };
 
   if (pageId) {
@@ -675,18 +694,15 @@ async function main() {
     const brand = dbId
       ? await resolveBrandForDatabaseId(dbId)
       : { name: "Unsorted", logo: null };
-    console.log(`Single-guide test: ${brand.name} / ${titleOf(page)}\n`);
-    await importGuildRow(page, brand, admin, force);
-    imported++;
+    console.log(`Single guide: ${brand.name} / ${titleOf(page)}\n`);
+    await safeImport(page, brand);
   } else if (brandId) {
     // ---- one brand ----
     const brandPage = await retrievePage(brandId);
     const brand = await brandFromPage(brandPage);
     const rows = await rowsUnderBrand(brandId);
     console.log(`Brand "${brand.name}": ${rows.length} guides (importing ${Math.min(rows.length, limit)}).\n`);
-    for (const row of rows) {
-      await cap(() => importGuildRow(row, brand, admin, force));
-    }
+    for (const row of rows) await safeImport(row, brand);
   } else if (parentId) {
     // ---- everything under the parent page ----
     const brandPages = (await allChildren(parentId)).filter((c) => c.type === "child_page");
@@ -698,7 +714,7 @@ async function main() {
       const brand = await brandFromPage(await retrievePage(bp.id));
       console.log(`# ${brand.name} — ${rows.length} guides`);
       for (const row of rows) {
-        await cap(() => importGuildRow(row, brand, admin, force));
+        await safeImport(row, brand);
         if (imported >= limit) break;
       }
     }
@@ -709,8 +725,8 @@ async function main() {
   }
 
   console.log(
-    `\nDone — ${imported} guide(s) imported as DRAFTS. Review each in the editor (Preview), ` +
-      `fix identity/products where needed, then Publish.`
+    `\nDone — ${imported} imported, ${skipped} already existed${failed ? `, ${failed} failed` : ""}. ` +
+      `All new guides are DRAFTS — review in the editor (Preview), fix identity/products where needed, then Publish.`
   );
 }
 
