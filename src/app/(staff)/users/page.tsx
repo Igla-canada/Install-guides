@@ -20,11 +20,49 @@ async function createUser(formData: FormData) {
   const email = String(formData.get("email") ?? "").toLowerCase().trim();
   const name = String(formData.get("name") ?? "").trim();
   const role = String(formData.get("role") ?? "TECH") as "ADMIN" | "TECH" | "INSTALLER";
+  const phone = String(formData.get("phone") ?? "").trim() || null;
   const password = String(formData.get("password") ?? "");
   if (!email || !name || password.length < 8) throw new Error("invalid input");
   await prisma.userAccount.create({
-    data: { email, name, role, passwordHash: await bcrypt.hash(password, 12) },
+    data: { email, name, phone, role, passwordHash: await bcrypt.hash(password, 12) },
   });
+  revalidatePath("/users");
+}
+
+// Edit an existing user's details. Role/status changes to your OWN account are
+// ignored so an admin can't lock themselves out; password is optional (blank
+// keeps the current one).
+async function editUser(formData: FormData) {
+  "use server";
+  const admin = await requireRole("ADMIN");
+  const id = String(formData.get("id"));
+  const email = String(formData.get("email") ?? "").toLowerCase().trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim() || null;
+  const role = String(formData.get("role") ?? "TECH") as "ADMIN" | "TECH" | "INSTALLER";
+  const status = String(formData.get("status") ?? "ACTIVE") as "ACTIVE" | "DISABLED";
+  const newPassword = String(formData.get("password") ?? "");
+  if (!email || !name) throw new Error("name and email are required");
+  const data: {
+    email: string;
+    name: string;
+    phone: string | null;
+    role?: "ADMIN" | "TECH" | "INSTALLER";
+    status?: "ACTIVE" | "DISABLED";
+    passwordHash?: string;
+  } = { email, name, phone };
+  if (id !== admin.id) {
+    data.role = role;
+    data.status = status;
+  }
+  if (newPassword) {
+    if (newPassword.length < 8) throw new Error("password must be at least 8 chars");
+    data.passwordHash = await bcrypt.hash(newPassword, 12);
+  }
+  await prisma.userAccount.update({ where: { id }, data });
+  if (id !== admin.id && status === "DISABLED") {
+    await prisma.session.deleteMany({ where: { userId: id } }); // kick live sessions
+  }
   revalidatePath("/users");
 }
 
@@ -108,7 +146,7 @@ async function setInstallerGuilds(formData: FormData) {
 }
 
 export default async function UsersPage() {
-  await requireRole("ADMIN");
+  const admin = await requireRole("ADMIN");
   const users = await prisma.userAccount.findMany({
     orderBy: [{ role: "asc" }, { name: "asc" }],
     include: { installerGrants: { include: { user: false } } },
@@ -156,6 +194,69 @@ export default async function UsersPage() {
                   <td className="px-4 py-3">
                     <div className="font-medium">{u.name}</div>
                     <div className="text-xs text-zinc-500">{u.email}</div>
+                    {u.phone && <div className="text-xs text-zinc-400">{u.phone}</div>}
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-700">
+                        ✎ Edit
+                      </summary>
+                      <form action={editUser} className="mt-2 grid max-w-xs gap-1.5">
+                        <input type="hidden" name="id" value={u.id} />
+                        <input
+                          name="name"
+                          defaultValue={u.name}
+                          required
+                          placeholder="Full name"
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                        />
+                        <input
+                          name="email"
+                          type="email"
+                          defaultValue={u.email}
+                          required
+                          placeholder="Email"
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                        />
+                        <input
+                          name="phone"
+                          defaultValue={u.phone ?? ""}
+                          placeholder="Mobile (+1 416 555 0123)"
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                        />
+                        <div className="flex gap-1.5">
+                          <select
+                            name="role"
+                            defaultValue={u.role}
+                            disabled={u.id === admin.id}
+                            className="flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm disabled:bg-zinc-100"
+                            title={u.id === admin.id ? "Can't change your own role" : "Role"}
+                          >
+                            <option value="TECH">Tech</option>
+                            <option value="ADMIN">Admin</option>
+                            <option value="INSTALLER">Installer</option>
+                          </select>
+                          <select
+                            name="status"
+                            defaultValue={u.status}
+                            disabled={u.id === admin.id}
+                            className="flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm disabled:bg-zinc-100"
+                            title={u.id === admin.id ? "Can't change your own status" : "Status"}
+                          >
+                            <option value="ACTIVE">Active</option>
+                            <option value="DISABLED">Disabled</option>
+                          </select>
+                        </div>
+                        <input
+                          name="password"
+                          type="password"
+                          minLength={8}
+                          placeholder="New password (blank = keep)"
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                        />
+                        <button className="rounded-md bg-zinc-900 px-2 py-1 text-sm font-medium text-white hover:bg-zinc-700">
+                          Save changes
+                        </button>
+                      </form>
+                    </details>
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs">
@@ -224,6 +325,7 @@ export default async function UsersPage() {
       >
         <input name="name" required placeholder="Full name" className="rounded-md border border-zinc-300 px-3 py-2 text-sm" />
         <input name="email" type="email" required placeholder="Email" className="rounded-md border border-zinc-300 px-3 py-2 text-sm" />
+        <input name="phone" placeholder="Mobile (optional, +1 416 555 0123)" className="rounded-md border border-zinc-300 px-3 py-2 text-sm" />
         <select name="role" className="rounded-md border border-zinc-300 px-3 py-2 text-sm">
           <option value="TECH">Tech (author)</option>
           <option value="ADMIN">Admin</option>

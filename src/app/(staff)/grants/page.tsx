@@ -5,6 +5,7 @@ import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import { requestMeta } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import UserPicker from "@/components/guilds/user-picker";
 
 async function createGrant(formData: FormData) {
   "use server";
@@ -50,7 +51,7 @@ export default async function GrantsPage(props: {
   const { created, label } = await props.searchParams;
   const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000";
 
-  const [grants, publishedGuilds] = await Promise.all([
+  const [grants, publishedGuilds, shareUsers] = await Promise.all([
     prisma.accessGrant.findMany({
       orderBy: { createdAt: "desc" },
       take: 50,
@@ -63,6 +64,11 @@ export default async function GrantsPage(props: {
       where: { status: "PUBLISHED" },
       orderBy: { title: "asc" },
       select: { id: true, title: true },
+    }),
+    prisma.userAccount.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, phone: true, role: true },
     }),
   ]);
 
@@ -94,6 +100,7 @@ export default async function GrantsPage(props: {
         <form action={createGrant} className="rounded-xl border border-zinc-200 bg-white p-4">
           <h2 className="text-sm font-semibold">New access link</h2>
           <div className="mt-3 space-y-3">
+            {shareUsers.length > 0 && <UserPicker users={shareUsers} />}
             <input
               name="granteeLabel"
               required

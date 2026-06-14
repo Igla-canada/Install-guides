@@ -280,6 +280,7 @@ model UserAccount {
   id           String     @id @default(cuid())
   email        String     @unique
   name         String
+  phone        String? // installer mobile — prefilled into access links shared with this user
   role         UserRole
   passwordHash String
   status       UserStatus @default(ACTIVE)

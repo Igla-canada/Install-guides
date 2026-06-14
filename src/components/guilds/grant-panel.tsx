@@ -2,6 +2,7 @@
 // Notion-style "Share" for a single guide: create a time-limited, watermarked
 // access link for THIS guide without hunting through the Access-links page.
 import { useState } from "react";
+import UserPicker from "./user-picker";
 
 export default function GrantPanel({
   action,
@@ -9,12 +10,14 @@ export default function GrantPanel({
   label,
   link,
   expiryOptions,
+  users = [],
 }: {
   action: (formData: FormData) => Promise<void>;
   created?: string;
   label?: string;
   link?: string;
   expiryOptions: Array<{ label: string; hours: number }>;
+  users?: Array<{ id: string; name: string; phone: string | null; role: string }>;
 }) {
   const [open, setOpen] = useState(Boolean(created));
 
@@ -50,6 +53,9 @@ export default function GrantPanel({
           ) : (
             <form action={action} className="space-y-2">
               <h3 className="text-sm font-semibold">Grant access to this guide</h3>
+              {users.length > 0 && (
+                <UserPicker users={users} />
+              )}
               <input
                 name="granteeLabel"
                 required

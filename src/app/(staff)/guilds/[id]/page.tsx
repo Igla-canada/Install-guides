@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { loadGuildDoc, duplicateGuild } from "@/lib/guild-doc";
 import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
@@ -19,6 +20,13 @@ export default async function GuildPreviewPage(props: {
   const { created, label } = await props.searchParams;
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
+
+  // Existing users an admin can share this guide with (prefills the link form).
+  const shareUsers = await prisma.userAccount.findMany({
+    where: { status: "ACTIVE" },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, phone: true, role: true },
+  });
 
   const baseUrl = process.env.APP_BASE_URL ?? "";
 
@@ -77,6 +85,7 @@ export default async function GuildPreviewPage(props: {
               label={label}
               link={created ? `${baseUrl}/g/${created}` : undefined}
               expiryOptions={EXPIRY_OPTIONS}
+              users={shareUsers}
             />
           ) : (
             <span className="text-xs text-zinc-400" title="Publish the guide before sharing">

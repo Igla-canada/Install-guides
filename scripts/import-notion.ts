@@ -475,20 +475,20 @@ async function findOrCreateModelGen(
     (await prisma.model.findFirst({
       where: { makeId, name: { equals: modelName, mode: "insensitive" } },
     })) ?? (await prisma.model.create({ data: { makeId, name: modelName } }));
+  // One generation per distinct "Years" value, matched by exact name only. A
+  // year-range fallback would fold a later open-ended generation (yearEnd null)
+  // into an earlier one and silently drop distinct guides (e.g. MDX 2025- into
+  // MDX 2021-2024).
   const genName = (years ?? "").trim() || `${yearFrom}+`;
+  const nums = (years ?? "").match(/(19|20)\d{2}/g) ?? [];
+  const yearStart = nums[0] ? parseInt(nums[0], 10) : yearFrom;
+  const yearEnd = nums[1] ? parseInt(nums[1], 10) : null;
   const generation =
     (await prisma.generation.findFirst({
       where: { modelId: model.id, name: genName },
     })) ??
-    (await prisma.generation.findFirst({
-      where: {
-        modelId: model.id,
-        yearStart: { lte: yearFrom },
-        OR: [{ yearEnd: null }, { yearEnd: { gte: yearFrom } }],
-      },
-    })) ??
     (await prisma.generation.create({
-      data: { modelId: model.id, name: genName, yearStart: yearFrom, yearEnd: null },
+      data: { modelId: model.id, name: genName, yearStart, yearEnd },
     }));
   return { model, generation };
 }
@@ -530,6 +530,10 @@ async function importGuildRow(
   force: boolean
 ): Promise<boolean> {
   const title = titleOf(page);
+  if (title === "Untitled") {
+    console.log(`  - blank row under ${brand.name}, skipping`);
+    return false;
+  }
   const make = await findOrCreateMake(brand.name, brand.logo);
 
   // Properties box (everything except the title property).
