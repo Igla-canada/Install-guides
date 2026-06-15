@@ -44,12 +44,12 @@ export default async function GuildEditorPage(props: {
       await publishGuild(id, u.id);
     } catch (e) {
       if (e instanceof PublishConflictError) {
-        redirect(`/guilds/${id}/edit?publish_error=conflict`);
+        redirect(`/guides/${id}/edit?publish_error=conflict`);
       }
       throw e;
     }
     // After a successful publish, show what installers will see.
-    redirect(`/guilds/${id}`);
+    redirect(`/guides/${id}`);
   }
 
   async function rollbackAction(formData: FormData) {
@@ -57,7 +57,7 @@ export default async function GuildEditorPage(props: {
     const u = await requireRole("ADMIN", "TECH");
     const versionNo = Number(formData.get("versionNo"));
     await rollbackGuild(id, versionNo, u.id);
-    redirect(`/guilds/${id}/edit`);
+    redirect(`/guides/${id}/edit`);
   }
 
   // Unpublish: take a live guide back to DRAFT so it can be edited without
@@ -82,7 +82,7 @@ export default async function GuildEditorPage(props: {
         userAgent: meta.userAgent,
       });
     }
-    redirect(`/guilds/${id}/edit`);
+    redirect(`/guides/${id}/edit`);
   }
 
   // Archive keeps everything (content, versions, audit history) but hides the
@@ -104,7 +104,7 @@ export default async function GuildEditorPage(props: {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    redirect(`/guilds/${id}/edit`);
+    redirect(`/guides/${id}/edit`);
   }
 
   // Hard delete — admin only, irreversible (sections, versions, grant links
@@ -122,7 +122,7 @@ export default async function GuildEditorPage(props: {
       meta: { guildId: id, title: g.title },
     });
     await prisma.guild.delete({ where: { id } });
-    redirect("/guilds");
+    redirect("/guides");
   }
 
   return (

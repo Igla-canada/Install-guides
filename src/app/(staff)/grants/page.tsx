@@ -5,8 +5,8 @@ import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import { requestMeta } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import UserPicker from "@/components/guilds/user-picker";
-import GuildPicker from "@/components/guilds/guild-picker";
+import UserPicker from "@/components/guides/user-picker";
+import GuildPicker from "@/components/guides/guild-picker";
 
 async function createGrant(formData: FormData) {
   "use server";

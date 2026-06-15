@@ -1,4 +1,4 @@
-// System usage at a glance — the guide library itself lives under /guilds.
+// System usage at a glance — the guide library itself lives under /guides.
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 
@@ -72,8 +72,8 @@ export default async function DashboardPage() {
   });
 
   const cards = [
-    { label: "Published guides", value: publishedCount, href: "/guilds" },
-    { label: "Drafts in progress", value: draftCount, href: "/guilds?status=draft" },
+    { label: "Published guides", value: publishedCount, href: "/guides" },
+    { label: "Drafts in progress", value: draftCount, href: "/guides?status=draft" },
     { label: "Views · last 7 days", value: views7, href: "/audit?action=view" },
     { label: "App lookups · 30 days", value: resolves30, href: "/audit?action=resolve" },
     { label: "Active access links", value: activeGrants, href: "/grants" },
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <Link
-          href="/guilds/new"
+          href="/guides/new"
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
         >
           + New guide
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
                 const max = topViewRows[0]._count._all;
                 return (
                   <li key={r.guildId}>
-                    <Link href={`/guilds/${r.guildId}`} className="block">
+                    <Link href={`/guides/${r.guildId}`} className="block">
                       <div className="flex items-center justify-between text-sm">
                         <span className="truncate font-medium hover:underline">
                           {g?.title ?? "(deleted guide)"}

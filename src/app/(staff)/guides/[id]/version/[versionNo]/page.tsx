@@ -81,7 +81,7 @@ export default async function VersionPreviewPage(props: {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/guilds/${id}/edit`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/guides/${id}/edit`} className="text-sm text-zinc-500 hover:underline">
           ← Back to editor
         </Link>
         <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium">

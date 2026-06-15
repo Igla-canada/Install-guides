@@ -16,7 +16,7 @@ export default async function InstallerGuildViewPage(props: {
   const { guildId } = await props.params;
   const user = await currentUser();
   if (!user) redirect("/login");
-  if (user.role !== "INSTALLER") redirect(`/guilds/${guildId}`);
+  if (user.role !== "INSTALLER") redirect(`/guides/${guildId}`);
 
   const meta = await requestMeta();
   const allowed = await prisma.installerGuild.findUnique({

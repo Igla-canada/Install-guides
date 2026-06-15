@@ -132,7 +132,7 @@ async function createGuildAction(formData: FormData) {
       },
     },
   });
-  redirect(`/guilds/${guild.id}/edit`);
+  redirect(`/guides/${guild.id}/edit`);
 }
 
 export default async function NewGuildPage() {

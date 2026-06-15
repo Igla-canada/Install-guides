@@ -92,7 +92,7 @@ export default function GuildEditor({
     <div className="mx-auto max-w-6xl">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/guilds/${doc.id}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/guides/${doc.id}`} className="text-sm text-zinc-500 hover:underline">
           ← Done / preview
         </Link>
         <span
@@ -239,7 +239,7 @@ export default function GuildEditor({
                   </span>
                   <div className="ml-auto flex items-center gap-2">
                     <Link
-                      href={`/guilds/${doc.id}/version/${v.versionNo}`}
+                      href={`/guides/${doc.id}/version/${v.versionNo}`}
                       target="_blank"
                       className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
                     >

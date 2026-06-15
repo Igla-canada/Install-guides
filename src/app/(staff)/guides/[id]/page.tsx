@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { loadGuildDoc, duplicateGuild } from "@/lib/guild-doc";
 import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
-import GrantPanel from "@/components/guilds/grant-panel";
+import GrantPanel from "@/components/guides/grant-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ export default async function GuildPreviewPage(props: {
       guildIds: [id],
     });
     redirect(
-      `/guilds/${id}?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`
+      `/guides/${id}?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`
     );
   }
 
@@ -55,7 +55,7 @@ export default async function GuildPreviewPage(props: {
     "use server";
     const u = await requireRole("ADMIN", "TECH");
     const newId = await duplicateGuild(id, u.id);
-    redirect(`/guilds/${newId}/edit`);
+    redirect(`/guides/${newId}/edit`);
   }
 
   const statusClass =
@@ -69,7 +69,7 @@ export default async function GuildPreviewPage(props: {
     <div>
       {/* Staff action bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/guilds" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/guides" className="text-sm text-zinc-500 hover:underline">
           ← Guides
         </Link>
         <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
@@ -111,7 +111,7 @@ export default async function GuildPreviewPage(props: {
             </button>
           </form>
           <Link
-            href={`/guilds/${id}/edit`}
+            href={`/guides/${id}/edit`}
             className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
           >
             ✎ Edit

@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
-import MakeLogo from "@/components/guilds/make-logo";
+import MakeLogo from "@/components/guides/make-logo";
 import NotifyTest from "@/components/admin/notify-test";
 
 async function setMakeLogo(formData: FormData) {
@@ -12,7 +12,7 @@ async function setMakeLogo(formData: FormData) {
   const logoUrl = String(formData.get("logoUrl") ?? "").trim() || null;
   await prisma.make.update({ where: { id }, data: { logoUrl } });
   revalidatePath("/users");
-  revalidatePath("/guilds");
+  revalidatePath("/guides");
 }
 
 async function createUser(formData: FormData) {

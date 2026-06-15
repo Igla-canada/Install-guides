@@ -3,7 +3,7 @@
 // Search (?q=) falls back to a flat filtered table.
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import MakeLogo from "@/components/guilds/make-logo";
+import MakeLogo from "@/components/guides/make-logo";
 
 export default async function GuildsPage(props: {
   searchParams: Promise<{ make?: string; year?: string; model?: string; q?: string; status?: string }>;
@@ -41,7 +41,7 @@ export default async function GuildsPage(props: {
     if (sp.q) params.set("q", sp.q);
     if (status) params.set("status", status);
     const qs = params.toString();
-    return `/guilds${qs ? `?${qs}` : ""}`;
+    return `/guides${qs ? `?${qs}` : ""}`;
   };
   const statusTabs = (
     <div className="mt-4 inline-flex rounded-lg border border-zinc-200 bg-white p-0.5 text-sm">
@@ -91,14 +91,14 @@ export default async function GuildsPage(props: {
 
   const crumbs = (
     <nav className="mt-4 flex flex-wrap items-center gap-1 text-sm">
-      <Link href="/guilds" className={`rounded-md px-2 py-1 ${!make ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}>
+      <Link href="/guides" className={`rounded-md px-2 py-1 ${!make ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}>
         All makes
       </Link>
       {make && (
         <>
           <span className="text-zinc-300">/</span>
           <Link
-            href={`/guilds?make=${make.id}`}
+            href={`/guides?make=${make.id}`}
             className={`rounded-md px-2 py-1 ${!year ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
           >
             {make.name}
@@ -109,7 +109,7 @@ export default async function GuildsPage(props: {
         <>
           <span className="text-zinc-300">/</span>
           <Link
-            href={`/guilds?make=${make.id}&year=${year}`}
+            href={`/guides?make=${make.id}&year=${year}`}
             className={`rounded-md px-2 py-1 ${!model ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
           >
             {year}
@@ -153,7 +153,7 @@ export default async function GuildsPage(props: {
           items={[...byModel.entries()]
             .sort((a, b) => a[1].name.localeCompare(b[1].name))
             .map(([id, m]) => ({
-              href: `/guilds?make=${make.id}&year=${year}&model=${id}`,
+              href: `/guides?make=${make.id}&year=${year}&model=${id}`,
               title: m.name,
               sub: `${m.count} guide${m.count === 1 ? "" : "s"}${
                 m.published < m.count ? ` · ${m.published} published` : ""
@@ -183,7 +183,7 @@ export default async function GuildsPage(props: {
           items={[...yearSet.entries()]
             .sort((a, b) => b[0] - a[0])
             .map(([y, count]) => ({
-              href: `/guilds?make=${make.id}&year=${y}`,
+              href: `/guides?make=${make.id}&year=${y}`,
               title: String(y),
               sub: `${count} guide${count === 1 ? "" : "s"}`,
             }))}
@@ -212,7 +212,7 @@ export default async function GuildsPage(props: {
         items={[...byMake.entries()]
           .sort((a, b) => a[1].name.localeCompare(b[1].name))
           .map(([id, m]) => ({
-            href: `/guilds?make=${id}`,
+            href: `/guides?make=${id}`,
             title: m.name,
             sub: `${m.models.size} model${m.models.size === 1 ? "" : "s"} · ${m.count} guide${
               m.count === 1 ? "" : "s"
@@ -254,7 +254,7 @@ function Shell({
             />
           </form>
           <Link
-            href="/guilds/new"
+            href="/guides/new"
             className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
           >
             + New guide
@@ -265,7 +265,7 @@ function Shell({
       {q ? (
         <p className="mt-4 text-sm text-zinc-500">
           Results for “{q}” —{" "}
-          <Link href="/guilds" className="underline">
+          <Link href="/guides" className="underline">
             back to browsing
           </Link>
         </p>
@@ -364,7 +364,7 @@ function GuildTable({
           {guilds.map((g) => (
             <tr key={g.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
               <td className="px-4 py-3">
-                <Link href={`/guilds/${g.id}`} className="font-medium hover:underline">
+                <Link href={`/guides/${g.id}`} className="font-medium hover:underline">
                   {g.title}
                 </Link>
                 <div className="text-xs text-zinc-500">

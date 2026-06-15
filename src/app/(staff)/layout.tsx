@@ -10,7 +10,7 @@ async function logoutAction() {
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", roles: ["ADMIN", "TECH"] },
-  { href: "/guilds", label: "Guides", roles: ["ADMIN", "TECH"] },
+  { href: "/guides", label: "Guides", roles: ["ADMIN", "TECH"] },
   { href: "/grants", label: "Access links", roles: ["ADMIN", "TECH"] },
   { href: "/quick-picks", label: "Quick picks", roles: ["ADMIN", "TECH"] },
   { href: "/export", label: "Export PDF", roles: ["ADMIN", "TECH"] },
