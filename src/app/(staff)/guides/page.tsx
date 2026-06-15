@@ -33,6 +33,17 @@ export default async function GuildsPage(props: {
     ? `No ${statusFilter.toLowerCase()} guides for this selection.`
     : null;
 
+  // Drill-down link that carries the active status tab through navigation.
+  const drill = (o: { make?: string; year?: number; model?: string }) => {
+    const p = new URLSearchParams();
+    if (o.make) p.set("make", o.make);
+    if (o.year) p.set("year", String(o.year));
+    if (o.model) p.set("model", o.model);
+    if (statusFilter) p.set("status", statusFilter);
+    const qs = p.toString();
+    return `/guides${qs ? `?${qs}` : ""}`;
+  };
+
   const covers = (g: (typeof guilds)[number], year: number) =>
     g.generation.yearStart <= year && year <= (g.generation.yearEnd ?? currentYear + 1);
 
@@ -96,14 +107,14 @@ export default async function GuildsPage(props: {
 
   const crumbs = (
     <nav className="mt-4 flex flex-wrap items-center gap-1 text-sm">
-      <Link href="/guides" className={`rounded-md px-2 py-1 ${!make ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}>
+      <Link href={drill({})} className={`rounded-md px-2 py-1 ${!make ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}>
         All makes
       </Link>
       {make && (
         <>
           <span className="text-zinc-300">/</span>
           <Link
-            href={`/guides?make=${make.id}`}
+            href={drill({ make: make.id })}
             className={`rounded-md px-2 py-1 ${!year ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
           >
             {make.name}
@@ -114,7 +125,7 @@ export default async function GuildsPage(props: {
         <>
           <span className="text-zinc-300">/</span>
           <Link
-            href={`/guides?make=${make.id}&year=${year}`}
+            href={drill({ make: make.id, year })}
             className={`rounded-md px-2 py-1 ${!model ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
           >
             {year}
@@ -158,7 +169,7 @@ export default async function GuildsPage(props: {
           items={[...byModel.entries()]
             .sort((a, b) => a[1].name.localeCompare(b[1].name))
             .map(([id, m]) => ({
-              href: `/guides?make=${make.id}&year=${year}&model=${id}`,
+              href: drill({ make: make.id, year, model: id }),
               title: m.name,
               sub: `${m.count} guide${m.count === 1 ? "" : "s"}${
                 m.published < m.count ? ` · ${m.published} published` : ""
@@ -188,7 +199,7 @@ export default async function GuildsPage(props: {
           items={[...yearSet.entries()]
             .sort((a, b) => b[0] - a[0])
             .map(([y, count]) => ({
-              href: `/guides?make=${make.id}&year=${y}`,
+              href: drill({ make: make.id, year: y }),
               title: String(y),
               sub: `${count} guide${count === 1 ? "" : "s"}`,
             }))}
@@ -217,7 +228,7 @@ export default async function GuildsPage(props: {
         items={[...byMake.entries()]
           .sort((a, b) => a[1].name.localeCompare(b[1].name))
           .map(([id, m]) => ({
-            href: `/guides?make=${id}`,
+            href: drill({ make: id }),
             title: m.name,
             sub: `${m.models.size} model${m.models.size === 1 ? "" : "s"} · ${m.count} guide${
               m.count === 1 ? "" : "s"
