@@ -11,7 +11,7 @@ export default async function GuildsPage(props: {
   const sp = await props.searchParams;
   const currentYear = new Date().getFullYear();
 
-  const guilds = await prisma.guild.findMany({
+  const allGuilds = await prisma.guild.findMany({
     orderBy: { updatedAt: "desc" },
     include: {
       make: true,
@@ -23,8 +23,50 @@ export default async function GuildsPage(props: {
     },
   });
 
+  // Status tabs (All / Published / Draft) filter the whole drill-down.
+  const statusFilter = sp.status?.toUpperCase();
+  const guilds =
+    statusFilter === "PUBLISHED" || statusFilter === "DRAFT"
+      ? allGuilds.filter((g) => g.status === statusFilter)
+      : allGuilds;
+
   const covers = (g: (typeof guilds)[number], year: number) =>
     g.generation.yearStart <= year && year <= (g.generation.yearEnd ?? currentYear + 1);
+
+  const buildHref = (status?: string) => {
+    const params = new URLSearchParams();
+    if (sp.make) params.set("make", sp.make);
+    if (sp.year) params.set("year", sp.year);
+    if (sp.model) params.set("model", sp.model);
+    if (sp.q) params.set("q", sp.q);
+    if (status) params.set("status", status);
+    const qs = params.toString();
+    return `/guilds${qs ? `?${qs}` : ""}`;
+  };
+  const statusTabs = (
+    <div className="mt-4 inline-flex rounded-lg border border-zinc-200 bg-white p-0.5 text-sm">
+      {(
+        [
+          ["All", ""],
+          ["Published", "PUBLISHED"],
+          ["Draft", "DRAFT"],
+        ] as const
+      ).map(([label, value]) => {
+        const active = (statusFilter ?? "") === value;
+        return (
+          <Link
+            key={value}
+            href={buildHref(value || undefined)}
+            className={`rounded-md px-3 py-1 ${
+              active ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"
+            }`}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </div>
+  );
 
   // ---- Search → flat table -------------------------------------------------
   if (sp.q) {
@@ -37,7 +79,7 @@ export default async function GuildsPage(props: {
           g.model.name.toLowerCase().includes(q))
     );
     return (
-      <Shell q={sp.q}>
+      <Shell q={sp.q} tabs={statusTabs} status={statusFilter}>
         <GuildTable guilds={hits} />
       </Shell>
     );
@@ -89,7 +131,7 @@ export default async function GuildsPage(props: {
       (g) => g.makeId === make.id && g.modelId === model.id && covers(g, year)
     );
     return (
-      <Shell crumbs={crumbs}>
+      <Shell crumbs={crumbs} tabs={statusTabs} status={statusFilter}>
         <GuildTable guilds={hits} />
       </Shell>
     );
@@ -106,7 +148,7 @@ export default async function GuildsPage(props: {
       byModel.set(g.modelId, m);
     }
     return (
-      <Shell crumbs={crumbs}>
+      <Shell crumbs={crumbs} tabs={statusTabs} status={statusFilter}>
         <TileGrid
           items={[...byModel.entries()]
             .sort((a, b) => a[1].name.localeCompare(b[1].name))
@@ -135,7 +177,7 @@ export default async function GuildsPage(props: {
       }
     }
     return (
-      <Shell crumbs={crumbs}>
+      <Shell crumbs={crumbs} tabs={statusTabs} status={statusFilter}>
         <TileGrid
           small
           items={[...yearSet.entries()]
@@ -165,7 +207,7 @@ export default async function GuildsPage(props: {
     byMake.set(g.makeId, m);
   }
   return (
-    <Shell crumbs={crumbs}>
+    <Shell crumbs={crumbs} tabs={statusTabs} status={statusFilter}>
       <TileGrid
         items={[...byMake.entries()]
           .sort((a, b) => a[1].name.localeCompare(b[1].name))
@@ -187,10 +229,13 @@ function Shell({
   children,
   crumbs,
   q,
+  tabs,
 }: {
   children: React.ReactNode;
   crumbs?: React.ReactNode;
   q?: string;
+  tabs?: React.ReactNode;
+  status?: string;
 }) {
   return (
     <div>
@@ -198,6 +243,7 @@ function Shell({
         <h1 className="text-2xl font-semibold">Guides</h1>
         <div className="flex items-center gap-2">
           <form method="get">
+            {status && <input type="hidden" name="status" value={status} />}
             <input
               type="search"
               name="q"
@@ -214,6 +260,7 @@ function Shell({
           </Link>
         </div>
       </div>
+      {tabs}
       {q ? (
         <p className="mt-4 text-sm text-zinc-500">
           Results for “{q}” —{" "}
