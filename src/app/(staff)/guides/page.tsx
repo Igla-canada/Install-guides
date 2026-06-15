@@ -29,6 +29,9 @@ export default async function GuildsPage(props: {
     statusFilter === "PUBLISHED" || statusFilter === "DRAFT"
       ? allGuilds.filter((g) => g.status === statusFilter)
       : allGuilds;
+  const noneMsg = statusFilter
+    ? `No ${statusFilter.toLowerCase()} guides for this selection.`
+    : null;
 
   const covers = (g: (typeof guilds)[number], year: number) =>
     g.generation.yearStart <= year && year <= (g.generation.yearEnd ?? currentYear + 1);
@@ -80,14 +83,16 @@ export default async function GuildsPage(props: {
     );
     return (
       <Shell q={sp.q} tabs={statusTabs} status={statusFilter}>
-        <GuildTable guilds={hits} />
+        <GuildTable guilds={hits} empty={noneMsg ?? undefined} />
       </Shell>
     );
   }
 
-  const make = sp.make ? guilds.find((g) => g.makeId === sp.make)?.make : undefined;
+  // Resolve identity from the FULL set so the breadcrumb stays correct even when
+  // the active status tab has no matching guides (then the listing is empty).
+  const make = sp.make ? allGuilds.find((g) => g.makeId === sp.make)?.make : undefined;
   const year = sp.year ? parseInt(sp.year, 10) : undefined;
-  const model = sp.model ? guilds.find((g) => g.modelId === sp.model)?.model : undefined;
+  const model = sp.model ? allGuilds.find((g) => g.modelId === sp.model)?.model : undefined;
 
   const crumbs = (
     <nav className="mt-4 flex flex-wrap items-center gap-1 text-sm">
@@ -132,7 +137,7 @@ export default async function GuildsPage(props: {
     );
     return (
       <Shell crumbs={crumbs} tabs={statusTabs} status={statusFilter}>
-        <GuildTable guilds={hits} />
+        <GuildTable guilds={hits} empty={noneMsg ?? undefined} />
       </Shell>
     );
   }
@@ -159,7 +164,7 @@ export default async function GuildsPage(props: {
                 m.published < m.count ? ` · ${m.published} published` : ""
               }`,
             }))}
-          empty={`No models with guides covering ${year}.`}
+          empty={noneMsg ?? `No models with guides covering ${year}.`}
         />
       </Shell>
     );
@@ -187,7 +192,7 @@ export default async function GuildsPage(props: {
               title: String(y),
               sub: `${count} guide${count === 1 ? "" : "s"}`,
             }))}
-          empty="No guides for this make yet."
+          empty={noneMsg ?? "No guides for this make yet."}
         />
       </Shell>
     );
@@ -219,7 +224,7 @@ export default async function GuildsPage(props: {
             }`,
             logo: { name: m.name, logoUrl: m.logoUrl },
           }))}
-        empty="No guides yet — create the first one."
+        empty={noneMsg ?? "No guides yet — create the first one."}
       />
     </Shell>
   );
@@ -336,6 +341,7 @@ function TileGrid({
 
 function GuildTable({
   guilds,
+  empty = "No guides here.",
 }: {
   guilds: Array<{
     id: string;
@@ -349,11 +355,12 @@ function GuildTable({
     iglaProduct: { name: string; productLine: { name: string } };
     updatedBy: { name: string };
   }>;
+  empty?: string;
 }) {
   if (guilds.length === 0) {
     return (
       <p className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-400">
-        No guides here.
+        {empty}
       </p>
     );
   }
