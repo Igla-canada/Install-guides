@@ -114,6 +114,53 @@ export default function Annotator({
   const dragRef = useRef<Drag>(null);
   const lastPt = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // --- Pinch-to-zoom / pan (mobile) -----------------------------------------
+  // Two fingers zoom + pan the image so wires can be marked precisely; one
+  // finger still annotates. The transform is applied to BOTH the image and the
+  // SVG overlay, so normalized coords stay correct at any zoom.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const outerRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch = useRef<
+    | null
+    | { startDist: number; startZoom: number; panX: number; panY: number; midX: number; midY: number }
+  >(null);
+  const gesturePinched = useRef(false);
+  const addedPoint = useRef<number | null>(null);
+
+  const clampPan = (z: number, px: number, py: number) => {
+    const outer = outerRef.current;
+    const wrap = wrapRef.current;
+    if (!outer || !wrap) return { x: px, y: py };
+    const ow = outer.clientWidth;
+    const oh = outer.clientHeight;
+    const sw = wrap.offsetWidth * z;
+    const sh = wrap.offsetHeight * z;
+    return {
+      x: Math.min(0, Math.max(Math.min(0, ow - sw), px)),
+      y: Math.min(0, Math.max(Math.min(0, oh - sh), py)),
+    };
+  };
+
+  // Zoom keeping the viewport center fixed (used by the +/- buttons).
+  const zoomTo = (z: number) => {
+    const nz = Math.min(5, Math.max(1, z));
+    const outer = outerRef.current;
+    if (!outer || nz === 1) {
+      setZoom(nz);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const cx = outer.clientWidth / 2;
+    const cy = outer.clientHeight / 2;
+    const ux = (cx - pan.x) / zoom;
+    const uy = (cy - pan.y) / zoom;
+    setZoom(nz);
+    setPan(clampPan(nz, cx - nz * ux, cy - nz * uy));
+  };
+
   useEffect(() => {
     if (imageRef.startsWith("pending:")) return; // nothing server-side yet
     void fetch(`/api/images/${imageRef}/annotations`)
@@ -179,6 +226,31 @@ export default function Annotator({
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // Second finger down → start a pinch; undo any annotation the first finger
+    // began (a just-placed point, or an in-progress create drag).
+    if (pointers.current.size >= 2) {
+      gesturePinched.current = true;
+      dragRef.current = null;
+      setDraft(null);
+      if (addedPoint.current != null) {
+        const idx = addedPoint.current;
+        setAnnos((prev) => prev.filter((_, j) => j !== idx));
+        setSelected(null);
+        addedPoint.current = null;
+      }
+      const pts = [...pointers.current.values()];
+      pinch.current = {
+        startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+        startZoom: zoom,
+        panX: pan.x,
+        panY: pan.y,
+        midX: (pts[0].x + pts[1].x) / 2,
+        midY: (pts[0].y + pts[1].y) / 2,
+      };
+      return;
+    }
+
     const p = norm(e);
     lastPt.current = p;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -200,6 +272,7 @@ export default function Annotator({
         { shape: "point", coords: p, label: "", description: "", color, order: prev.length },
       ]);
       setSelected(annos.length);
+      addedPoint.current = annos.length; // so a 2-finger pinch can undo it
       dragRef.current = null;
     } else {
       dragRef.current = { kind: "create", startX: p.x, startY: p.y };
@@ -207,6 +280,28 @@ export default function Annotator({
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    // Pinch: recompute zoom from finger distance, pan to keep the start
+    // midpoint anchored under the fingers.
+    if (pinch.current && pointers.current.size >= 2) {
+      const outer = outerRef.current;
+      if (!outer) return;
+      const o = outer.getBoundingClientRect();
+      const pts = [...pointers.current.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+      const nz = Math.min(5, Math.max(1, (pinch.current.startZoom * dist) / pinch.current.startDist));
+      const midX = (pts[0].x + pts[1].x) / 2 - o.left;
+      const midY = (pts[0].y + pts[1].y) / 2 - o.top;
+      const ux = (pinch.current.midX - o.left - pinch.current.panX) / pinch.current.startZoom;
+      const uy = (pinch.current.midY - o.top - pinch.current.panY) / pinch.current.startZoom;
+      setZoom(nz);
+      setPan(nz === 1 ? { x: 0, y: 0 } : clampPan(nz, midX - nz * ux, midY - nz * uy));
+      return;
+    }
+    if (gesturePinched.current) return; // a finger left over after a pinch — don't draw
+
     const d = dragRef.current;
     if (!d) return;
     const p = norm(e);
@@ -247,7 +342,20 @@ export default function Annotator({
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (pointers.current.size === 0 && gesturePinched.current) {
+      // The whole gesture was a pinch — don't commit any annotation from it.
+      gesturePinched.current = false;
+      addedPoint.current = null;
+      dragRef.current = null;
+      setDraft(null);
+      return;
+    }
+    if (pointers.current.size >= 1) return; // still mid-gesture (fingers down)
+    addedPoint.current = null;
+
     const d = dragRef.current;
     if (d?.kind === "create") {
       // Build from refs, not from `draft` state — robust even if React hasn't
@@ -340,6 +448,33 @@ export default function Annotator({
               />
             ))}
           </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => zoomTo(zoom - 0.5)}
+              disabled={zoom <= 1}
+              title="Zoom out"
+              className="rounded-md border border-zinc-300 px-2 py-1 text-sm leading-none disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="w-10 text-center text-xs text-zinc-500">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => zoomTo(zoom + 0.5)}
+              disabled={zoom >= 5}
+              title="Zoom in"
+              className="rounded-md border border-zinc-300 px-2 py-1 text-sm leading-none disabled:opacity-40"
+            >
+              +
+            </button>
+            {zoom !== 1 && (
+              <button
+                onClick={() => zoomTo(1)}
+                className="rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
+              >
+                reset
+              </button>
+            )}
+          </div>
           <div className="ml-auto flex gap-2">
             <button onClick={onClose} className="rounded-md px-3 py-1 text-sm hover:bg-zinc-100">
               Cancel
@@ -356,8 +491,15 @@ export default function Annotator({
 
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           {/* Canvas */}
-          <div className="relative min-h-0 flex-1 overflow-auto bg-zinc-900 p-2">
-            <div className="relative inline-block w-full">
+          <div ref={outerRef} className="relative min-h-0 flex-1 overflow-hidden bg-zinc-900">
+            <div
+              ref={wrapRef}
+              className="relative inline-block w-full"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: "0 0",
+              }}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageUrl} alt="" className="w-full select-none" draggable={false} />
               <svg
@@ -366,6 +508,7 @@ export default function Annotator({
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
               >
                 {annos.map((a, i) => (
                   <EditorAnno key={i} anno={a} index={i} selected={selected === i} />
@@ -380,7 +523,8 @@ export default function Annotator({
             <p className="border-b border-zinc-100 p-3 text-xs text-zinc-400">
               Pick a color, then drag from where you want the label to the wire it
               points at. Tap any marker to select it, then drag the line to move
-              it, or its box / arrow-tip handle to fine-tune.
+              it, or its box / arrow-tip handle to fine-tune. Pinch with two
+              fingers (or use −/+) to zoom in for precise marking; one finger marks.
             </p>
             {annos.map((a, i) => (
               <div
