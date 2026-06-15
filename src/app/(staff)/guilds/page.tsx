@@ -230,6 +230,7 @@ function Shell({
   crumbs,
   q,
   tabs,
+  status,
 }: {
   children: React.ReactNode;
   crumbs?: React.ReactNode;
