@@ -30,7 +30,7 @@ export default async function AuditPage(props: {
     <div>
       <h1 className="text-2xl font-semibold">Audit log</h1>
       <p className="mt-1 text-sm text-zinc-500">
-        Every access to every guild, by account or access link — the forensic
+        Every access to every guide, by account or access link — the forensic
         trail behind the watermark.
       </p>
 
@@ -55,7 +55,7 @@ export default async function AuditPage(props: {
               <th className="px-4 py-2">When</th>
               <th className="px-4 py-2">Actor</th>
               <th className="px-4 py-2">Action</th>
-              <th className="px-4 py-2">Guild</th>
+              <th className="px-4 py-2">Guide</th>
               <th className="hidden px-4 py-2 md:table-cell">IP / device</th>
             </tr>
           </thead>

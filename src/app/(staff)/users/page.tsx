@@ -363,7 +363,7 @@ export default async function UsersPage() {
                     {p.name}
                     <form action={deleteProduct} className="inline">
                       <input type="hidden" name="id" value={p.id} />
-                      <button className="text-zinc-300 hover:text-red-500" title="Delete (blocked if any guild uses it)">
+                      <button className="text-zinc-300 hover:text-red-500" title="Delete (blocked if any guide uses it)">
                         ✕
                       </button>
                     </form>

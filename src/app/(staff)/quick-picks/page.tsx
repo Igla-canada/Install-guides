@@ -140,7 +140,7 @@ export default async function QuickPicksPage() {
 
       <p className="mt-4 text-xs text-zinc-400">
         To change the <em>content</em> of a saved section/block template: fix
-        the section in any guild, hit ☆ to save it under the same name, then
+        the section in any guide, hit ☆ to save it under the same name, then
         delete the old one here.
       </p>
     </div>
