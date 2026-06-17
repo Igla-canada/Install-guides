@@ -207,7 +207,7 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
 
       <div
         ref={outerRef}
-        className="relative min-h-0 flex-1 touch-none overflow-hidden"
+        className="relative min-h-0 flex-1 touch-none select-none overflow-hidden"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -217,7 +217,15 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
         onClick={(e) => {
           if (e.target === e.currentTarget) close();
         }}
-        style={{ cursor: zoom > 1 ? "grab" : "zoom-in" }}
+        // No "open/save image in new tab": block the context menu (right-click
+        // and mobile long-press), dragging, and the iOS image callout. The
+        // watermark + audit log remain the real controls.
+        onContextMenu={(e) => e.preventDefault()}
+        onDragStart={(e) => e.preventDefault()}
+        style={{
+          cursor: zoom > 1 ? "grab" : "zoom-in",
+          WebkitTouchCallout: "none",
+        }}
       >
         <div
           ref={contentRef}
