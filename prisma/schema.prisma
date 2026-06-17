@@ -324,11 +324,15 @@ model Session {
   userAgent String?
 }
 
-// Which guilds a persistent-login INSTALLER account may view.
+// Which guilds a persistent-login INSTALLER account may view. Each grant is
+// either permanent (expiresAt null) or time-limited (expiresAt in the future);
+// once expiresAt passes, the view/download routes treat it as no access.
 model InstallerGuild {
-  userId  String
-  user    UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
-  guildId String
+  userId    String
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guildId   String
+  expiresAt DateTime? // null = permanent
+  grantedAt DateTime  @default(now())
 
   @@id([userId, guildId])
 }

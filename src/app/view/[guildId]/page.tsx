@@ -19,9 +19,12 @@ export default async function InstallerGuildViewPage(props: {
   if (user.role !== "INSTALLER") redirect(`/guides/${guildId}`);
 
   const meta = await requestMeta();
-  const allowed = await prisma.installerGuild.findUnique({
+  const grant = await prisma.installerGuild.findUnique({
     where: { userId_guildId: { userId: user.id, guildId } },
   });
+  // Grant must exist and still be within its time frame (null = permanent).
+  const expired = Boolean(grant?.expiresAt && grant.expiresAt <= new Date());
+  const allowed = grant && !expired;
   const doc = allowed ? await loadGuildDoc(guildId) : null;
   if (!allowed || !doc || doc.status !== "PUBLISHED") {
     await logEvent({
@@ -30,7 +33,7 @@ export default async function InstallerGuildViewPage(props: {
       guildId,
       ip: meta.ip,
       userAgent: meta.userAgent,
-      meta: { reason: "guild_not_granted" },
+      meta: { reason: expired ? "grant_expired" : "guild_not_granted" },
     });
     redirect("/my-guilds");
   }

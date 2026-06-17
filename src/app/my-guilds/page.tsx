@@ -16,9 +16,12 @@ export default async function MyGuildsPage() {
   if (!user) redirect("/login");
   if (user.role !== "INSTALLER") redirect("/dashboard");
 
+  // Skip grants whose time frame has lapsed (null expiresAt = permanent).
   const access = await prisma.installerGuild.findMany({
-    where: { userId: user.id },
-    include: { user: false },
+    where: {
+      userId: user.id,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
   });
   const guilds = await prisma.guild.findMany({
     where: { id: { in: access.map((a) => a.guildId) }, status: "PUBLISHED" },

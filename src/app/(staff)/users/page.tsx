@@ -1,9 +1,11 @@
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { EXPIRY_OPTIONS } from "@/lib/grants";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import MakeLogo from "@/components/guides/make-logo";
 import NotifyTest from "@/components/admin/notify-test";
+import InstallerAccessForm from "@/components/users/installer-access-form";
 
 async function setMakeLogo(formData: FormData) {
   "use server";
@@ -137,11 +139,21 @@ async function setInstallerGuilds(formData: FormData) {
   await requireRole("ADMIN");
   const userId = String(formData.get("userId"));
   const guildIds = formData.getAll("guildIds").map(String);
+  // Preserve existing expiries for rows the admin left as "keep".
+  const existing = await prisma.installerGuild.findMany({ where: { userId } });
+  const prior = new Map(existing.map((e) => [e.guildId, e.expiresAt] as const));
+  const now = Date.now();
+  const rows = guildIds.map((guildId) => {
+    const v = String(formData.get(`expiry__${guildId}`) ?? "perm");
+    let expiresAt: Date | null;
+    if (v === "keep") expiresAt = prior.get(guildId) ?? null;
+    else if (v === "perm") expiresAt = null;
+    else expiresAt = new Date(now + Number(v) * 3600_000);
+    return { userId, guildId, expiresAt };
+  });
   await prisma.$transaction([
     prisma.installerGuild.deleteMany({ where: { userId } }),
-    prisma.installerGuild.createMany({
-      data: guildIds.map((guildId) => ({ userId, guildId })),
-    }),
+    prisma.installerGuild.createMany({ data: rows }),
   ]);
   revalidatePath("/users");
 }
@@ -270,28 +282,16 @@ export default async function UsersPage() {
                         <summary className="cursor-pointer text-xs text-zinc-500">
                           {access.length} guide{access.length === 1 ? "" : "s"} granted
                         </summary>
-                        <form action={setInstallerGuilds} className="mt-2 space-y-1">
-                          <input type="hidden" name="userId" value={u.id} />
-                          <div className="max-h-40 overflow-y-auto rounded border border-zinc-200 p-2">
-                            {publishedGuilds.map((g) => (
-                              <label key={g.id} className="flex items-center gap-2 text-xs">
-                                <input
-                                  type="checkbox"
-                                  name="guildIds"
-                                  value={g.id}
-                                  defaultChecked={access.some((a) => a.guildId === g.id)}
-                                />
-                                {g.title}
-                              </label>
-                            ))}
-                            {publishedGuilds.length === 0 && (
-                              <p className="text-xs text-zinc-400">No published guides yet.</p>
-                            )}
-                          </div>
-                          <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
-                            Save access
-                          </button>
-                        </form>
+                        <InstallerAccessForm
+                          userId={u.id}
+                          guilds={publishedGuilds}
+                          access={access.map((a) => ({
+                            guildId: a.guildId,
+                            expiresAt: a.expiresAt ? a.expiresAt.getTime() : null,
+                          }))}
+                          expiryOptions={EXPIRY_OPTIONS}
+                          action={setInstallerGuilds}
+                        />
                       </details>
                     ) : (
                       <span className="text-xs text-zinc-400">—</span>

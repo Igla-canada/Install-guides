@@ -36,8 +36,13 @@ export async function GET(
       ? await prisma.grantGuild.findUnique({
           where: { grantId_guildId: { grantId: grant.id, guildId } },
         })
-      : await prisma.installerGuild.findUnique({
-          where: { userId_guildId: { userId: user!.id, guildId } },
+      : // Installer account: grant must exist and not be past its time frame.
+        await prisma.installerGuild.findFirst({
+          where: {
+            userId: user!.id,
+            guildId,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
         });
     let referenced = false;
     if (hasAccess) {
