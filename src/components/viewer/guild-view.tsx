@@ -7,6 +7,7 @@ import { signedViewUrl, getObjectDataUrl } from "@/lib/s3";
 import type { GuildDoc } from "@/lib/guild-doc";
 import { sectionColors } from "@/lib/blocks";
 import { AnnoShape, type Anno } from "@/components/images/annotator";
+import ImageLightbox from "@/components/viewer/image-lightbox";
 
 type AnnotationRow = {
   id: string;
@@ -25,11 +26,14 @@ export default async function GuildView({
   doc,
   theme = "dark",
   inlineImages = false,
+  watermark,
 }: {
   doc: GuildDoc;
   theme?: Theme;
   /** Embed images as data URLs (for the admin PDF export — no canvas taint). */
   inlineImages?: boolean;
+  /** Stamp the zoom lightbox for installer-facing views (leak traceability). */
+  watermark?: { label: string; reference: string };
 }) {
   // Collect every asset reference, sign URLs and fetch annotations in bulk.
   const imageIds = new Set<string>();
@@ -118,6 +122,8 @@ export default async function GuildView({
           );
         })}
       </div>
+      {/* Click any image to zoom (skip during PDF rasterization). */}
+      {!inlineImages && <ImageLightbox watermark={watermark} />}
     </article>
   );
 }

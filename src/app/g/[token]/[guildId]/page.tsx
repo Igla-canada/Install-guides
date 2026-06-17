@@ -57,7 +57,11 @@ export default async function GrantGuildViewPage(props: {
     <main className="no-print-page min-h-screen bg-zinc-900 px-4 py-6">
       <Watermark dark label={grant.granteeLabel} reference={`G-${grant.id.slice(-8)}`} />
       <ViewerShield guildId={guildId} />
-      <GuildView doc={doc} theme="dark" />
+      <GuildView
+        doc={doc}
+        theme="dark"
+        watermark={{ label: grant.granteeLabel, reference: `G-${grant.id.slice(-8)}` }}
+      />
       <p className="mx-auto mt-8 max-w-3xl text-center text-xs text-zinc-500">
         Licensed to {grant.granteeLabel}. View-only — this access is recorded.
       </p>
