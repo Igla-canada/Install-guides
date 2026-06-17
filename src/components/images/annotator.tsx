@@ -14,11 +14,13 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { saveAnnotations } from "@/lib/client/offline";
 
-type Shape = "point" | "arrow" | "box";
+type Shape = "point" | "arrow" | "box" | "circle";
 
 export type Anno = {
   shape: Shape;
-  coords: any; // point:{x,y}; arrow:{x1,y1,x2,y2} (1=box, 2=wire); box:{x,y,w,h}
+  // point:{x,y}; arrow:{x1,y1,x2,y2} (1=box, 2=wire);
+  // box/circle:{x,y,w,h, rot?} (rot = degrees, box only)
+  coords: any;
   label: string;
   description?: string;
   color: string;
@@ -29,6 +31,37 @@ const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7"];
 
 const pct = (v: number) => `${v * 100}%`;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+// Rotate point (px,py) around center (cx,cy) by `deg` degrees, in PIXEL space
+// (clockwise, matching CSS rotate() in a y-down coordinate system).
+function rotPx(px: number, py: number, cx: number, cy: number, deg: number): [number, number] {
+  const a = (deg * Math.PI) / 180;
+  const s = Math.sin(a);
+  const c = Math.cos(a);
+  const dx = px - cx;
+  const dy = py - cy;
+  return [cx + dx * c - dy * s, cy + dx * s + dy * c];
+}
+
+// Rotate a shape about its OWN center. Uses fill-box + the `center` keyword,
+// which is broadly supported (incl. mobile Safari) — this is the path that
+// renders on installer-facing views, so robustness matters most here.
+function rotSelf(rot?: number): React.CSSProperties | undefined {
+  if (!rot) return undefined;
+  return { transformBox: "fill-box", transformOrigin: "center", transform: `rotate(${rot}deg)` };
+}
+
+// Rotate an element about ANOTHER point (the box center) — used only for the
+// editor's drag handles so they track a rotated box. Pivot is expressed in
+// viewport percentages, matching the box center's normalized coords.
+function rotAbout(cx: number, cy: number, rot?: number): React.CSSProperties | undefined {
+  if (!rot) return undefined;
+  return {
+    transformBox: "view-box",
+    transformOrigin: `${pct(cx)} ${pct(cy)}`,
+    transform: `rotate(${rot}deg)`,
+  };
+}
 
 /** Size of the label box (in px) for a given label, sized to its longest line. */
 function boxGeom(label: string | undefined, fallback: string) {
@@ -88,7 +121,10 @@ function LabelBox({
 // Editor
 // ---------------------------------------------------------------------------
 
-type Mode = "box" | "tip" | "point" | "move" | "resize" | "body";
+type Mode = "box" | "tip" | "point" | "move" | "resize" | "body" | "rotate";
+
+// How far above the box's top-center the rotation grip sits (normalized y).
+const ROT_HANDLE_OFFSET = 0.05;
 type Drag =
   | { kind: "create"; startX: number; startY: number }
   | { kind: "handle"; index: number; mode: Mode }
@@ -216,9 +252,21 @@ export default function Annotator({
           return { index: i, mode: "box" };
         if (segDistPx(p, a.coords, RW, RH) < 12) return { index: i, mode: "body" };
       } else {
+        // box or circle (both use {x,y,w,h}; box may have rot)
         const { x, y, w, h } = a.coords;
-        if (near(x + w, y + h, 16)) return { index: i, mode: "resize" };
-        if (PX >= x * RW && PX <= (x + w) * RW && PY >= y * RH && PY <= (y + h) * RH)
+        const rot = a.coords.rot ?? 0;
+        const cxpx = (x + w / 2) * RW;
+        const cypx = (y + h / 2) * RH;
+        // Rotation grip (box only) lives above the rotated top-center.
+        if (a.shape === "box") {
+          const [hxp, hyp] = rotPx((x + w / 2) * RW, (y - ROT_HANDLE_OFFSET) * RH, cxpx, cypx, rot);
+          if (Math.hypot(hxp - PX, hyp - PY) < 16) return { index: i, mode: "rotate" };
+        }
+        // Compare against the un-rotated box by rotating the pointer back.
+        const [lpx, lpy] = rotPx(PX, PY, cxpx, cypx, -rot);
+        if (Math.hypot((x + w) * RW - lpx, (y + h) * RH - lpy) < 16)
+          return { index: i, mode: "resize" };
+        if (lpx >= x * RW && lpx <= (x + w) * RW && lpy >= y * RH && lpy <= (y + h) * RH)
           return { index: i, mode: "move" };
       }
     }
@@ -318,7 +366,7 @@ export default function Annotator({
               order: annos.length,
             }
           : {
-              shape: "box",
+              shape: tool, // "box" or "circle"
               coords: {
                 x: Math.min(d.startX, p.x),
                 y: Math.min(d.startY, p.y),
@@ -332,7 +380,7 @@ export default function Annotator({
             }
       );
     } else if (d.kind === "handle") {
-      setAnnos((prev) => prev.map((a, i) => (i === d.index ? applyHandle(a, d.mode, p) : a)));
+      setAnnos((prev) => prev.map((a, i) => (i === d.index ? applyHandle(a, d.mode, p, rectWH()) : a)));
     } else if (d.kind === "translate") {
       const dx = p.x - d.lastX;
       const dy = p.y - d.lastY;
@@ -374,7 +422,7 @@ export default function Annotator({
                 order: annos.length,
               }
             : {
-                shape: "box",
+                shape: tool, // "box" or "circle"
                 coords: {
                   x: Math.min(d.startX, end.x),
                   y: Math.min(d.startY, end.y),
@@ -414,6 +462,7 @@ export default function Annotator({
     arrow: "↘ Label",
     point: "• Point",
     box: "▭ Box",
+    circle: "◯ Circle",
   };
 
   return (
@@ -422,7 +471,7 @@ export default function Annotator({
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2">
           <span className="text-sm font-medium">Annotate</span>
-          {(["arrow", "point", "box"] as const).map((t) => (
+          {(["arrow", "point", "box", "circle"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTool(t)}
@@ -523,7 +572,9 @@ export default function Annotator({
             <p className="border-b border-zinc-100 p-3 text-xs text-zinc-400">
               Pick a color, then drag from where you want the label to the wire it
               points at. Tap any marker to select it, then drag the line to move
-              it, or its box / arrow-tip handle to fine-tune. Pinch with two
+              it, or its box / arrow-tip handle to fine-tune. A selected box also
+              has a grip above it — drag that to rotate it to any angle. Use the
+              ◯ Circle tool to ring something without any text. Pinch with two
               fingers (or use −/+) to zoom in for precise marking; one finger marks.
             </p>
             {annos.map((a, i) => (
@@ -539,12 +590,22 @@ export default function Annotator({
                   >
                     {i + 1}
                   </span>
-                  <input
-                    value={a.label}
-                    onChange={(e) => update(i, { label: e.target.value })}
-                    placeholder="Label (shown in the box, e.g. CAN-H)"
-                    className="min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
-                  />
+                  {a.shape === "circle" ? (
+                    <span className="min-w-0 flex-1 text-sm italic text-zinc-400">
+                      Circle marker (no label)
+                    </span>
+                  ) : (
+                    <input
+                      value={a.label}
+                      onChange={(e) => update(i, { label: e.target.value })}
+                      placeholder={
+                        a.shape === "point"
+                          ? "Label (shown in the list below the photo)"
+                          : "Label (shown in the box, e.g. CAN-H)"
+                      }
+                      className="min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
+                    />
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -572,19 +633,42 @@ export default function Annotator({
   );
 }
 
-function applyHandle(a: Anno, mode: Mode, p: { x: number; y: number }): Anno {
+function applyHandle(
+  a: Anno,
+  mode: Mode,
+  p: { x: number; y: number },
+  dims: { RW: number; RH: number }
+): Anno {
+  const { RW, RH } = dims;
   if (mode === "point") return { ...a, coords: { x: p.x, y: p.y } };
   if (mode === "box") return { ...a, coords: { ...a.coords, x1: p.x, y1: p.y } };
   if (mode === "tip") return { ...a, coords: { ...a.coords, x2: p.x, y2: p.y } };
-  if (mode === "resize")
+  if (mode === "rotate") {
+    const cx = a.coords.x + a.coords.w / 2;
+    const cy = a.coords.y + a.coords.h / 2;
+    // Angle from center to pointer (px space); grip baseline points up = rot 0.
+    const ang = (Math.atan2(p.y * RH - cy * RH, p.x * RW - cx * RW) * 180) / Math.PI;
+    return { ...a, coords: { ...a.coords, rot: Math.round(ang + 90) } };
+  }
+  if (mode === "resize") {
+    const rot = a.coords.rot ?? 0;
+    let lp = p;
+    if (rot) {
+      // Rotate the pointer back into the box's un-rotated frame before sizing.
+      const cx = a.coords.x + a.coords.w / 2;
+      const cy = a.coords.y + a.coords.h / 2;
+      const [lx, ly] = rotPx(p.x * RW, p.y * RH, cx * RW, cy * RH, -rot);
+      lp = { x: lx / RW, y: ly / RH };
+    }
     return {
       ...a,
       coords: {
         ...a.coords,
-        w: Math.max(0.02, p.x - a.coords.x),
-        h: Math.max(0.02, p.y - a.coords.y),
+        w: Math.max(0.02, lp.x - a.coords.x),
+        h: Math.max(0.02, lp.y - a.coords.y),
       },
     };
+  }
   return a;
 }
 
@@ -675,13 +759,37 @@ function EditorAnno({
     );
   }
 
-  // box rect
+  // box or circle (both bounded by {x,y,w,h}; box may carry a rotation)
   const { x, y, w, h } = anno.coords;
+  const rot = anno.coords.rot ?? 0;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const isCircle = anno.shape === "circle";
+  const self = rotSelf(rot); // rotate the shape about its own center
+  const about = rotAbout(cx, cy, rot); // rotate handles about the box center
   return (
     <g>
-      <rect x={pct(x)} y={pct(y)} width={pct(w)} height={pct(h)} fill="none" stroke={color} strokeWidth={2.5} rx={4} />
-      <LabelBox cx={x + w / 2} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} />
-      {selected && <circle cx={pct(x + w)} cy={pct(y + h)} r={7} fill="#fff" stroke={color} strokeWidth={2} />}
+      {isCircle ? (
+        <ellipse cx={pct(cx)} cy={pct(cy)} rx={pct(w / 2)} ry={pct(h / 2)} fill="none" stroke={color} strokeWidth={2.5} style={self} />
+      ) : (
+        <rect x={pct(x)} y={pct(y)} width={pct(w)} height={pct(h)} fill="none" stroke={color} strokeWidth={2.5} rx={4} style={self} />
+      )}
+      {!isCircle && (
+        <LabelBox cx={cx} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} />
+      )}
+      {selected && (
+        <>
+          {/* resize grip (bottom-right corner, tracks rotation) */}
+          <circle cx={pct(x + w)} cy={pct(y + h)} r={7} fill="#fff" stroke={color} strokeWidth={2} style={about} />
+          {/* rotation grip above top-center (box only) */}
+          {!isCircle && (
+            <>
+              <line x1={pct(cx)} y1={pct(y)} x2={pct(cx)} y2={pct(y - ROT_HANDLE_OFFSET)} stroke={color} strokeWidth={1.5} style={about} />
+              <circle cx={pct(cx)} cy={pct(y - ROT_HANDLE_OFFSET)} r={7} fill={color} stroke="#fff" strokeWidth={2} style={about} />
+            </>
+          )}
+        </>
+      )}
     </g>
   );
 }
@@ -735,50 +843,68 @@ function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: st
   const color = anno.color || "#ef4444";
   const mid = `vah-${uid}-${index}`;
 
-  let origin: { x: number; y: number };
-  let target: { x: number; y: number } | null = null;
-  if (anno.shape === "arrow") {
-    origin = { x: anno.coords.x1, y: anno.coords.y1 };
-    target = { x: anno.coords.x2, y: anno.coords.y2 };
-  } else if (anno.shape === "point") {
-    origin = { x: anno.coords.x, y: anno.coords.y };
-  } else {
-    origin = { x: anno.coords.x + anno.coords.w / 2, y: anno.coords.y };
+  // A point is just its numbered marker — its text lives in the list below the
+  // photo, so the number stays readable on the image (no overlapping label box).
+  if (anno.shape === "point") {
+    return (
+      <g>
+        <circle cx={pct(anno.coords.x)} cy={pct(anno.coords.y)} r={12} fill={color} fillOpacity={0.9} stroke="#fff" strokeWidth={2} />
+        <text x={pct(anno.coords.x)} y={pct(anno.coords.y)} dy="0.35em" textAnchor="middle" fill="#fff" fontSize={12} fontWeight={700}>
+          {index + 1}
+        </text>
+      </g>
+    );
   }
 
-  return (
-    <g>
-      {anno.shape === "box" && (
+  // A circle is an empty outline used to ring something — no text at all.
+  if (anno.shape === "circle") {
+    const { x, y, w, h } = anno.coords;
+    return (
+      <ellipse cx={pct(x + w / 2)} cy={pct(y + h / 2)} rx={pct(w / 2)} ry={pct(h / 2)} fill="none" stroke={color} strokeWidth={2.5} />
+    );
+  }
+
+  if (anno.shape === "box") {
+    const { x, y, w, h } = anno.coords;
+    const rot = anno.coords.rot ?? 0;
+    return (
+      <g>
         <rect
-          x={pct(anno.coords.x)}
-          y={pct(anno.coords.y)}
-          width={pct(anno.coords.w)}
-          height={pct(anno.coords.h)}
+          x={pct(x)}
+          y={pct(y)}
+          width={pct(w)}
+          height={pct(h)}
           fill="none"
           stroke={color}
           strokeWidth={2.5}
           rx={4}
+          style={rotSelf(rot)}
         />
-      )}
-      {target && (
-        <>
-          <defs>
-            <marker id={mid} markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
-              <path d="M0,0 L7,3 L0,6 Z" fill={color} />
-            </marker>
-          </defs>
-          <line
-            x1={pct(origin.x)}
-            y1={pct(origin.y)}
-            x2={pct(target.x)}
-            y2={pct(target.y)}
-            stroke={color}
-            strokeWidth={2.5}
-            markerEnd={`url(#${mid})`}
-          />
-          <circle cx={pct(target.x)} cy={pct(target.y)} r={3.5} fill={color} />
-        </>
-      )}
+        <LabelBox cx={x + w / 2} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} />
+      </g>
+    );
+  }
+
+  // arrow (leader-line callout)
+  const origin = { x: anno.coords.x1, y: anno.coords.y1 };
+  const target = { x: anno.coords.x2, y: anno.coords.y2 };
+  return (
+    <g>
+      <defs>
+        <marker id={mid} markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 Z" fill={color} />
+        </marker>
+      </defs>
+      <line
+        x1={pct(origin.x)}
+        y1={pct(origin.y)}
+        x2={pct(target.x)}
+        y2={pct(target.y)}
+        stroke={color}
+        strokeWidth={2.5}
+        markerEnd={`url(#${mid})`}
+      />
+      <circle cx={pct(target.x)} cy={pct(target.y)} r={3.5} fill={color} />
       <LabelBox cx={origin.x} cy={origin.y} label={anno.label} fallback={`${index + 1}`} color={color} />
     </g>
   );

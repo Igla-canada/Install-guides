@@ -22,6 +22,43 @@ type AnnotationRow = {
 
 type Theme = "dark" | "light";
 
+// The numbered/colored legend shown under an annotated photo. Points show their
+// number (matching the on-image marker) so installers can map each one to its
+// note; labelled callouts/boxes also list their note here.
+function AnnoLegend({ annos }: { annos: AnnotationRow[] }) {
+  const shown = (a: AnnotationRow) =>
+    Boolean(a.description) || (a.shape === "point" && Boolean(a.label));
+  if (!annos.some(shown)) return null;
+  return (
+    <ol className="mt-2 space-y-1 text-sm">
+      {annos.map((a, i) =>
+        shown(a) ? (
+          <li key={a.id} className="flex gap-2">
+            {a.shape === "point" ? (
+              <span
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                style={{ backgroundColor: a.color }}
+              >
+                {i + 1}
+              </span>
+            ) : (
+              <span
+                className="mt-1 h-3 w-3 shrink-0 rounded-full"
+                style={{ backgroundColor: a.color }}
+              />
+            )}
+            <span>
+              {a.label && <strong>{a.label}</strong>}
+              {a.label && a.description ? " — " : ""}
+              {a.description}
+            </span>
+          </li>
+        ) : null
+      )}
+    </ol>
+  );
+}
+
 export default async function GuildView({
   doc,
   theme = "dark",
@@ -331,23 +368,7 @@ function BlockView({
               </svg>
             )}
           </div>
-          {annos.some((a) => a.description) && (
-            <ol className="mt-2 space-y-1 text-sm">
-              {annos
-                .filter((a) => a.description)
-                .map((a) => (
-                  <li key={a.id} className="flex gap-2">
-                    <span
-                      className="mt-1 h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: a.color }}
-                    />
-                    <span>
-                      <strong>{a.label}</strong> — {a.description}
-                    </span>
-                  </li>
-                ))}
-            </ol>
-          )}
+          <AnnoLegend annos={annos} />
           {Boolean(c.caption) && (
             <figcaption className={`mt-1 text-xs ${t.muted}`}>
               {String(c.caption)}
@@ -390,6 +411,7 @@ function BlockView({
                     </svg>
                   )}
                 </div>
+                <AnnoLegend annos={annos} />
               </figure>
             );
           })}

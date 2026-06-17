@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 
 const annotationSchema = z.object({
-  shape: z.enum(["point", "arrow", "line", "box", "freehand"]),
+  shape: z.enum(["point", "arrow", "line", "box", "circle", "freehand"]),
   coords: z.unknown(), // normalized 0–1; shape-specific structure
   label: z.string(),
   description: z.string().optional(),
