@@ -189,13 +189,13 @@ export default async function UsersPage() {
         Installers only ever get the view-only, watermarked experience.
       </p>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <table className="w-full text-sm">
+      <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase text-zinc-500">
             <tr>
               <th className="px-4 py-2">User</th>
               <th className="px-4 py-2">Role</th>
-              <th className="hidden px-4 py-2 md:table-cell">Guide access (installers)</th>
+              <th className="px-4 py-2">Guide access (installers)</th>
               <th className="px-4 py-2 text-right">Status</th>
             </tr>
           </thead>
@@ -276,7 +276,7 @@ export default async function UsersPage() {
                       {u.role.toLowerCase()}
                     </span>
                   </td>
-                  <td className="hidden px-4 py-3 md:table-cell">
+                  <td className="px-4 py-3">
                     {u.role === "INSTALLER" ? (
                       <details>
                         <summary className="cursor-pointer text-xs text-zinc-500">

@@ -1,9 +1,12 @@
-// Persistent-login installer home: lists granted guilds. Same view-only,
-// watermarked experience as one-time links — only the actor type differs.
-import Link from "next/link";
+// Persistent-login installer home. Same hierarchical browsing UI as the admin
+// guide library (GuideBrowser), but limited to the published guides assigned to
+// this installer and still within their time frame. View-only: rows link to the
+// watermarked /view page, and there are no editor/status/new-guide affordances.
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { currentUser, logout } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { GuideBrowser } from "@/components/guides/guide-browser";
 
 async function logoutAction() {
   "use server";
@@ -11,12 +14,15 @@ async function logoutAction() {
   redirect("/login");
 }
 
-export default async function MyGuildsPage() {
+export default async function MyGuildsPage(props: {
+  searchParams: Promise<{ make?: string; year?: string; model?: string; q?: string }>;
+}) {
+  const sp = await props.searchParams;
   const user = await currentUser();
   if (!user) redirect("/login");
   if (user.role !== "INSTALLER") redirect("/dashboard");
 
-  // Skip grants whose time frame has lapsed (null expiresAt = permanent).
+  // Only grants still within their time frame (null expiresAt = permanent).
   const access = await prisma.installerGuild.findMany({
     where: {
       userId: user.id,
@@ -25,39 +31,44 @@ export default async function MyGuildsPage() {
   });
   const guilds = await prisma.guild.findMany({
     where: { id: { in: access.map((a) => a.guildId) }, status: "PUBLISHED" },
-    orderBy: { title: "asc" },
-    include: { make: true, model: true, generation: true },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      make: true,
+      model: true,
+      generation: true,
+      trim: true,
+      iglaProduct: { include: { productLine: true } },
+    },
   });
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Your installation guides</h1>
-        <form action={logoutAction}>
-          <button className="text-sm text-zinc-400 hover:text-zinc-600">Sign out</button>
-        </form>
-      </div>
-      <p className="mt-1 text-sm text-zinc-500">Signed in as {user.name}.</p>
-      <ul className="mt-4 space-y-2">
-        {guilds.map((g) => (
-          <li key={g.id}>
-            <Link
-              href={`/view/${g.id}`}
-              className="block rounded-lg border border-zinc-200 bg-white px-4 py-3 hover:bg-zinc-50"
-            >
-              <span className="text-sm font-medium">{g.title}</span>
-              <span className="block text-xs text-zinc-500">
-                {g.make.name} {g.model.name} {g.generation.name}
-              </span>
-            </Link>
-          </li>
-        ))}
-        {guilds.length === 0 && (
-          <li className="rounded-lg border border-zinc-200 bg-white px-4 py-6 text-center text-sm text-zinc-400">
-            No guides granted to you yet.
-          </li>
-        )}
-      </ul>
-    </main>
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white">
+        <div className="mx-auto flex max-w-7xl items-center gap-1 px-4 py-2">
+          <Link href="/my-guilds" className="mr-4 shrink-0 font-semibold">
+            Igla Guides
+          </Link>
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="hidden text-xs text-zinc-500 sm:inline">
+              {user.name} · installer
+            </span>
+            <form action={logoutAction}>
+              <button className="rounded-md px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100">
+                Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
+        <GuideBrowser
+          guilds={guilds}
+          sp={sp}
+          basePath="/my-guilds"
+          title="Your installation guides"
+          guideHref={(id) => `/view/${id}`}
+        />
+      </main>
+    </div>
   );
 }
