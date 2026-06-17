@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { loadGuildDoc, duplicateGuild } from "@/lib/guild-doc";
+import { loadGuildDoc, duplicateGuild, publishGuild, PublishConflictError } from "@/lib/guild-doc";
 import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
 import GrantPanel from "@/components/guides/grant-panel";
@@ -13,11 +13,11 @@ export const dynamic = "force-dynamic";
 
 export default async function GuildPreviewPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string; label?: string }>;
+  searchParams: Promise<{ created?: string; label?: string; publish_error?: string }>;
 }) {
   const user = await requireRole("ADMIN", "TECH");
   const { id } = await props.params;
-  const { created, label } = await props.searchParams;
+  const { created, label, publish_error } = await props.searchParams;
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
 
@@ -58,6 +58,22 @@ export default async function GuildPreviewPage(props: {
     redirect(`/guides/${newId}/edit`);
   }
 
+  // Publish straight from this preview, so admins don't have to open the editor
+  // just to make a checked-over draft live.
+  async function publishAction() {
+    "use server";
+    const u = await requireRole("ADMIN", "TECH");
+    try {
+      await publishGuild(id, u.id);
+    } catch (e) {
+      if (e instanceof PublishConflictError) {
+        redirect(`/guides/${id}?publish_error=conflict`);
+      }
+      throw e;
+    }
+    redirect(`/guides/${id}`);
+  }
+
   const statusClass =
     doc.status === "PUBLISHED"
       ? "bg-green-100 text-green-800"
@@ -88,9 +104,19 @@ export default async function GuildPreviewPage(props: {
               expiryOptions={EXPIRY_OPTIONS}
               users={shareUsers}
             />
+          ) : doc.status === "DRAFT" ? (
+            <form action={publishAction}>
+              <button
+                type="submit"
+                className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-500"
+                title="Make this draft live — then it can be shared and served to installers"
+              >
+                ✓ Publish
+              </button>
+            </form>
           ) : (
-            <span className="text-xs text-zinc-400" title="Publish the guide before sharing">
-              Publish to share
+            <span className="text-xs text-zinc-400" title="Restore from the editor before publishing">
+              Archived
             </span>
           )}
           <Link
@@ -118,6 +144,14 @@ export default async function GuildPreviewPage(props: {
           </Link>
         </div>
       </div>
+
+      {publish_error === "conflict" && (
+        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Another <strong>published</strong> guide already exists for this exact
+          vehicle + product identity. Unpublish or change that one&apos;s
+          identity before publishing this draft.
+        </div>
+      )}
 
       {/* Installer-eye preview (dark, exactly as served — minus the per-view watermark) */}
       <div className="mt-4 rounded-xl bg-zinc-900 px-4 py-6">
