@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { signedViewUrl, getObjectDataUrl } from "@/lib/s3";
 import type { GuildDoc } from "@/lib/guild-doc";
 import { sectionColors } from "@/lib/blocks";
-import { AnnoShape, type Anno } from "@/components/images/annotator";
+import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
 
 type AnnotationRow = {
@@ -95,6 +95,9 @@ export default async function GuildView({
   });
   const urlMap = new Map<string, string>();
   const annoMap = new Map<string, AnnotationRow[]>();
+  // width / height seed each overlay's viewBox so callouts render at the right
+  // scale even before client JS measures the image (server / no-JS / PDF).
+  const aspectMap = new Map<string, number>();
   await Promise.all(
     assets.map(async (a) => {
       const url = inlineImages
@@ -102,6 +105,7 @@ export default async function GuildView({
         : await signedViewUrl(a.s3Key, 300);
       if (url) urlMap.set(a.id, url);
       annoMap.set(a.id, a.annotations as AnnotationRow[]);
+      if (a.width && a.height) aspectMap.set(a.id, a.width / a.height);
     })
   );
 
@@ -147,6 +151,7 @@ export default async function GuildView({
                     content={b.content as Record<string, unknown>}
                     urlMap={urlMap}
                     annoMap={annoMap}
+                    aspectMap={aspectMap}
                     guildId={doc.id}
                     t={t}
                   />
@@ -312,6 +317,7 @@ function BlockView({
   content: c,
   urlMap,
   annoMap,
+  aspectMap,
   guildId,
   t,
 }: {
@@ -319,6 +325,7 @@ function BlockView({
   content: Record<string, unknown>;
   urlMap: Map<string, string>;
   annoMap: Map<string, AnnotationRow[]>;
+  aspectMap: Map<string, number>;
   guildId: string;
   t: ReturnType<typeof themeClasses>;
 }) {
@@ -361,11 +368,10 @@ function BlockView({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={url} alt={String(c.caption ?? "")} className="w-full rounded-lg" data-zoomable />
             {annos.length > 0 && (
-              <svg className="pointer-events-none absolute inset-0 h-full w-full">
-                {annos.map((a, i) => (
-                  <AnnoShape key={a.id} anno={a as unknown as Anno} index={i} callout />
-                ))}
-              </svg>
+              <AnnoOverlay
+                annos={annos as unknown as Anno[]}
+                aspect={aspectMap.get(id)}
+              />
             )}
           </div>
           <AnnoLegend annos={annos} />
@@ -404,11 +410,10 @@ function BlockView({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={url} alt={it.caption ?? ""} className="block w-full rounded-lg" data-zoomable />
                   {annos.length > 0 && (
-                    <svg className="pointer-events-none absolute inset-0 h-full w-full">
-                      {annos.map((a, k) => (
-                        <AnnoShape key={a.id} anno={a as unknown as Anno} index={k} callout />
-                      ))}
-                    </svg>
+                    <AnnoOverlay
+                      annos={annos as unknown as Anno[]}
+                      aspect={aspectMap.get(it.imageAssetId)}
+                    />
                   )}
                 </div>
                 <AnnoLegend annos={annos} />

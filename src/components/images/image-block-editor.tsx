@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { uploadImage } from "@/lib/client/offline";
 import { useImageUrl } from "./use-image-url";
-import Annotator, { AnnoShape, type Anno } from "./annotator";
+import Annotator, { AnnoOverlay, type Anno } from "./annotator";
 
 type SingleContent = { imageAssetId?: string; heading?: string; caption?: string };
 type GalleryContent = {
@@ -116,14 +116,7 @@ function AnnotationOverlay({
       cancelled = true;
     };
   }, [assetId, version]);
-  if (annos.length === 0) return null;
-  return (
-    <svg className="pointer-events-none absolute inset-0 h-full w-full">
-      {annos.map((a, i) => (
-        <AnnoShape key={i} anno={a} index={i} callout />
-      ))}
-    </svg>
-  );
+  return <AnnoOverlay annos={annos} />;
 }
 
 function SingleEditor({

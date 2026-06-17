@@ -909,3 +909,64 @@ function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: st
     </g>
   );
 }
+
+// Reference width the callout geometry (label boxes, text, arrows) is authored
+// against. Giving the overlay <svg> a viewBox of this width makes every callout
+// a constant FRACTION of the image instead of a fixed pixel size — so labels
+// stay readable on the big lightbox yet shrink to fit tiny guide thumbnails,
+// rather than swamping them.
+const ANNO_VBASE = 1500;
+
+/**
+ * Read-only annotation overlay for a single image (viewer + editor thumbnails).
+ * It sizes its own viewBox to the image's aspect ratio so the callouts scale
+ * with however large the image is displayed — and because the computed viewBox
+ * is a real attribute, it survives the lightbox's innerHTML clone too.
+ *
+ * `aspect` (width / height) seeds the server / no-JS render; on the client a
+ * ResizeObserver refines it to the exact on-screen box. Renders nothing when
+ * there are no annotations.
+ */
+export function AnnoOverlay({
+  annos,
+  aspect,
+  callout = true,
+}: {
+  annos: Anno[];
+  aspect?: number;
+  callout?: boolean;
+}) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [vb, setVb] = useState<string | undefined>(
+    aspect && aspect > 0
+      ? `0 0 ${ANNO_VBASE} ${Math.round(ANNO_VBASE / aspect)}`
+      : undefined
+  );
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        setVb(`0 0 ${ANNO_VBASE} ${Math.round((ANNO_VBASE * r.height) / r.width)}`);
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  if (annos.length === 0) return null;
+  return (
+    <svg
+      ref={ref}
+      viewBox={vb}
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 h-full w-full"
+    >
+      {annos.map((a, i) => (
+        <AnnoShape key={(a as any).id ?? i} anno={a} index={i} callout={callout} />
+      ))}
+    </svg>
+  );
+}
