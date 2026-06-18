@@ -7,6 +7,12 @@
 import { useEffect, useRef, useState } from "react";
 import { watermarkStamp } from "@/lib/watermark";
 
+// Zoom stops the +/- buttons walk through (25%…200%); gestures clamp to the ends.
+const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const MIN_ZOOM = ZOOM_STEPS[0];
+const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
 type WM = { label: string; reference: string };
 
 // Em-spaces (U+2003) between repeats — plain spaces collapse to one in HTML.
@@ -73,23 +79,18 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     const oh = outer.clientHeight;
     const sw = c.offsetWidth * z;
     const sh = c.offsetHeight * z;
-    // Allow centering when the content is smaller than the viewport.
-    const minX = Math.min(0, ow - sw);
-    const minY = Math.min(0, oh - sh);
-    const maxX = Math.max(0, ow - sw);
-    const maxY = Math.max(0, oh - sh);
-    return {
-      x: Math.min(maxX, Math.max(minX, px)),
-      y: Math.min(maxY, Math.max(minY, py)),
-    };
+    // When the content is smaller than the viewport on an axis, center it on
+    // that axis; otherwise clamp so you can't pan past an edge.
+    const axis = (o: number, s: number, p: number) =>
+      s <= o ? (o - s) / 2 : Math.min(0, Math.max(o - s, p));
+    return { x: axis(ow, sw, px), y: axis(oh, sh, py) };
   };
 
   const zoomToCenter = (z: number) => {
-    const nz = Math.min(6, Math.max(1, z));
+    const nz = clampZoom(z);
     const outer = outerRef.current;
-    if (!outer || nz === 1) {
+    if (!outer) {
       setZoom(nz);
-      setPan({ x: 0, y: 0 });
       return;
     }
     const cx = outer.clientWidth / 2;
@@ -98,6 +99,21 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     const uy = (cy - pan.y) / zoom;
     setZoom(nz);
     setPan(clampPan(nz, cx - nz * ux, cy - nz * uy));
+  };
+
+  // Walk to the next/previous discrete zoom stop (the +/- buttons).
+  const stepZoom = (dir: 1 | -1) => {
+    let idx = 0;
+    let best = Infinity;
+    ZOOM_STEPS.forEach((s, i) => {
+      const d = Math.abs(s - zoom);
+      if (d < best) {
+        best = d;
+        idx = i;
+      }
+    });
+    const ni = Math.min(ZOOM_STEPS.length - 1, Math.max(0, idx + dir));
+    zoomToCenter(ZOOM_STEPS[ni]);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -129,13 +145,13 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
       const o = outer.getBoundingClientRect();
       const pts = [...pointers.current.values()];
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
-      const nz = Math.min(6, Math.max(1, (pinch.current.startZoom * dist) / pinch.current.startDist));
+      const nz = clampZoom((pinch.current.startZoom * dist) / pinch.current.startDist);
       const midX = (pts[0].x + pts[1].x) / 2 - o.left;
       const midY = (pts[0].y + pts[1].y) / 2 - o.top;
       const ux = (pinch.current.midX - o.left - pinch.current.panX) / pinch.current.startZoom;
       const uy = (pinch.current.midY - o.top - pinch.current.panY) / pinch.current.startZoom;
       setZoom(nz);
-      setPan(nz === 1 ? { x: 0, y: 0 } : clampPan(nz, midX - nz * ux, midY - nz * uy));
+      setPan(clampPan(nz, midX - nz * ux, midY - nz * uy));
       return;
     }
     if (drag.current) {
@@ -159,12 +175,7 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     const outer = outerRef.current;
     if (!outer) return;
     const o = outer.getBoundingClientRect();
-    const nz = Math.min(6, Math.max(1, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
-    if (nz === 1) {
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
-      return;
-    }
+    const nz = clampZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
     const cx = e.clientX - o.left;
     const cy = e.clientY - o.top;
     const ux = (cx - pan.x) / zoom;
@@ -183,16 +194,16 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
         <span className="text-white/60">Drag to pan · scroll / pinch to zoom</span>
         <div className="ml-auto flex items-center gap-1">
           <button
-            onClick={() => zoomToCenter(zoom - 0.5)}
-            disabled={zoom <= 1}
+            onClick={() => stepZoom(-1)}
+            disabled={zoom <= MIN_ZOOM}
             className="rounded-md border border-white/30 px-2 py-1 leading-none disabled:opacity-40"
           >
             −
           </button>
           <span className="w-12 text-center text-xs text-white/70">{Math.round(zoom * 100)}%</span>
           <button
-            onClick={() => zoomToCenter(zoom + 0.5)}
-            disabled={zoom >= 6}
+            onClick={() => stepZoom(1)}
+            disabled={zoom >= MAX_ZOOM}
             className="rounded-md border border-white/30 px-2 py-1 leading-none disabled:opacity-40"
           >
             +
@@ -214,7 +225,7 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
-        onDoubleClick={() => zoomToCenter(zoom > 1 ? 1 : 2.5)}
+        onDoubleClick={() => zoomToCenter(zoom > 1 ? 1 : MAX_ZOOM)}
         onClick={(e) => {
           if (e.target === e.currentTarget) close();
         }}
