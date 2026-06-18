@@ -4,10 +4,13 @@
 // to pan. The clicked image's annotation overlay is cloned in, so callouts stay
 // on the wires. On installer-facing views a per-view watermark is stamped over
 // the zoomed image too (AGENTS.md #3 — a leaked screenshot stays traceable).
-/* eslint-disable @next/next/no-img-element */
 import { useEffect, useRef, useState } from "react";
+import { watermarkStamp } from "@/lib/watermark";
 
 type WM = { label: string; reference: string };
+
+// Em-spaces (U+2003) between repeats — plain spaces collapse to one in HTML.
+const WM_GAP = "\u2003\u2003\u2003";
 
 export default function ImageLightbox({ watermark }: { watermark?: WM }) {
   const [html, setHtml] = useState<string | null>(null);
@@ -172,9 +175,7 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
 
   if (!html) return null;
 
-  const stamp = watermark
-    ? `${watermark.label} · ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC · ${watermark.reference}`
-    : null;
+  const stamp = watermark ? watermarkStamp(watermark.label, watermark.reference) : null;
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
@@ -238,22 +239,22 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
         />
         {stamp && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-            {Array.from({ length: 12 }).map((_, i) => (
+            {Array.from({ length: 9 }).map((_, i) => (
               <div
                 key={i}
                 className="absolute whitespace-nowrap text-sm font-medium"
                 style={{
-                  top: `${i * 9}%`,
-                  left: i % 2 === 0 ? "-10%" : "-25%",
+                  // Evenly spaced parallel lines + real gaps between repeats
+                  // (matches the page Watermark — no doubled/overlapping look).
+                  top: `${i * 12}%`,
+                  left: "-25%",
                   width: "150%",
                   transform: "rotate(-20deg)",
                   color: "rgba(255,255,255,0.10)",
-                  letterSpacing: "0.05em",
+                  letterSpacing: "0.06em",
                 }}
               >
-                {Array.from({ length: 6 })
-                  .map(() => stamp)
-                  .join("      ")}
+                {Array.from({ length: 5 }).map(() => stamp).join(WM_GAP)}
               </div>
             ))}
           </div>

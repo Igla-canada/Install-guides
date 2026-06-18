@@ -6,6 +6,7 @@ import { requireRole, requestMeta } from "@/lib/auth";
 import { logEvent } from "@/lib/audit";
 import { loadGuildDoc } from "@/lib/guild-doc";
 import GuildView from "@/components/viewer/guild-view";
+import { formatEastern } from "@/lib/watermark";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default async function PrintGuildPage(props: {
     meta: { via: "print_view" },
   });
 
-  const stamp = `Internal export Â· ${user.name} Â· ${new Date().toISOString()}`;
+  const stamp = `Internal export · ${user.name} · ${formatEastern(new Date())}`;
   return (
     <main className="bg-white p-8 print:p-0">
       <p className="mb-4 text-xs text-zinc-400 print:fixed print:bottom-2 print:left-2">
