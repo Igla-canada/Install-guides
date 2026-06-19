@@ -24,6 +24,9 @@ import { hashToken, newToken } from "@/lib/auth";
 import { logEvent } from "@/lib/audit";
 
 const GRANT_HOURS = 24;
+// Max number of DISTINCT guides that may ever be served for one unit. Lets an installer
+// correct a wrong make/model/year once (2 guides total), then no more are issued.
+const MAX_GUIDES_PER_UNIT = 2;
 
 export async function POST(req: NextRequest) {
   if (!(await checkServiceToken(req))) {
@@ -110,36 +113,59 @@ export async function POST(req: NextRequest) {
     chosen = candidates[0];
   }
 
-  // 3) Mint (or reuse) the direct-open, unit-bound, 1-day grant.
-  const url = await issueUnitGrant({
+  // 3) Mint (or reuse) the direct-open, unit-bound, 1-day grant — capped per unit.
+  const grant = await issueUnitGrant({
     guildId: chosen.guildId,
     unitSerial,
     label:
       [installerLabel || "Installer", dealerLabel].filter(Boolean).join(" @ ") +
       ` · unit ${unitSerial}`,
   });
+  if ("limited" in grant) {
+    return NextResponse.json({
+      ok: false,
+      error: "guide_limit",
+      servedGuides: grant.served,
+      maxGuides: grant.max,
+    });
+  }
 
-  return NextResponse.json({ ok: true, url, guild: chosen });
+  // guidesRemaining: how many NEW guides this unit may still be served (0 = locked).
+  return NextResponse.json({
+    ok: true,
+    url: grant.url,
+    guild: chosen,
+    guidesRemaining: grant.remaining,
+  });
 }
 
 async function issueUnitGrant(opts: {
   guildId: string;
   unitSerial: string;
   label: string;
-}): Promise<string> {
+}): Promise<{ url: string; remaining: number } | { limited: true; served: number; max: number }> {
   const now = new Date();
-  // One active guide per unit. Re-click for the SAME guide → reuse the link.
-  // A different guide (unit released + reinstalled) → revoke the old one.
-  const active = await prisma.accessGrant.findFirst({
-    where: {
-      granteeUnit: opts.unitSerial,
-      directOpen: true,
-      revokedAt: null,
-      expiresAt: { gt: now },
-    },
+
+  // Every direct-open grant ever minted for this unit (newest first). The set of distinct
+  // guildIds across them is how many DIFFERENT guides this unit has been served.
+  const grants = await prisma.accessGrant.findMany({
+    where: { granteeUnit: opts.unitSerial, directOpen: true },
     include: { guilds: true },
     orderBy: { createdAt: "desc" },
   });
+  const servedGuideIds = new Set(grants.flatMap((g) => g.guilds.map((x) => x.guildId)));
+  const isNewGuide = !servedGuideIds.has(opts.guildId);
+
+  // Cap distinct guides per unit. Re-opening a guide already served (closed tab, expired link)
+  // is always allowed and does NOT count — only a brand-new guide consumes the budget.
+  if (isNewGuide && servedGuideIds.size >= MAX_GUIDES_PER_UNIT) {
+    return { limited: true, served: servedGuideIds.size, max: MAX_GUIDES_PER_UNIT };
+  }
+  const distinctAfter = isNewGuide ? servedGuideIds.size + 1 : servedGuideIds.size;
+  const remaining = Math.max(0, MAX_GUIDES_PER_UNIT - distinctAfter);
+
+  // One active link per unit. Re-click for the SAME guide → reuse (rotate) the link.
+  const active = grants.find((g) => !g.revokedAt && g.expiresAt > now) ?? null;
   if (active) {
     const sameGuide = active.guilds.some((g) => g.guildId === opts.guildId);
     if (sameGuide) {
@@ -150,7 +176,7 @@ async function issueUnitGrant(opts: {
         where: { id: active.id },
         data: { tokenHash: hashToken(token), expiresAt: hoursFromNow(GRANT_HOURS) },
       });
-      return autoUrl(token);
+      return { url: autoUrl(token), remaining };
     }
     await prisma.accessGrant.update({
       where: { id: active.id },
@@ -176,7 +202,7 @@ async function issueUnitGrant(opts: {
     guildId: opts.guildId,
     meta: { source: "portal", unit: opts.unitSerial },
   });
-  return autoUrl(token);
+  return { url: autoUrl(token), remaining };
 }
 
 const hoursFromNow = (h: number) => new Date(Date.now() + h * 3600_000);
