@@ -1,10 +1,48 @@
 "use client";
-// Identity layer editor — dropdown-only (AGENTS.md #1). "Go back and fix" for
-// the wizard answers: any identity field is editable here at any time.
+// Identity layer editor — dropdown-only (AGENTS.md #1). Edits are STAGED: the
+// fields change locally and NOTHING is written until you press "Save identity"
+// (so an accidental dropdown change can't silently re-point a guide to another
+// vehicle). Discard reverts to the saved identity. The guide title and all the
+// content edits elsewhere stay instant — only the identity FKs are gated.
+//
+// To add a NEW make / model / generation (year frame) use the admin "Vehicle
+// taxonomy" manager; this panel only re-points a guide onto existing options.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { useEffect, useState } from "react";
 import type { ClientDoc } from "./types";
 import type { Taxonomy } from "@/lib/taxonomy";
+
+type Draft = {
+  makeId: string;
+  modelId: string;
+  generationId: string;
+  trimId: string | null;
+  regionId: string;
+  productIds: string[];
+  genName: string;
+  genYearStart: number;
+  genYearEnd: number | null;
+};
+
+const sameIds = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((x, i) => x === b[i]);
+
+function baseDraft(doc: ClientDoc): Draft {
+  return {
+    makeId: doc.makeId,
+    modelId: doc.modelId,
+    generationId: doc.generationId,
+    trimId: doc.trimId ?? null,
+    regionId: doc.regionId,
+    productIds: doc.products?.length
+      ? doc.products.map((p) => p.iglaProductId)
+      : [doc.iglaProductId],
+    genName: doc.generation.name,
+    genYearStart: doc.generation.yearStart,
+    genYearEnd: doc.generation.yearEnd ?? null,
+  };
+}
 
 export default function IdentityPanel({
   doc,
@@ -19,202 +57,283 @@ export default function IdentityPanel({
   onToggle: () => void;
   dispatch: (ops: any[]) => Promise<void>;
 }) {
-  const make = taxonomy.makes.find((m) => m.id === doc.makeId);
-  const model = make?.models.find((m) => m.id === doc.modelId);
-  const generation = model?.generations.find((g) => g.id === doc.generationId);
+  const [draft, setDraft] = useState<Draft>(() => baseDraft(doc));
+  const [saving, setSaving] = useState(false);
 
-  const set = (data: Record<string, string | null>) =>
-    void dispatch([{ op: "update_identity", data }]);
+  // Re-sync to the document only when its SAVED identity actually changes (i.e.
+  // after a successful save). Because we don't dispatch while editing, `doc`
+  // stays put during editing, so this never clobbers an in-progress draft.
+  const docSig = [
+    doc.makeId,
+    doc.modelId,
+    doc.generationId,
+    doc.trimId ?? "",
+    doc.regionId,
+    doc.generation.name,
+    doc.generation.yearStart,
+    doc.generation.yearEnd ?? "",
+    doc.products?.length ? doc.products.map((p) => p.iglaProductId).join(",") : doc.iglaProductId,
+  ].join("|");
+  useEffect(() => {
+    setDraft(baseDraft(doc));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docSig]);
 
-  const setGen = (data: { name?: string; yearStart?: number; yearEnd?: number | null }) =>
-    void dispatch([{ op: "update_generation", ...data }]);
+  const make = taxonomy.makes.find((m) => m.id === draft.makeId);
+  const model = make?.models.find((m) => m.id === draft.modelId);
+  const generation = model?.generations.find((g) => g.id === draft.generationId);
 
-  const selectedProductIds = doc.products?.length
-    ? doc.products.map((p) => p.iglaProductId)
-    : [doc.iglaProductId];
-  const toggleProduct = (id: string) => {
-    const next = selectedProductIds.includes(id)
-      ? selectedProductIds.filter((x) => x !== id)
-      : [...selectedProductIds, id];
-    if (next.length === 0) return; // keep at least one
-    void dispatch([{ op: "set_products", productIds: next }]);
+  // Selecting a make/model resets the dependent fields to that branch's first
+  // option; selecting a generation pulls its stored years into the editor.
+  const pickMake = (makeId: string) => {
+    const mk = taxonomy.makes.find((m) => m.id === makeId);
+    const md = mk?.models[0];
+    const g = md?.generations[0];
+    setDraft((d) => ({
+      ...d,
+      makeId,
+      modelId: md?.id ?? "",
+      generationId: g?.id ?? "",
+      trimId: null,
+      genName: g?.name ?? "",
+      genYearStart: g?.yearStart ?? 0,
+      genYearEnd: g?.yearEnd ?? null,
+    }));
+  };
+  const pickModel = (modelId: string) => {
+    const md = make?.models.find((m) => m.id === modelId);
+    const g = md?.generations[0];
+    setDraft((d) => ({
+      ...d,
+      modelId,
+      generationId: g?.id ?? "",
+      trimId: null,
+      genName: g?.name ?? "",
+      genYearStart: g?.yearStart ?? 0,
+      genYearEnd: g?.yearEnd ?? null,
+    }));
+  };
+  const pickGen = (generationId: string) => {
+    const g = model?.generations.find((x) => x.id === generationId);
+    setDraft((d) => ({
+      ...d,
+      generationId,
+      trimId: null,
+      genName: g?.name ?? "",
+      genYearStart: g?.yearStart ?? 0,
+      genYearEnd: g?.yearEnd ?? null,
+    }));
+  };
+
+  const toggleProduct = (id: string) =>
+    setDraft((d) => {
+      const next = d.productIds.includes(id)
+        ? d.productIds.filter((x) => x !== id)
+        : [...d.productIds, id];
+      return next.length === 0 ? d : { ...d, productIds: next }; // keep at least one
+    });
+
+  // The guide title isn't identity — keep it instant (no Save gate).
+  const setTitle = (title: string) =>
+    void dispatch([{ op: "update_identity", data: { title } }]);
+
+  const base = baseDraft(doc);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+
+  const save = async () => {
+    const ops: any[] = [];
+    const idData: Record<string, string | null> = {};
+    if (draft.makeId !== base.makeId) idData.makeId = draft.makeId;
+    if (draft.modelId !== base.modelId) idData.modelId = draft.modelId;
+    if (draft.generationId !== base.generationId) idData.generationId = draft.generationId;
+    if ((draft.trimId ?? null) !== (base.trimId ?? null)) idData.trimId = draft.trimId ?? null;
+    if (draft.regionId !== base.regionId) idData.regionId = draft.regionId;
+    if (Object.keys(idData).length) ops.push({ op: "update_identity", data: idData });
+
+    if (!sameIds(draft.productIds, base.productIds))
+      ops.push({ op: "set_products", productIds: draft.productIds });
+
+    // Year/name edits apply to the (possibly newly) selected generation. Note
+    // this renames the SHARED generation for every guide on it — by design.
+    const selGen = taxonomy.makes
+      .flatMap((m) => m.models)
+      .flatMap((md) => md.generations)
+      .find((g) => g.id === draft.generationId);
+    if (selGen) {
+      const gd: { name?: string; yearStart?: number; yearEnd?: number | null } = {};
+      if (draft.genName.trim() && draft.genName.trim() !== selGen.name) gd.name = draft.genName.trim();
+      if (draft.genYearStart !== selGen.yearStart) gd.yearStart = draft.genYearStart;
+      if ((draft.genYearEnd ?? null) !== (selGen.yearEnd ?? null)) gd.yearEnd = draft.genYearEnd ?? null;
+      if (Object.keys(gd).length) ops.push({ op: "update_generation", ...gd });
+    }
+
+    if (!ops.length) return;
+    setSaving(true);
+    await dispatch(ops);
+    setSaving(false); // docSig changes → effect resets the draft to the saved state
   };
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white">
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-4 py-3 text-left"
-      >
+      <button onClick={onToggle} className="flex w-full items-center gap-2 px-4 py-3 text-left">
         <div className="min-w-0 flex-1">
           <input
             value={doc.title}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => set({ title: e.target.value })}
+            onChange={(e) => setTitle(e.target.value)}
             className="w-full truncate border-0 bg-transparent text-xl font-semibold focus:outline-none"
           />
           <p className="truncate text-xs text-zinc-500">
             {doc.make.name} {doc.model.name} {doc.generation.name}
             {doc.trim ? ` · ${doc.trim.name}` : ""} ·{" "}
-            {doc.iglaProduct.productLine.name} {doc.iglaProduct.name} ·{" "}
-            {doc.region.name}
+            {doc.iglaProduct.productLine.name} {doc.iglaProduct.name} · {doc.region.name}
           </p>
         </div>
+        {dirty && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+            unsaved
+          </span>
+        )}
         <span className="text-sm text-zinc-400">{open ? "▲" : "▼ identity"}</span>
       </button>
 
       {open && (
-        <div className="grid grid-cols-1 gap-3 border-t border-zinc-100 p-4 sm:grid-cols-2">
-          <Select
-            label="Make"
-            value={doc.makeId}
-            onChange={(v) => set({ makeId: v })}
-            options={taxonomy.makes.map((m) => ({ value: m.id, label: m.name }))}
-          />
-          <Select
-            label="Model"
-            value={doc.modelId}
-            onChange={(v) => set({ modelId: v })}
-            options={(make?.models ?? []).map((m) => ({
-              value: m.id,
-              label: m.name,
-            }))}
-          />
-          <Select
-            label="Generation"
-            value={doc.generationId}
-            onChange={(v) => set({ generationId: v })}
-            options={(() => {
-              // The taxonomy prop is the snapshot from page load, so the option
-              // label for the generation we're editing here goes stale the
-              // moment its years change. Render the selected one from the live
-              // doc instead so the dropdown tracks the "Generation years" edits.
-              const gens = model?.generations ?? [];
-              const opts = gens.map((g) => {
-                const cur = g.id === doc.generationId;
-                const name = cur ? doc.generation.name : g.name;
-                const ys = cur ? doc.generation.yearStart : g.yearStart;
-                const ye = cur ? doc.generation.yearEnd : g.yearEnd;
+        <div className="border-t border-zinc-100 p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Select
+              label="Make"
+              value={draft.makeId}
+              onChange={pickMake}
+              options={taxonomy.makes.map((m) => ({ value: m.id, label: m.name }))}
+            />
+            <Select
+              label="Model"
+              value={draft.modelId}
+              onChange={pickModel}
+              options={(make?.models ?? []).map((m) => ({ value: m.id, label: m.name }))}
+            />
+            <Select
+              label="Generation"
+              value={draft.generationId}
+              onChange={pickGen}
+              options={(model?.generations ?? []).map((g) => {
+                const cur = g.id === draft.generationId;
+                const name = cur ? draft.genName : g.name;
+                const ys = cur ? draft.genYearStart : g.yearStart;
+                const ye = cur ? draft.genYearEnd : g.yearEnd;
                 return { value: g.id, label: `${name} (${ys}–${ye ?? "now"})` };
-              });
-              // Safety: keep the current generation selectable even if it isn't
-              // in the (stale) taxonomy list yet.
-              if (!opts.some((o) => o.value === doc.generationId)) {
-                opts.unshift({
-                  value: doc.generationId,
-                  label: `${doc.generation.name} (${doc.generation.yearStart}–${doc.generation.yearEnd ?? "now"})`,
-                });
-              }
-              return opts;
-            })()}
-          />
-          {/* Adjust the selected generation's real years so the Igla app stops
-              matching it past its end (e.g. a 2023–2025 guide shouldn't answer
-              for a 2027). Remounts when you switch generation. */}
-          <div
-            key={doc.generationId}
-            className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-1">
-              <span className="text-xs font-medium text-zinc-500">Generation years</span>
-              <span className="text-xs text-zinc-400">
-                which model-years the Igla app matches
-              </span>
+              })}
+            />
+            {/* Quick-edit the selected generation's real years (staged). To add
+                a brand-new year frame, use the admin Vehicle taxonomy manager. */}
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <span className="text-xs font-medium text-zinc-500">Generation years</span>
+                <span className="text-xs text-zinc-400">which model-years the Igla app matches</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col text-xs text-zinc-500">
+                  Label
+                  <input
+                    value={draft.genName}
+                    onChange={(e) => setDraft((d) => ({ ...d, genName: e.target.value }))}
+                    className="mt-1 w-40 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-zinc-500">
+                  From
+                  <input
+                    type="number"
+                    value={draft.genYearStart || ""}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, genYearStart: parseInt(e.target.value, 10) || 0 }))
+                    }
+                    className="mt-1 w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-zinc-500">
+                  To (blank = now)
+                  <input
+                    type="number"
+                    value={draft.genYearEnd ?? ""}
+                    placeholder="now"
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      setDraft((d) => ({ ...d, genYearEnd: raw ? parseInt(raw, 10) || null : null }));
+                    }}
+                    className="mt-1 w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
+                  />
+                </label>
+              </div>
+              <p className="mt-1.5 text-xs text-zinc-400">
+                Renaming or re-yearing applies to every guide on the {doc.model.name}{" "}
+                “{generation?.name ?? draft.genName}” generation.
+              </p>
             </div>
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <label className="flex flex-col text-xs text-zinc-500">
-                Label
-                <input
-                  defaultValue={doc.generation.name}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v && v !== doc.generation.name) setGen({ name: v });
-                  }}
-                  className="mt-1 w-40 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="flex flex-col text-xs text-zinc-500">
-                From
-                <input
-                  type="number"
-                  defaultValue={doc.generation.yearStart}
-                  onBlur={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    if (!Number.isNaN(n) && n !== doc.generation.yearStart)
-                      setGen({ yearStart: n });
-                  }}
-                  className="mt-1 w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="flex flex-col text-xs text-zinc-500">
-                To (blank = now)
-                <input
-                  type="number"
-                  defaultValue={doc.generation.yearEnd ?? ""}
-                  placeholder="now"
-                  onBlur={(e) => {
-                    const raw = e.target.value.trim();
-                    const next = raw ? parseInt(raw, 10) : null;
-                    if (next !== null && Number.isNaN(next)) return;
-                    if (next !== doc.generation.yearEnd) setGen({ yearEnd: next });
-                  }}
-                  className="mt-1 w-24 rounded-md border border-zinc-300 px-2 py-1.5 text-sm"
-                />
-              </label>
-            </div>
-            <p className="mt-1.5 text-xs text-zinc-400">
-              Shared across every guide that uses the {doc.model.name}{" "}
-              “{doc.generation.name}” generation.
-            </p>
-          </div>
-          <Select
-            label="Trim (optional)"
-            value={doc.trimId ?? ""}
-            onChange={(v) => set({ trimId: v || null })}
-            options={[
-              { value: "", label: "Whole generation" },
-              ...(generation?.trims ?? []).map((t) => ({
-                value: t.id,
-                label: t.name,
-              })),
-            ]}
-          />
-          <div className="sm:col-span-2">
-            <span className="text-xs font-medium text-zinc-500">Igla product(s)</span>
-            <div className="mt-1 space-y-2 rounded-md border border-zinc-300 bg-white p-2">
-              {taxonomy.productLines.map((pl) => (
-                <div key={pl.id}>
-                  <div className="text-xs font-medium uppercase text-zinc-400">{pl.name}</div>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                    {pl.products.map((p) => (
-                      <label key={p.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selectedProductIds.includes(p.id)}
-                          onChange={() => toggleProduct(p.id)}
-                        />
-                        {p.name}
-                      </label>
-                    ))}
+            <Select
+              label="Trim (optional)"
+              value={draft.trimId ?? ""}
+              onChange={(v) => setDraft((d) => ({ ...d, trimId: v || null }))}
+              options={[
+                { value: "", label: "Whole generation" },
+                ...(generation?.trims ?? []).map((t) => ({ value: t.id, label: t.name })),
+              ]}
+            />
+            <div className="sm:col-span-2">
+              <span className="text-xs font-medium text-zinc-500">Igla product(s)</span>
+              <div className="mt-1 space-y-2 rounded-md border border-zinc-300 bg-white p-2">
+                {taxonomy.productLines.map((pl) => (
+                  <div key={pl.id}>
+                    <div className="text-xs font-medium uppercase text-zinc-400">{pl.name}</div>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                      {pl.products.map((p) => (
+                        <label key={p.id} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={draft.productIds.includes(p.id)}
+                            onChange={() => toggleProduct(p.id)}
+                          />
+                          {p.name}
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-zinc-400">
+                The guide is served for any ticked product. First ticked is the primary.
+              </p>
             </div>
-            <p className="mt-1 text-xs text-zinc-400">
-              The guide is served for any ticked product. First ticked is the primary.
-            </p>
+            <Select
+              label="Region"
+              value={draft.regionId}
+              onChange={(v) => setDraft((d) => ({ ...d, regionId: v }))}
+              options={taxonomy.regions.map((r) => ({ value: r.id, label: r.name }))}
+            />
           </div>
-          <Select
-            label="Region"
-            value={doc.regionId}
-            onChange={(v) => set({ regionId: v })}
-            options={taxonomy.regions.map((r) => ({ value: r.id, label: r.name }))}
-          />
-          <p className="text-xs text-zinc-400 sm:col-span-2">
-            These fields drive the Igla app&apos;s automatic guide lookup. New
-            makes/models/years are created from the New-guild form; this panel
-            re-points an existing guild.
-          </p>
+
+          {/* Save bar — identity is only written when you commit it here. */}
+          <div className="mt-4 flex items-center gap-2 border-t border-zinc-100 pt-3">
+            <button
+              onClick={() => void save()}
+              disabled={!dirty || saving}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Save identity"}
+            </button>
+            <button
+              onClick={() => setDraft(baseDraft(doc))}
+              disabled={!dirty || saving}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-40"
+            >
+              Discard
+            </button>
+            <span className="text-xs text-zinc-400">
+              {dirty
+                ? "Pending identity changes aren’t live until you save."
+                : "These fields drive the Igla app’s automatic guide lookup."}
+            </span>
+          </div>
         </div>
       )}
     </div>
