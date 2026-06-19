@@ -173,7 +173,14 @@ export default async function UsersPage() {
   const makes = await prisma.make.findMany({ orderBy: { name: "asc" } });
   const productLines = await prisma.productLine.findMany({
     orderBy: { name: "asc" },
-    include: { products: { orderBy: { name: "asc" } } },
+    include: {
+      products: {
+        orderBy: { name: "asc" },
+        // guilds = times it's a guide's PRIMARY product (the FK that blocks a
+        // delete); guildLinks = every guide that covers it. Either means in-use.
+        include: { _count: { select: { guilds: true, guildLinks: true } } },
+      },
+    },
   });
   const inventory = await prisma.inventoryUnit.findMany({
     orderBy: { createdAt: "desc" },
@@ -358,17 +365,36 @@ export default async function UsersPage() {
             <div key={pl.id} className="mt-2">
               <div className="text-xs font-medium uppercase text-zinc-400">{pl.name}</div>
               <div className="mt-1 flex flex-wrap gap-1">
-                {pl.products.map((p) => (
-                  <span key={p.id} className="flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs">
-                    {p.name}
-                    <form action={deleteProduct} className="inline">
+                {pl.products.map((p) => {
+                  const primary = p._count.guilds;
+                  const inUse = primary > 0 || p._count.guildLinks > 0;
+                  // In-use products can't be deleted (guides reference them) —
+                  // show the count instead of a dead ✕. Unused ones get a real,
+                  // working delete (the chip itself is the form, so no invalid
+                  // <form>-inside-<span> that silently broke the button before).
+                  return inUse ? (
+                    <span
+                      key={p.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs"
+                      title={`Used by ${primary} guide${primary === 1 ? "" : "s"} — repoint those guides before it can be removed`}
+                    >
+                      {p.name}
+                      <span className="text-zinc-400">· {primary}</span>
+                    </span>
+                  ) : (
+                    <form
+                      key={p.id}
+                      action={deleteProduct}
+                      className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs"
+                    >
                       <input type="hidden" name="id" value={p.id} />
-                      <button className="text-zinc-300 hover:text-red-500" title="Delete (blocked if any guide uses it)">
+                      {p.name}
+                      <button className="text-zinc-300 hover:text-red-500" title="Delete (unused)">
                         ✕
                       </button>
                     </form>
-                  </span>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
