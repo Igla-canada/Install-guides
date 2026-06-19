@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import MakeLogo from "@/components/guides/make-logo";
 import NotifyTest from "@/components/admin/notify-test";
 import InstallerAccessForm from "@/components/users/installer-access-form";
+import TaxonomyManager from "@/components/admin/taxonomy-manager";
 
 async function setMakeLogo(formData: FormData) {
   "use server";
@@ -137,8 +138,11 @@ async function setInstallerGuilds(formData: FormData) {
   revalidatePath("/users");
 }
 
-export default async function UsersPage() {
+export default async function UsersPage(props: {
+  searchParams: Promise<{ taxError?: string }>;
+}) {
   const admin = await requireRole("ADMIN");
+  const { taxError } = await props.searchParams;
   const users = await prisma.userAccount.findMany({
     orderBy: [{ role: "asc" }, { name: "asc" }],
     include: { installerGrants: { include: { user: false } } },
@@ -387,6 +391,8 @@ export default async function UsersPage() {
           </form>
         </div>
       </div>
+
+      <TaxonomyManager error={taxError} />
 
       {/* Manufacturer logos — shown on the Guides menu tiles. Known brands get
           a logo automatically; paste a URL to set or fix any of them. */}
