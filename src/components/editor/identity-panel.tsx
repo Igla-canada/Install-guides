@@ -84,10 +84,29 @@ export default function IdentityPanel({
             label="Generation"
             value={doc.generationId}
             onChange={(v) => set({ generationId: v })}
-            options={(model?.generations ?? []).map((g) => ({
-              value: g.id,
-              label: `${g.name} (${g.yearStart}–${g.yearEnd ?? "now"})`,
-            }))}
+            options={(() => {
+              // The taxonomy prop is the snapshot from page load, so the option
+              // label for the generation we're editing here goes stale the
+              // moment its years change. Render the selected one from the live
+              // doc instead so the dropdown tracks the "Generation years" edits.
+              const gens = model?.generations ?? [];
+              const opts = gens.map((g) => {
+                const cur = g.id === doc.generationId;
+                const name = cur ? doc.generation.name : g.name;
+                const ys = cur ? doc.generation.yearStart : g.yearStart;
+                const ye = cur ? doc.generation.yearEnd : g.yearEnd;
+                return { value: g.id, label: `${name} (${ys}–${ye ?? "now"})` };
+              });
+              // Safety: keep the current generation selectable even if it isn't
+              // in the (stale) taxonomy list yet.
+              if (!opts.some((o) => o.value === doc.generationId)) {
+                opts.unshift({
+                  value: doc.generationId,
+                  label: `${doc.generation.name} (${doc.generation.yearStart}–${doc.generation.yearEnd ?? "now"})`,
+                });
+              }
+              return opts;
+            })()}
           />
           {/* Adjust the selected generation's real years so the Igla app stops
               matching it past its end (e.g. a 2023–2025 guide shouldn't answer
