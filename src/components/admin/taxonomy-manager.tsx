@@ -24,10 +24,10 @@ async function renameMake(formData: FormData) {
   try {
     await prisma.make.update({ where: { id }, data: { name } });
   } catch {
-    redirect("/users?taxError=A+make+with+that+name+already+exists#taxonomy");
+    redirect("/users?tab=taxonomy&taxError=A+make+with+that+name+already+exists");
   }
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 async function renameModel(formData: FormData) {
@@ -39,10 +39,10 @@ async function renameModel(formData: FormData) {
   try {
     await prisma.model.update({ where: { id }, data: { name } });
   } catch {
-    redirect("/users?taxError=That+make+already+has+a+model+with+that+name#taxonomy");
+    redirect("/users?tab=taxonomy&taxError=That+make+already+has+a+model+with+that+name");
   }
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 async function addGeneration(formData: FormData) {
@@ -59,10 +59,10 @@ async function addGeneration(formData: FormData) {
       data: { modelId, name, yearStart, yearEnd: Number.isNaN(yearEnd as number) ? null : yearEnd },
     });
   } catch {
-    redirect("/users?taxError=That+model+already+has+a+generation+with+that+name#taxonomy");
+    redirect("/users?tab=taxonomy&taxError=That+model+already+has+a+generation+with+that+name");
   }
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 async function updateGeneration(formData: FormData) {
@@ -80,10 +80,10 @@ async function updateGeneration(formData: FormData) {
   try {
     await prisma.generation.update({ where: { id }, data });
   } catch {
-    redirect("/users?taxError=That+model+already+has+a+generation+with+that+name#taxonomy");
+    redirect("/users?tab=taxonomy&taxError=That+model+already+has+a+generation+with+that+name");
   }
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 // Re-parent a generation onto another model of the same make — and move every
@@ -101,10 +101,10 @@ async function moveGeneration(formData: FormData) {
       prisma.generation.update({ where: { id }, data: { modelId: targetModelId } }),
     ]);
   } catch {
-    redirect("/users?taxError=The+target+model+already+has+a+generation+with+that+name+-+rename+first#taxonomy");
+    redirect("/users?tab=taxonomy&taxError=The+target+model+already+has+a+generation+with+that+name+-+rename+first");
   }
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 async function deleteGeneration(formData: FormData) {
@@ -115,7 +115,7 @@ async function deleteGeneration(formData: FormData) {
   if (guilds > 0) return; // protected — guides still use it
   await prisma.generation.delete({ where: { id } }).catch(() => null);
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 async function deleteModel(formData: FormData) {
@@ -129,7 +129,7 @@ async function deleteModel(formData: FormData) {
   if (gens > 0 || guilds > 0) return; // only empty models can be removed
   await prisma.model.delete({ where: { id } }).catch(() => null);
   refresh();
-  redirect("/users#taxonomy");
+  redirect("/users?tab=taxonomy");
 }
 
 const fieldCls = "rounded-md border border-zinc-300 px-2 py-1 text-sm";
@@ -153,7 +153,7 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
   });
 
   return (
-    <div id="taxonomy" className="mt-10 rounded-xl border border-zinc-200 bg-white p-4">
+    <div id="taxonomy" className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
       <h2 className="text-sm font-semibold">Vehicle taxonomy (dropdown lists)</h2>
       <p className="mt-1 text-xs text-zinc-400">
         The make → model → generation options behind the identity dropdowns.

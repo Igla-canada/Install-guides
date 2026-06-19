@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { EXPIRY_OPTIONS } from "@/lib/grants";
@@ -138,11 +139,39 @@ async function setInstallerGuilds(formData: FormData) {
   revalidatePath("/users");
 }
 
+const ADMIN_TABS = [
+  { id: "users", label: "Users" },
+  { id: "products", label: "Products" },
+  { id: "taxonomy", label: "Vehicle taxonomy" },
+  { id: "logos", label: "Logos" },
+] as const;
+
+function AdminTabs({ active }: { active: string }) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-1 border-b border-zinc-200">
+      {ADMIN_TABS.map((t) => (
+        <Link
+          key={t.id}
+          href={`/users?tab=${t.id}`}
+          className={`-mb-px rounded-t-md border-b-2 px-3 py-2 text-sm ${
+            active === t.id
+              ? "border-zinc-900 font-medium text-zinc-900"
+              : "border-transparent text-zinc-500 hover:text-zinc-800"
+          }`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export default async function UsersPage(props: {
-  searchParams: Promise<{ taxError?: string }>;
+  searchParams: Promise<{ taxError?: string; tab?: string }>;
 }) {
   const admin = await requireRole("ADMIN");
-  const { taxError } = await props.searchParams;
+  const { taxError, tab: tabRaw } = await props.searchParams;
+  const tab = ADMIN_TABS.some((t) => t.id === tabRaw) ? (tabRaw as string) : "users";
   const users = await prisma.userAccount.findMany({
     orderBy: [{ role: "asc" }, { name: "asc" }],
     include: { installerGrants: { include: { user: false } } },
@@ -168,8 +197,12 @@ export default async function UsersPage(props: {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">Users</h1>
-      <p className="mt-1 text-sm text-zinc-500">
+      <h1 className="text-2xl font-semibold">Admin</h1>
+      <AdminTabs active={tab} />
+
+      {tab === "users" && (
+      <>
+      <p className="mt-4 text-sm text-zinc-500">
         Staff accounts (admin/tech) and persistent installer accounts.
         Installers only ever get the view-only, watermarked experience.
       </p>
@@ -333,10 +366,13 @@ export default async function UsersPage(props: {
       <div className="mt-8">
         <NotifyTest />
       </div>
+      </>
+      )}
 
       {/* Product catalog — the only thing that needs pre-managing (a fixed
           device list). Vehicles are auto-created from the New-guild form. */}
-      <div className="mt-10 max-w-2xl">
+      {tab === "products" && (
+      <div className="mt-6 max-w-2xl">
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
           <h2 className="text-sm font-semibold">Igla product catalog</h2>
           {productLines.map((pl) => (
@@ -391,12 +427,14 @@ export default async function UsersPage(props: {
           </form>
         </div>
       </div>
+      )}
 
-      <TaxonomyManager error={taxError} />
+      {tab === "taxonomy" && <TaxonomyManager error={taxError} />}
 
       {/* Manufacturer logos — shown on the Guides menu tiles. Known brands get
           a logo automatically; paste a URL to set or fix any of them. */}
-      <div className="mt-10 rounded-xl border border-zinc-200 bg-white p-4">
+      {tab === "logos" && (
+      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
         <h2 className="text-sm font-semibold">Manufacturer logos</h2>
         <p className="mt-1 text-xs text-zinc-400">
           Shown on the Guides menu. Leave blank to auto-detect by brand name;
@@ -429,6 +467,7 @@ export default async function UsersPage(props: {
           </ul>
         )}
       </div>
+      )}
     </div>
   );
 }
