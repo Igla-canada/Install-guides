@@ -915,7 +915,13 @@ function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: st
 // a constant FRACTION of the image instead of a fixed pixel size — so labels
 // stay readable on the big lightbox yet shrink to fit tiny guide thumbnails,
 // rather than swamping them.
-const ANNO_VBASE = 1500;
+//
+// This MUST match the width the label boxes are sized for in boxGeom (≈ the
+// fullscreen annotator's on-screen image width). If it's too large, the same
+// pixel sizes become a tiny fraction of the viewBox and labels render dwarfed
+// in the read-only views (preview / lightbox / thumbnails) even though they
+// look right in the annotator. ~640 keeps the preview matched to the editor.
+const ANNO_VBASE = 640;
 
 /**
  * Read-only annotation overlay for a single image (viewer + editor thumbnails).
