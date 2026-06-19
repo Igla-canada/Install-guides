@@ -113,27 +113,6 @@ async function deleteProduct(formData: FormData) {
   revalidatePath("/users");
 }
 
-async function addInventoryUnit(formData: FormData) {
-  "use server";
-  await requireRole("ADMIN");
-  const serial = String(formData.get("serial") ?? "").trim();
-  const iglaProductId = String(formData.get("iglaProductId") ?? "");
-  if (!serial || !iglaProductId) return;
-  await prisma.inventoryUnit
-    .create({ data: { serial, iglaProductId } })
-    .catch(() => null);
-  revalidatePath("/users");
-}
-
-async function deleteInventoryUnit(formData: FormData) {
-  "use server";
-  await requireRole("ADMIN");
-  await prisma.inventoryUnit
-    .delete({ where: { id: String(formData.get("id")) } })
-    .catch(() => null);
-  revalidatePath("/users");
-}
-
 async function setInstallerGuilds(formData: FormData) {
   "use server";
   await requireRole("ADMIN");
@@ -181,11 +160,6 @@ export default async function UsersPage() {
         include: { _count: { select: { guilds: true, guildLinks: true } } },
       },
     },
-  });
-  const inventory = await prisma.inventoryUnit.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    include: { iglaProduct: { include: { productLine: true } } },
   });
 
   return (
@@ -358,7 +332,7 @@ export default async function UsersPage() {
 
       {/* Product catalog — the only thing that needs pre-managing (a fixed
           device list). Vehicles are auto-created from the New-guild form. */}
-      <div className="mt-10 grid gap-4 lg:grid-cols-2">
+      <div className="mt-10 max-w-2xl">
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
           <h2 className="text-sm font-semibold">Igla product catalog</h2>
           {productLines.map((pl) => (
@@ -407,41 +381,6 @@ export default async function UsersPage() {
               ))}
             </select>
             <input name="name" required placeholder="Product name" className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm" />
-            <button className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100">
-              Add
-            </button>
-          </form>
-        </div>
-
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold">Unit serials (serial → product)</h2>
-          <p className="mt-1 text-xs text-zinc-400">
-            Lets the Igla app identify the product from a scanned unit serial.
-            Replaced by the portal inventory API when available.
-          </p>
-          <ul className="mt-2 max-h-48 overflow-y-auto text-sm">
-            {inventory.map((u) => (
-              <li key={u.id} className="flex items-center border-b border-zinc-50 py-1">
-                <span className="font-mono text-xs">{u.serial}</span>
-                <span className="ml-2 text-zinc-500">→ {u.iglaProduct.name}</span>
-                <form action={deleteInventoryUnit} className="ml-auto">
-                  <input type="hidden" name="id" value={u.id} />
-                  <button className="px-1 text-zinc-300 hover:text-red-500">✕</button>
-                </form>
-              </li>
-            ))}
-          </ul>
-          <form action={addInventoryUnit} className="mt-2 flex flex-wrap gap-2">
-            <input name="serial" required placeholder="Unit serial" className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm" />
-            <select name="iglaProductId" required className="rounded-md border border-zinc-300 px-2 py-1 text-sm">
-              {productLines.flatMap((pl) =>
-                pl.products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))
-              )}
-            </select>
             <button className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100">
               Add
             </button>
