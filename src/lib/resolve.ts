@@ -129,7 +129,28 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
       null;
   }
 
-  // Year → generation range.
+  // If the caller named a make/model we couldn't resolve, there is no guide for that
+  // vehicle. Bail out with NO candidates — never fall through to an unfiltered query,
+  // which would hand back every published guide ("no guide for this make" must mean none).
+  const makeUnresolved = Boolean(makeText && makeText.trim()) && !make;
+  const modelUnresolved = Boolean(make && modelText && modelText.trim()) && !model;
+  if (makeUnresolved || modelUnresolved) {
+    return {
+      match: null,
+      candidates: [],
+      diagnostics: {
+        vehicleSource,
+        makeResolved: make?.name ?? null,
+        modelResolved: model?.name ?? null,
+        generationMatched: false,
+        productResolved: null,
+      },
+    };
+  }
+
+  // Year → generation range (kept for diagnostics only; the actual year filter below uses
+  // each guild's OWN generation, which is authoritative even if a guild's generation row was
+  // mistakenly attached under a sibling model).
   const generations =
     model != null
       ? await prisma.generation.findMany({ where: { modelId: model.id } })
@@ -143,15 +164,12 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
   // --- 3: product -----------------------------------------------------------
   const product = input.serial ? await productFromSerial(input.serial) : null;
 
-  // --- query published guilds ------------------------------------------------
-  const guilds = await prisma.guild.findMany({
+  // --- query published guilds (make/model/product in SQL; year applied below) -----------
+  const allGuilds = await prisma.guild.findMany({
     where: {
       status: "PUBLISHED",
       ...(make ? { makeId: make.id } : {}),
       ...(model ? { modelId: model.id } : {}),
-      ...(matchedGenerations.length > 0
-        ? { generationId: { in: matchedGenerations.map((g) => g.id) } }
-        : {}),
       // A guide covers a SET of products — match if the resolved product is in it.
       ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
     },
@@ -165,6 +183,13 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
     },
     take: 10,
   });
+
+  // Keep guilds whose own generation covers the requested model-year.
+  const guilds = year
+    ? allGuilds.filter(
+        (g) => g.generation.yearStart <= year! && year! <= (g.generation.yearEnd ?? 9999)
+      )
+    : allGuilds;
 
   const baseConfidence: "high" | "medium" | "low" =
     (vehicleSource === "ids" || vehicleSource === "vin") && model && year
@@ -191,12 +216,9 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
     };
   });
 
-  // Single confident hit only when the vehicle resolved to a model and, if
-  // multiple guilds exist, the product disambiguated them.
-  const match =
-    candidates.length === 1 && model && matchedGenerations.length > 0
-      ? candidates[0]
-      : null;
+  // Single confident hit only when the vehicle resolved to a model and exactly one
+  // published guide survived the make/model/product/year filtering.
+  const match = candidates.length === 1 && model ? candidates[0] : null;
 
   return {
     match,
