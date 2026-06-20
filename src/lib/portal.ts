@@ -7,6 +7,10 @@ export type UnitEligibility = {
   valid: boolean; // is this a real, known unit?
   eligible: boolean; // allowed to receive a guide right now?
   reason?: string;
+  // The unit's product as recorded in the portal's inventory (e.g. "IGLA 231",
+  // "IGLA Alarm"). Lets /issue serve the install guide for THIS unit's product.
+  unitType?: string | null;
+  deviceCategory?: string | null; // "igla" | "compass"
 };
 
 export async function verifyUnitWithPortal(serial: string): Promise<UnitEligibility> {
@@ -28,6 +32,8 @@ export async function verifyUnitWithPortal(serial: string): Promise<UnitEligibil
       valid: Boolean(data.valid),
       eligible: Boolean(data.eligible),
       reason: data.reason,
+      unitType: data.unitType ?? null,
+      deviceCategory: data.deviceCategory ?? null,
     };
   } catch (e) {
     return {

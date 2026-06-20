@@ -92,12 +92,27 @@ export async function POST(req: NextRequest) {
       modelId: body.modelId ? String(body.modelId) : undefined,
       vin: body.vin ? String(body.vin) : undefined,
     });
-    // Narrow by the unit's product / line when given.
+    // Narrow to the guide for THIS unit's product, so an IGLA Alarm unit gets
+    // the Alarm install and an IGLA 231 unit gets the 231 install. Prefer a
+    // product the portal explicitly passed; otherwise use the unit's own type
+    // from the eligibility check (the portal's inventory record). Match against
+    // EVERY product a guide covers, tolerant of "231" vs "IGLA 231" spelling.
+    // Only narrows when something matches — a naming drift falls back to the
+    // full candidate list (chooser) rather than serving the wrong guide.
     let candidates = result.candidates;
-    if (product) {
-      const p = product.toLowerCase();
-      const byProduct = candidates.filter((c) => c.product.toLowerCase() === p);
-      if (byProduct.length) candidates = byProduct;
+    const unitProduct = product ?? elig.unitType ?? null;
+    if (unitProduct) {
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const target = norm(unitProduct);
+      const exact = candidates.filter((c) => c.products.some((p) => norm(p) === target));
+      const fuzzy = candidates.filter((c) =>
+        c.products.some((p) => {
+          const n = norm(p);
+          return n.includes(target) || target.includes(n);
+        })
+      );
+      const narrowed = exact.length ? exact : fuzzy;
+      if (narrowed.length) candidates = narrowed;
     } else if (productLine) {
       const pl = productLine.toLowerCase();
       const byLine = candidates.filter((c) => c.productLine.toLowerCase() === pl);
