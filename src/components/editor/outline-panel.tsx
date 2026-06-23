@@ -94,7 +94,7 @@ export default function OutlinePanel({
   };
 
   return (
-    <div className="mt-4 rounded-xl border border-zinc-200 bg-white">
+    <div className="rounded-xl border border-zinc-200 bg-white">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center px-4 py-2 text-left text-sm font-medium text-zinc-600"

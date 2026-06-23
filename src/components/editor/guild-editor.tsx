@@ -90,7 +90,7 @@ export default function GuildEditor({
   };
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
         <Link href={`/guides/${doc.id}`} className="text-sm text-zinc-500 hover:underline">
@@ -289,7 +289,14 @@ export default function GuildEditor({
       )}
 
       <div className={`mt-4 flex gap-6 ${tab === "preview" ? "hidden" : ""}`}>
-        {/* Document (preview editor) */}
+        {/* Layer view (left, desktop) — sticky outline of sections + blocks */}
+        <div className="hidden lg:block lg:w-72 lg:shrink-0">
+          <div className="lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
+            <OutlinePanel doc={doc} dispatch={dispatch} />
+          </div>
+        </div>
+
+        {/* Document (preview editor) — middle */}
         <div className={`min-w-0 flex-1 ${tab === "chat" ? "hidden lg:block" : ""}`}>
           <CoverEditor doc={doc} dispatch={dispatch} />
           <IdentityPanel
@@ -340,14 +347,13 @@ export default function GuildEditor({
           </div>
         </div>
 
-        {/* Chat surface */}
+        {/* Chat surface — right, sticky */}
         <div
           className={`w-full lg:w-96 lg:shrink-0 ${
             tab === "edit" ? "hidden lg:block" : ""
           }`}
         >
           <ChatPanel doc={doc} dispatch={dispatch} quickPicks={quickPicks} />
-          <OutlinePanel doc={doc} dispatch={dispatch} />
         </div>
       </div>
     </div>
