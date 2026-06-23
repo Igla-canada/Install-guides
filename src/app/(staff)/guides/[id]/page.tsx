@@ -85,7 +85,12 @@ export default async function GuildPreviewPage(props: {
     <div>
       {/* Staff action bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/guides" className="text-sm text-zinc-500 hover:underline">
+        {/* Back to where this guide is listed (its make/model/year), not the
+            top of the picker. */}
+        <Link
+          href={`/guides?make=${doc.makeId}&model=${doc.modelId}&year=${doc.generation.yearStart}`}
+          className="text-sm text-zinc-500 hover:underline"
+        >
           ← Guides
         </Link>
         <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
