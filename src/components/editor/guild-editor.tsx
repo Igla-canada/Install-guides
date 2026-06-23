@@ -18,6 +18,7 @@ import type { ClientDoc, ClientQuickPick, ClientVersion } from "./types";
 import type { Taxonomy } from "@/lib/taxonomy";
 import SectionCard from "./section-card";
 import IdentityPanel from "./identity-panel";
+import OutlinePanel from "./outline-panel";
 import CoverEditor from "./cover-editor";
 import PropertiesEditor from "./properties-editor";
 import ChatPanel from "./chat-panel";
@@ -346,6 +347,7 @@ export default function GuildEditor({
           }`}
         >
           <ChatPanel doc={doc} dispatch={dispatch} quickPicks={quickPicks} />
+          <OutlinePanel doc={doc} dispatch={dispatch} />
         </div>
       </div>
     </div>
