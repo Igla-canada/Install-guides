@@ -38,12 +38,35 @@ export default async function AlertsPage() {
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     take: 100,
   });
-  const grantIds = alerts.map((a) => a.grantId).filter(Boolean) as string[];
-  const userIds = alerts.map((a) => a.userId).filter(Boolean) as string[];
-  const [grants, users] = await Promise.all([
-    prisma.accessGrant.findMany({ where: { id: { in: grantIds } } }),
+  const grantIds = [...new Set(alerts.map((a) => a.grantId).filter(Boolean))] as string[];
+  const userIds = [...new Set(alerts.map((a) => a.userId).filter(Boolean))] as string[];
+  const [grants, users, viewEvents] = await Promise.all([
+    prisma.accessGrant.findMany({
+      where: { id: { in: grantIds } },
+      include: {
+        guilds: { include: { guild: { select: { id: true, title: true } } } },
+        grantedBy: { select: { name: true } },
+      },
+    }),
     prisma.userAccount.findMany({ where: { id: { in: userIds } } }),
+    // What the actor actually OPENED (per granted link) — the "which guide" answer.
+    prisma.auditEvent.findMany({
+      where: { grantId: { in: grantIds }, action: "view" },
+      select: { grantId: true, guildId: true, ts: true },
+    }),
   ]);
+
+  // grantId → guildId → { count, last viewed }
+  const usageByGrant = new Map<string, Map<string, { count: number; last: Date }>>();
+  for (const e of viewEvents) {
+    if (!e.grantId || !e.guildId) continue;
+    const g = usageByGrant.get(e.grantId) ?? new Map();
+    const u = g.get(e.guildId) ?? { count: 0, last: e.ts };
+    u.count++;
+    if (e.ts > u.last) u.last = e.ts;
+    g.set(e.guildId, u);
+    usageByGrant.set(e.grantId, g);
+  }
 
   return (
     <div>
@@ -66,6 +89,24 @@ export default async function AlertsPage() {
             : user
             ? `account: ${user.name}`
             : "unknown actor";
+
+          // The guide(s) this link covers, annotated with what was opened.
+          const usage = grant ? usageByGrant.get(grant.id) : undefined;
+          const guideRows = (grant?.guilds ?? []).map((gg) => {
+            const u = usage?.get(gg.guildId);
+            return { id: gg.guildId, title: gg.guild.title, count: u?.count ?? 0, last: u?.last };
+          });
+          const issuedBy = grant
+            ? grant.grantedBy?.name ?? (grant.directOpen ? "Igla portal (install)" : "—")
+            : null;
+          const now = Date.now();
+          const linkState = grant
+            ? grant.revokedAt
+              ? "revoked"
+              : grant.expiresAt.getTime() < now
+              ? "expired"
+              : "active"
+            : null;
           return (
             <li
               key={a.id}
@@ -95,9 +136,81 @@ export default async function AlertsPage() {
                   {a.createdAt.toLocaleString()} · {a.status.toLowerCase()}
                 </span>
               </div>
+              {grant && (
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                  <dt className="text-zinc-400">Guide{guideRows.length === 1 ? "" : "s"}</dt>
+                  <dd className="min-w-0">
+                    {guideRows.length === 0 ? (
+                      <span className="text-zinc-400">—</span>
+                    ) : (
+                      <ul className="space-y-0.5">
+                        {guideRows.map((g) => (
+                          <li key={g.id}>
+                            <Link href={`/guides/${g.id}`} className="font-medium hover:underline">
+                              {g.title}
+                            </Link>{" "}
+                            <span className="text-xs text-zinc-400">
+                              {g.count > 0
+                                ? `· opened ${g.count}× (last ${g.last?.toLocaleString()})`
+                                : "· not opened yet"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </dd>
+
+                  {grant.granteeUnit && (
+                    <>
+                      <dt className="text-zinc-400">Unit</dt>
+                      <dd className="font-mono text-xs">{grant.granteeUnit}</dd>
+                    </>
+                  )}
+
+                  <dt className="text-zinc-400">For</dt>
+                  <dd>
+                    {grant.granteeLabel}
+                    {(grant.granteePhone || grant.granteeEmail) && (
+                      <span className="text-xs text-zinc-400">
+                        {" · "}
+                        {[grant.granteePhone, grant.granteeEmail].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </dd>
+
+                  <dt className="text-zinc-400">Issued by</dt>
+                  <dd>{issuedBy}</dd>
+
+                  <dt className="text-zinc-400">Link</dt>
+                  <dd className="text-xs text-zinc-500">
+                    <span
+                      className={
+                        linkState === "active"
+                          ? "text-green-700"
+                          : linkState === "revoked"
+                          ? "text-red-700"
+                          : "text-zinc-500"
+                      }
+                    >
+                      {linkState}
+                    </span>{" "}
+                    · {grant.directOpen ? "direct-open" : "SMS link"} · views{" "}
+                    {grant.viewsUsed}
+                    {typeof grant.maxViews === "number" ? `/${grant.maxViews}` : ""} · expires{" "}
+                    {grant.expiresAt.toLocaleString()}
+                  </dd>
+                </dl>
+              )}
+
               <pre className="mt-2 overflow-x-auto rounded bg-zinc-50 p-2 text-xs text-zinc-500">
                 {JSON.stringify(a.details, null, 1)}
               </pre>
+              <Link
+                href={grant ? `/audit?grant=${grant.id}` : "/audit"}
+                className="mt-1 inline-block text-xs text-zinc-500 underline hover:text-zinc-700"
+              >
+                View full audit trail{grant ? " for this link" : ""} →
+              </Link>
               {a.status !== "RESOLVED" && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {grant && !grant.revokedAt && (

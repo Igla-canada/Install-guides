@@ -2,15 +2,16 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export default async function AuditPage(props: {
-  searchParams: Promise<{ action?: string; guild?: string }>;
+  searchParams: Promise<{ action?: string; guild?: string; grant?: string }>;
 }) {
   await requireRole("ADMIN");
-  const { action, guild } = await props.searchParams;
+  const { action, guild, grant } = await props.searchParams;
 
   const events = await prisma.auditEvent.findMany({
     where: {
       ...(action ? { action } : {}),
       ...(guild ? { guildId: guild } : {}),
+      ...(grant ? { grantId: grant } : {}),
     },
     orderBy: { ts: "desc" },
     take: 200,
