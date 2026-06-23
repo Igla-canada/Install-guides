@@ -171,6 +171,7 @@ export function GuideBrowser({
         showMeta={showMeta}
         showStatusBadge={showStatusBadge}
         empty={noneMsg ?? undefined}
+        backTo={buildHref(statusFilter || undefined)}
       />
     );
   }
@@ -229,6 +230,7 @@ export function GuideBrowser({
         showMeta={showMeta}
         showStatusBadge={showStatusBadge}
         empty={noneMsg ?? undefined}
+        backTo={buildHref(statusFilter || undefined)}
       />,
       crumbs
     );
@@ -382,12 +384,15 @@ function GuildTable({
   showMeta,
   showStatusBadge,
   empty = "No guides here.",
+  backTo,
 }: {
   guilds: BrowserGuild[];
   guideHref: (id: string) => string;
   showMeta: boolean;
   showStatusBadge: boolean;
   empty?: string;
+  // Current browse URL, carried so the guide page's back link returns here.
+  backTo?: string;
 }) {
   if (guilds.length === 0) {
     return (
@@ -403,7 +408,10 @@ function GuildTable({
           {guilds.map((g) => (
             <tr key={g.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
               <td className="px-4 py-3">
-                <Link href={guideHref(g.id)} className="font-medium hover:underline">
+                <Link
+                  href={backTo ? `${guideHref(g.id)}?from=${encodeURIComponent(backTo)}` : guideHref(g.id)}
+                  className="font-medium hover:underline"
+                >
                   {g.title}
                 </Link>
                 <div className="text-xs text-zinc-500">

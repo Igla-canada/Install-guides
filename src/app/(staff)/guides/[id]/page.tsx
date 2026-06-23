@@ -13,13 +13,21 @@ export const dynamic = "force-dynamic";
 
 export default async function GuildPreviewPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string; label?: string; publish_error?: string }>;
+  searchParams: Promise<{ created?: string; label?: string; publish_error?: string; from?: string }>;
 }) {
   const user = await requireRole("ADMIN", "TECH");
   const { id } = await props.params;
-  const { created, label, publish_error } = await props.searchParams;
+  const { created, label, publish_error, from } = await props.searchParams;
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
+
+  // Back to the exact list the user came from (carried via ?from=), else fall
+  // back to this guide's own make/model/year drill level. Only accept internal
+  // /guides URLs so the link can't be pointed off-site.
+  const backHref =
+    from && from.startsWith("/guides")
+      ? from
+      : `/guides?make=${doc.makeId}&model=${doc.modelId}&year=${doc.generation.yearStart}`;
 
   // Existing users an admin can share this guide with (prefills the link form).
   const shareUsers = await prisma.userAccount.findMany({
@@ -85,12 +93,8 @@ export default async function GuildPreviewPage(props: {
     <div>
       {/* Staff action bar */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Back to where this guide is listed (its make/model/year), not the
-            top of the picker. */}
-        <Link
-          href={`/guides?make=${doc.makeId}&model=${doc.modelId}&year=${doc.generation.yearStart}`}
-          className="text-sm text-zinc-500 hover:underline"
-        >
+        {/* Back to where this guide is listed, not the top of the picker. */}
+        <Link href={backHref} className="text-sm text-zinc-500 hover:underline">
           ← Guides
         </Link>
         <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
