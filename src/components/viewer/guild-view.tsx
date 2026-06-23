@@ -109,7 +109,15 @@ export default async function GuildView({
     })
   );
 
-  const props = (doc.properties ?? {}) as Record<string, string>;
+  // "IGLA Type" always reflects the guide's REAL product coverage (the identity
+  // products the portal matches on), not free-text that can drift and mislead.
+  const realProducts = doc.products?.length
+    ? doc.products.map((p) => p.iglaProduct.name)
+    : [doc.iglaProduct.name];
+  const props = {
+    ...((doc.properties ?? {}) as Record<string, string>),
+    "IGLA Type": realProducts.join(", "),
+  };
   const t = themeClasses(theme);
 
   return (

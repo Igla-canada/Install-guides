@@ -13,8 +13,14 @@ export default function PropertiesEditor({
   dispatch: (ops: any[]) => Promise<void>;
 }) {
   const props = doc.properties ?? {};
-  const entries = Object.entries(props);
-  const [open, setOpen] = useState(entries.length > 0);
+  // "IGLA Type" is derived from the guide's real product coverage, not free
+  // text — show it read-only here and hide it from the editable list so it
+  // can't drift from what the portal actually matches on.
+  const realProducts = (
+    doc.products?.length ? doc.products.map((p) => p.iglaProduct.name) : [doc.iglaProduct.name]
+  ).join(", ");
+  const entries = Object.entries(props).filter(([k]) => k !== "IGLA Type");
+  const [open, setOpen] = useState(true);
   const [newKey, setNewKey] = useState("");
 
   const save = (next: Record<string, string>) =>
@@ -31,6 +37,18 @@ export default function PropertiesEditor({
       </button>
       {open && (
         <div className="space-y-2 border-t border-zinc-200 p-4">
+          {/* Derived, read-only — comes from the Igla product(s) in identity. */}
+          <div className="flex items-center gap-2">
+            <span className="w-40 shrink-0 truncate text-sm font-medium text-zinc-500">
+              IGLA Type
+            </span>
+            <span className="flex-1 rounded-md bg-zinc-50 px-2 py-1 text-sm text-zinc-600">
+              {realProducts || "—"}
+            </span>
+            <span className="text-xs text-zinc-400" title="Set via Igla product(s) in the identity panel">
+              auto
+            </span>
+          </div>
           {entries.map(([k, v]) => (
             <div key={k} className="flex items-center gap-2">
               <span className="w-40 shrink-0 truncate text-sm font-medium text-zinc-500">

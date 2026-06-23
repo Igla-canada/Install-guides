@@ -121,10 +121,11 @@ async function createGuildAction(formData: FormData) {
       createdById: user.id,
       updatedById: user.id,
       products: { create: products.map((p) => ({ iglaProductId: p.id })) },
-      // Reference-page properties box, pre-filled from identity.
+      // Reference-page properties box, pre-filled from identity. "IGLA Type"
+      // is NOT stored here — it's derived from the guide's real product
+      // coverage at render time so it can never drift from what's served.
       properties: {
         Years: parsed.yearTo ? `${parsed.yearFrom}–${parsed.yearTo}` : `${parsed.yearFrom}`,
-        "IGLA Type": products.map((p) => p.name).join(", "),
         Status: "Stable",
       },
       sections: {
