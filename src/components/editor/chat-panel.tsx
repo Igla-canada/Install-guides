@@ -271,7 +271,7 @@ export default function ChatPanel({
   const showTextInput = mode.kind === "write_text" || mode.kind === "rename_title" || mode.kind === "menu";
 
   return (
-    <div className="flex h-[70vh] flex-col rounded-xl border border-zinc-200 bg-white lg:sticky lg:top-16">
+    <div className="flex h-[70vh] flex-col rounded-xl border border-zinc-200 bg-white">
       <div className="flex items-center border-b border-zinc-100 px-4 py-2 text-sm font-medium text-zinc-600">
         Chat editor{" "}
         <span className="ml-1 font-normal text-zinc-400">— same page, different hands</span>
