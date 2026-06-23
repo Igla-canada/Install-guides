@@ -420,6 +420,16 @@ function FileBlockEditor({
 
 // File + text: ONE bordered box holding a description and the attachment, so
 // the file reads as part of the text block (not a separate row below it).
+type FileEntry = { assetId: string; name?: string; size?: number };
+
+// A file_text block holds one description + ONE OR MORE files. Stored as
+// `files: FileEntry[]`; older blocks used flat assetId/name/size — read either.
+function fileTextEntries(c: any): FileEntry[] {
+  if (Array.isArray(c?.files)) return c.files.filter((f: any) => f && f.assetId);
+  if (c?.assetId) return [{ assetId: c.assetId, name: c.name, size: c.size }];
+  return [];
+}
+
 function FileTextBlockEditor({
   content: c,
   update,
@@ -428,72 +438,112 @@ function FileTextBlockEditor({
   update: (content: any) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const replaceIdx = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const handle = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
+  const files = fileTextEntries(c);
+
+  // Always persist in the array shape; drop the legacy single-file keys.
+  const writeFiles = (next: FileEntry[]) => {
+    const { assetId: _a, name: _n, size: _s, ...rest } = c;
+    update({ ...rest, files: next });
+  };
+
+  const handle = async (list: FileList | null) => {
+    const picked = list ? Array.from(list) : [];
+    if (!picked.length) return;
     setBusy(true);
     try {
-      const { assetId } = await uploadImage(file, file.name);
-      update({ ...c, assetId, name: file.name, size: file.size });
+      const uploaded: FileEntry[] = [];
+      for (const file of picked) {
+        const { assetId } = await uploadImage(file, file.name);
+        uploaded.push({ assetId, name: file.name, size: file.size });
+      }
+      if (replaceIdx.current != null) {
+        const next = files.slice();
+        next[replaceIdx.current] = uploaded[0];
+        writeFiles(next);
+      } else {
+        writeFiles([...files, ...uploaded]);
+      }
     } finally {
       setBusy(false);
+      replaceIdx.current = null;
       if (fileRef.current) fileRef.current.value = "";
     }
   };
 
+  const rename = (i: number, name: string) => {
+    if (name === files[i]?.name) return;
+    const next = files.slice();
+    next[i] = { ...next[i], name };
+    writeFiles(next);
+  };
+
   return (
     <div className="rounded-lg border border-zinc-200 bg-white focus-within:border-zinc-300">
-      <input ref={fileRef} type="file" hidden onChange={(e) => void handle(e.target.files)} />
+      <input ref={fileRef} type="file" hidden multiple onChange={(e) => void handle(e.target.files)} />
       <textarea
         defaultValue={c.text ?? ""}
         onBlur={(e) => {
           if (e.target.value !== c.text) update({ ...c, text: e.target.value });
         }}
-        placeholder="Describe this file (e.g. “231: Stable version”)…"
+        placeholder="Describe these files (e.g. “231: Stable version”)…"
         rows={Math.max(2, String(c.text ?? "").split("\n").length)}
         className="w-full resize-y border-0 bg-transparent px-3 pt-2.5 text-sm focus:outline-none"
       />
-      <div className="px-2 pb-2">
-        {c.assetId ? (
-          <div className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
+      <div className="space-y-1.5 px-2 pb-2">
+        {files.map((f, i) => (
+          <div
+            key={f.assetId}
+            className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm"
+          >
             <span className="text-lg">📄</span>
             <input
-              defaultValue={c.name ?? "file"}
-              onBlur={(e) => {
-                if (e.target.value !== c.name) update({ ...c, name: e.target.value });
-              }}
+              defaultValue={f.name ?? "file"}
+              onBlur={(e) => rename(i, e.target.value)}
               className="min-w-0 flex-1 truncate border-0 bg-transparent font-medium focus:outline-none"
             />
-            {typeof c.size === "number" && (
+            {typeof f.size === "number" && (
               <span className="text-xs text-zinc-400">
-                {c.size > 1048576
-                  ? `${(c.size / 1048576).toFixed(1)} MB`
-                  : `${Math.round(c.size / 1024)} KB`}
+                {f.size > 1048576
+                  ? `${(f.size / 1048576).toFixed(1)} MB`
+                  : `${Math.round(f.size / 1024)} KB`}
               </span>
             )}
-            {String(c.assetId).startsWith("pending:") && (
+            {String(f.assetId).startsWith("pending:") && (
               <span className="rounded bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700">
                 waiting to sync
               </span>
             )}
             <button
-              onClick={() => fileRef.current?.click()}
+              onClick={() => {
+                replaceIdx.current = i;
+                fileRef.current?.click();
+              }}
               className="text-xs text-zinc-400 hover:text-zinc-600"
             >
               Replace
             </button>
+            <button
+              onClick={() => writeFiles(files.filter((_, j) => j !== i))}
+              className="text-xs text-zinc-300 hover:text-red-500"
+              title="Remove file"
+            >
+              ✕
+            </button>
           </div>
-        ) : (
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
-          >
-            📎 {busy ? "Uploading…" : "Attach file (.bin, settings, …)"}
-          </button>
-        )}
+        ))}
+        <button
+          onClick={() => {
+            replaceIdx.current = null;
+            fileRef.current?.click();
+          }}
+          disabled={busy}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 px-4 py-2.5 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
+        >
+          📎 {busy ? "Uploading…" : files.length ? "Attach another file" : "Attach file (.bin, settings, …)"}
+        </button>
       </div>
     </div>
   );

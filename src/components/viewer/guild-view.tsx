@@ -528,26 +528,40 @@ function BlockView({
       );
     }
     case "file_text": {
-      const assetId = String(c.assetId ?? "");
       const text = String(c.text ?? "");
-      const size = typeof c.size === "number" ? formatSize(c.size) : null;
+      // One description + one or more files. New blocks store `files: [...]`;
+      // older ones used flat assetId/name/size — render either.
+      const files: Array<{ assetId: string; name?: string; size?: number }> =
+        Array.isArray(c.files)
+          ? c.files.filter((f: { assetId?: string }) => f && f.assetId)
+          : c.assetId
+          ? [{ assetId: String(c.assetId), name: c.name, size: c.size }]
+          : [];
       return (
         <div className={`rounded-lg border p-3 ${t.tableBorder} ${t.card}`}>
           {text && (
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
           )}
-          {assetId && (
-            <a
-              href={`/api/files/${assetId}/download?guild=${guildId}`}
-              className={`${text ? "mt-2 " : ""}flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${t.attachment}`}
-            >
-              <span className="text-lg">📄</span>
-              <span className="min-w-0 flex-1 truncate font-medium">
-                {String(c.name ?? "file")}
-              </span>
-              {size && <span className={`text-xs ${t.muted}`}>{size}</span>}
-              <span className={`text-xs ${t.muted}`}>download</span>
-            </a>
+          {files.length > 0 && (
+            <div className={`${text ? "mt-2 " : ""}space-y-2`}>
+              {files.map((f, i) => {
+                const size = typeof f.size === "number" ? formatSize(f.size) : null;
+                return (
+                  <a
+                    key={`${f.assetId}-${i}`}
+                    href={`/api/files/${String(f.assetId)}/download?guild=${guildId}`}
+                    className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${t.attachment}`}
+                  >
+                    <span className="text-lg">📄</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {String(f.name ?? "file")}
+                    </span>
+                    {size && <span className={`text-xs ${t.muted}`}>{size}</span>}
+                    <span className={`text-xs ${t.muted}`}>download</span>
+                  </a>
+                );
+              })}
+            </div>
           )}
         </div>
       );
