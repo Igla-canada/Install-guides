@@ -246,10 +246,10 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                               {g.guilds.map((gd) => (
                                 <a
                                   key={gd.id}
-                                  href={`/guides/${gd.id}`}
+                                  href={`/guides/${gd.id}/edit`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title={`Open "${gd.title}" in a new tab`}
+                                  title={`Open "${gd.title}" editor in a new tab`}
                                   className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs hover:bg-zinc-100"
                                 >
                                   ↗ {gd.title}
