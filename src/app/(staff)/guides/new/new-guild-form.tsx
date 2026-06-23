@@ -17,6 +17,7 @@ export default function NewGuildForm({
   const [modelName, setModelName] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
+  const [variant, setVariant] = useState("");
   const [productIds, setProductIds] = useState<string[]>([]);
   const toggleProduct = (id: string) =>
     setProductIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -46,12 +47,13 @@ export default function NewGuildForm({
     return [
       makeName.trim(),
       modelName.trim(),
+      variant.trim(),
       yearFrom ? (yearTo ? `${yearFrom}–${yearTo}` : yearFrom) : "",
       selected.length ? `— ${selected.map((p) => p.name).join(" + ")}` : "",
     ]
       .filter(Boolean)
       .join(" ");
-  }, [makeName, modelName, yearFrom, yearTo, productIds, taxonomy.productLines]);
+  }, [makeName, modelName, variant, yearFrom, yearTo, productIds, taxonomy.productLines]);
 
   const effectiveTitle = titleTouched ? title : suggestedTitle;
 
@@ -127,6 +129,22 @@ export default function NewGuildForm({
           a matching range is reused automatically.
         </p>
       )}
+
+      <Field label="Variant (optional)">
+        <input
+          name="variant"
+          value={variant}
+          onChange={(e) => setVariant(e.target.value)}
+          placeholder="e.g. Lightning, EV, ST"
+          className={inputCls}
+          autoComplete="off"
+        />
+        <p className="mt-1 text-xs text-zinc-400">
+          Only set this when the same model &amp; years needs a separate guide
+          (e.g. an F150 vs an F150 Lightning). It makes a distinct guide; the
+          portal shows both by title so the installer picks the right one.
+        </p>
+      </Field>
 
       <fieldset>
         <legend className="text-sm font-medium">Igla product(s)</legend>

@@ -10,6 +10,10 @@ const createSchema = z.object({
   modelName: z.string().min(1),
   yearFrom: z.coerce.number().int().min(1950).max(2100),
   yearTo: z.coerce.number().int().min(1950).max(2100).optional(),
+  // Optional variant label. Set it to make a SEPARATE guide for the same
+  // model + years (e.g. "Lightning") — it becomes a distinct generation so the
+  // two guides don't collide; the portal then offers both as a chooser.
+  variant: z.string().max(60).optional(),
   iglaProductIds: z.array(z.string().min(1)).min(1),
   title: z.string().min(1),
 });
@@ -34,6 +38,7 @@ async function createGuildAction(formData: FormData) {
     modelName: formData.get("modelName"),
     yearFrom: formData.get("yearFrom"),
     yearTo: String(formData.get("yearTo") ?? "").trim() || undefined,
+    variant: String(formData.get("variant") ?? "").trim() || undefined,
     iglaProductIds: formData.getAll("iglaProductIds").map(String).filter(Boolean),
     title: formData.get("title"),
   });
@@ -50,25 +55,46 @@ async function createGuildAction(formData: FormData) {
       where: { makeId: make.id, name: { equals: modelName, mode: "insensitive" } },
     })) ?? (await prisma.model.create({ data: { makeId: make.id, name: modelName } }));
 
-  // Reuse a year range that covers the input; otherwise create one.
+  // Pick (or create) the generation this guide belongs to.
   const upper = parsed.yearTo ?? parsed.yearFrom;
-  const generation =
-    (await prisma.generation.findFirst({
+  const variant = parsed.variant?.trim();
+  let generation;
+  if (variant) {
+    // A named variant ("Lightning", "EV", …) is its OWN generation so a second
+    // guide can exist for the same model + years. Reuse the variant if it's
+    // already there, else create it. Years can overlap other generations.
+    generation =
+      (await prisma.generation.findFirst({
+        where: { modelId: model.id, name: { equals: variant, mode: "insensitive" } },
+      })) ??
+      (await prisma.generation.create({
+        data: { modelId: model.id, name: variant, yearStart: parsed.yearFrom, yearEnd: parsed.yearTo ?? null },
+      }));
+  } else {
+    // Plain guide: reuse the TIGHTEST-fitting generation that covers the year
+    // (so it won't accidentally grab a wider/variant generation), else create
+    // a year-range one.
+    const covering = await prisma.generation.findMany({
       where: {
         modelId: model.id,
         yearStart: { lte: parsed.yearFrom },
         OR: [{ yearEnd: null }, { yearEnd: { gte: upper } }],
       },
-      orderBy: { yearStart: "desc" },
-    })) ??
-    (await prisma.generation.create({
-      data: {
-        modelId: model.id,
-        name: parsed.yearTo ? `${parsed.yearFrom}–${parsed.yearTo}` : `${parsed.yearFrom}+`,
-        yearStart: parsed.yearFrom,
-        yearEnd: parsed.yearTo ?? null,
-      },
-    }));
+    });
+    const span = (g: { yearStart: number; yearEnd: number | null }) =>
+      (g.yearEnd ?? 9999) - g.yearStart;
+    covering.sort((a, b) => span(a) - span(b) || b.yearStart - a.yearStart);
+    generation =
+      covering[0] ??
+      (await prisma.generation.create({
+        data: {
+          modelId: model.id,
+          name: parsed.yearTo ? `${parsed.yearFrom}–${parsed.yearTo}` : `${parsed.yearFrom}+`,
+          yearStart: parsed.yearFrom,
+          yearEnd: parsed.yearTo ?? null,
+        },
+      }));
+  }
 
   const region = await prisma.region.findFirstOrThrow();
   const found = await prisma.iglaProduct.findMany({
