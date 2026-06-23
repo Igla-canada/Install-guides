@@ -145,7 +145,12 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
           _count: { select: { guilds: true } },
           generations: {
             orderBy: { yearStart: "asc" },
-            include: { _count: { select: { guilds: true } } },
+            include: {
+              _count: { select: { guilds: true } },
+              // The actual guides on this generation, so the admin can open each
+              // one to see what it is before renaming/moving/deleting.
+              guilds: { select: { id: true, title: true, status: true }, orderBy: { title: "asc" } },
+            },
           },
         },
       },
@@ -234,6 +239,27 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                             </button>
                             <span className="text-[11px] text-zinc-400">{g._count.guilds} guide(s)</span>
                           </form>
+
+                          {g.guilds.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] text-zinc-400">Guides:</span>
+                              {g.guilds.map((gd) => (
+                                <a
+                                  key={gd.id}
+                                  href={`/guides/${gd.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={`Open "${gd.title}" in a new tab`}
+                                  className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs hover:bg-zinc-100"
+                                >
+                                  ↗ {gd.title}
+                                  {gd.status !== "PUBLISHED" && (
+                                    <span className="text-[10px] text-zinc-400">({gd.status.toLowerCase()})</span>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          )}
 
                           <div className="mt-1.5 flex flex-wrap items-center gap-2">
                             {siblings.length > 0 && (
