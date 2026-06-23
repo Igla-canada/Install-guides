@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { fmtDateTime } from "@/lib/datetime";
 
 export default async function AuditPage(props: {
   searchParams: Promise<{ action?: string; guild?: string; grant?: string }>;
@@ -64,7 +65,7 @@ export default async function AuditPage(props: {
             {events.map((e) => (
               <tr key={e.id} className="border-b border-zinc-50 last:border-0">
                 <td className="whitespace-nowrap px-4 py-2 text-xs text-zinc-500">
-                  {e.ts.toLocaleString()}
+                  {fmtDateTime(e.ts)}
                 </td>
                 <td className="px-4 py-2">
                   {e.user

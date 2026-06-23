@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { fmtDateTime } from "@/lib/datetime";
 
 async function setAlertStatus(formData: FormData) {
   "use server";
@@ -133,7 +134,7 @@ export default async function AlertsPage() {
                 </span>
                 <span className="text-xs text-zinc-500">· {actorLabel}</span>
                 <span className="ml-auto text-xs text-zinc-400">
-                  {a.createdAt.toLocaleString()} · {a.status.toLowerCase()}
+                  {fmtDateTime(a.createdAt)} · {a.status.toLowerCase()}
                 </span>
               </div>
               {grant && (
@@ -151,7 +152,7 @@ export default async function AlertsPage() {
                             </Link>{" "}
                             <span className="text-xs text-zinc-400">
                               {g.count > 0
-                                ? `· opened ${g.count}× (last ${g.last?.toLocaleString()})`
+                                ? `· opened ${g.count}× (last ${g.last ? fmtDateTime(g.last) : "?"})`
                                 : "· not opened yet"}
                             </span>
                           </li>
@@ -197,7 +198,7 @@ export default async function AlertsPage() {
                     · {grant.directOpen ? "direct-open" : "SMS link"} · views{" "}
                     {grant.viewsUsed}
                     {typeof grant.maxViews === "number" ? `/${grant.maxViews}` : ""} · expires{" "}
-                    {grant.expiresAt.toLocaleString()}
+                    {fmtDateTime(grant.expiresAt)}
                   </dd>
                 </dl>
               )}
