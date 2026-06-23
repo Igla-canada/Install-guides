@@ -1,7 +1,7 @@
 // Shared hierarchical guide browser used by BOTH the admin library (/guides)
 // and the installer home (/my-guilds), so the two look identical. Drill-down:
-// manufacturers → years → models available that year → the guides themselves;
-// search (?q=) falls back to a flat filtered table.
+// manufacturers → models → years that model has guides for → the guides
+// themselves; search (?q=) falls back to a flat filtered table.
 //
 // Callers differ only in: which guilds they pass (admin = all; installer =
 // published guilds assigned to them), where a guide row links (admin = the
@@ -191,34 +191,34 @@ export function GuideBrowser({
           <span className="text-zinc-300">/</span>
           <Link
             href={drill({ make: make.id })}
-            className={`rounded-md px-2 py-1 ${!year ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
+            className={`rounded-md px-2 py-1 ${!model ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
           >
             {make.name}
           </Link>
         </>
       )}
-      {make && year && (
+      {make && model && (
         <>
           <span className="text-zinc-300">/</span>
           <Link
-            href={drill({ make: make.id, year })}
-            className={`rounded-md px-2 py-1 ${!model ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
+            href={drill({ make: make.id, model: model.id })}
+            className={`rounded-md px-2 py-1 ${!year ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"}`}
           >
-            {year}
+            {model.name}
           </Link>
         </>
       )}
-      {make && year && model && (
+      {make && model && year && (
         <>
           <span className="text-zinc-300">/</span>
-          <span className="rounded-md px-2 py-1 font-semibold">{model.name}</span>
+          <span className="rounded-md px-2 py-1 font-semibold">{year}</span>
         </>
       )}
     </nav>
   );
 
-  // ---- Level 4: guides for make + year + model ------------------------------
-  if (make && year && model) {
+  // ---- Level 4: guides for make + model + year ------------------------------
+  if (make && model && year) {
     const hits = guilds.filter(
       (g) => g.makeId === make.id && g.modelId === model.id && covers(g, year)
     );
@@ -234,38 +234,11 @@ export function GuideBrowser({
     );
   }
 
-  // ---- Level 3: models available for that make + year -----------------------
-  if (make && year) {
-    const byModel = new Map<string, { name: string; count: number; published: number }>();
-    for (const g of guilds) {
-      if (g.makeId !== make.id || !covers(g, year)) continue;
-      const m = byModel.get(g.modelId) ?? { name: g.model.name, count: 0, published: 0 };
-      m.count++;
-      if (g.status === "PUBLISHED") m.published++;
-      byModel.set(g.modelId, m);
-    }
-    return shell(
-      <TileGrid
-        items={[...byModel.entries()]
-          .sort((a, b) => a[1].name.localeCompare(b[1].name))
-          .map(([id, m]) => ({
-            href: drill({ make: make.id, year, model: id }),
-            title: m.name,
-            sub: `${m.count} guide${m.count === 1 ? "" : "s"}${
-              showStatusBadge && m.published < m.count ? ` · ${m.published} published` : ""
-            }`,
-          }))}
-        empty={noneMsg ?? `No models with guides covering ${year}.`}
-      />,
-      crumbs
-    );
-  }
-
-  // ---- Level 2: years covered by this make's guides --------------------------
-  if (make) {
+  // ---- Level 3: years covered by this make + model --------------------------
+  if (make && model) {
     const yearSet = new Map<number, number>();
     for (const g of guilds) {
-      if (g.makeId !== make.id) continue;
+      if (g.makeId !== make.id || g.modelId !== model.id) continue;
       const from = g.generation.yearStart;
       const to = Math.min(g.generation.yearEnd ?? currentYear + 1, currentYear + 1);
       for (let y = from; y <= to; y++) {
@@ -278,9 +251,36 @@ export function GuideBrowser({
         items={[...yearSet.entries()]
           .sort((a, b) => b[0] - a[0])
           .map(([y, count]) => ({
-            href: drill({ make: make.id, year: y }),
+            href: drill({ make: make.id, model: model.id, year: y }),
             title: String(y),
             sub: `${count} guide${count === 1 ? "" : "s"}`,
+          }))}
+        empty={noneMsg ?? "No years with guides for this model."}
+      />,
+      crumbs
+    );
+  }
+
+  // ---- Level 2: models for this make ----------------------------------------
+  if (make) {
+    const byModel = new Map<string, { name: string; count: number; published: number }>();
+    for (const g of guilds) {
+      if (g.makeId !== make.id) continue;
+      const m = byModel.get(g.modelId) ?? { name: g.model.name, count: 0, published: 0 };
+      m.count++;
+      if (g.status === "PUBLISHED") m.published++;
+      byModel.set(g.modelId, m);
+    }
+    return shell(
+      <TileGrid
+        items={[...byModel.entries()]
+          .sort((a, b) => a[1].name.localeCompare(b[1].name))
+          .map(([id, m]) => ({
+            href: drill({ make: make.id, model: id }),
+            title: m.name,
+            sub: `${m.count} guide${m.count === 1 ? "" : "s"}${
+              showStatusBadge && m.published < m.count ? ` · ${m.published} published` : ""
+            }`,
           }))}
         empty={noneMsg ?? "No guides for this make yet."}
       />,
