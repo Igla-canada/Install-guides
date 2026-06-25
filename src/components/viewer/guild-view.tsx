@@ -338,25 +338,8 @@ function BlockView({
   t: ReturnType<typeof themeClasses>;
 }) {
   switch (type) {
-    case "text": {
-      // Rich text is sanitised in the editor (browser DOMPurify) to a strict
-      // inline-formatting allowlist before it's ever stored, so the stored HTML
-      // is safe to render here. Plain/legacy/chat-made blocks fall back to text.
-      const html = typeof c.html === "string" ? c.html : "";
-      if (html.trim()) {
-        return (
-          <div
-            className="text-sm leading-relaxed [&_div]:my-0 [&_p]:my-0"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        );
-      }
-      return (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">
-          {String(c.text ?? "")}
-        </p>
-      );
-    }
+    case "text":
+      return richBody(c.html, c.text, "text-sm leading-relaxed");
     case "key_value_table": {
       const rows = (c.rows as Array<{ key: string; value: string }>) ?? [];
       return (
@@ -519,7 +502,7 @@ function BlockView({
       return (
         <div className={`flex gap-2 rounded-lg border p-3 text-sm ${cls}`}>
           <span>{icons[style] ?? "⚠"}</span>
-          <p className="whitespace-pre-wrap">{String(c.text ?? "")}</p>
+          {richBody(c.html, c.text, "min-w-0 flex-1")}
         </div>
       );
     }
@@ -549,7 +532,7 @@ function BlockView({
       );
     }
     case "file_text": {
-      const text = String(c.text ?? "");
+      const hasText = Boolean((typeof c.html === "string" && c.html.trim()) || (typeof c.text === "string" && c.text.trim()));
       // One description + one or more files. New blocks store `files: [...]`;
       // older ones used flat assetId/name/size — render either.
       const files: Array<{ assetId: string; name?: string; size?: number }> =
@@ -560,11 +543,9 @@ function BlockView({
           : [];
       return (
         <div className={`rounded-lg border p-3 ${t.tableBorder} ${t.card}`}>
-          {text && (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
-          )}
+          {hasText && richBody(c.html, c.text, "text-sm leading-relaxed")}
           {files.length > 0 && (
-            <div className={`${text ? "mt-2 " : ""}space-y-2`}>
+            <div className={`${hasText ? "mt-2 " : ""}space-y-2`}>
               {files.map((f, i) => {
                 const size = typeof f.size === "number" ? formatSize(f.size) : null;
                 return (
@@ -592,6 +573,26 @@ function BlockView({
     default:
       return null; // unknown block types render as nothing in viewer
   }
+}
+
+// Render a block's body as rich text when it has sanitised HTML (authored with
+// the styling toolbar), else as plain text. The HTML was sanitised in the
+// editor before storage, so it's safe to render here.
+function richBody(html: unknown, text: unknown, className: string) {
+  const h = typeof html === "string" ? html.trim() : "";
+  if (h) {
+    return (
+      <div
+        className={`${className} [&_div]:my-0 [&_p]:my-0`}
+        dangerouslySetInnerHTML={{ __html: h }}
+      />
+    );
+  }
+  return (
+    <p className={`${className} whitespace-pre-wrap`}>
+      {typeof text === "string" ? text : ""}
+    </p>
+  );
 }
 
 function formatSize(bytes: number): string {

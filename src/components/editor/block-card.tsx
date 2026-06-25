@@ -294,14 +294,10 @@ function BlockBody({
             <option value="warning">⚠ Warning</option>
             <option value="danger">⛔ Danger</option>
           </select>
-          <textarea
-            defaultValue={c.text ?? ""}
-            onBlur={(e) => {
-              if (e.target.value !== c.text) update({ ...c, text: e.target.value });
-            }}
-            placeholder="Important note…"
-            rows={2}
-            className="w-full resize-y border-0 bg-transparent text-sm focus:outline-none"
+          <RichTextEditor
+            html={c.html}
+            text={c.text}
+            onChange={(next) => update({ ...c, html: next.html, text: next.text })}
           />
         </div>
       );
@@ -478,18 +474,14 @@ function FileTextBlockEditor({
   };
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white focus-within:border-zinc-300">
+    <div className="space-y-2">
       <input ref={fileRef} type="file" hidden multiple onChange={(e) => void handle(e.target.files)} />
-      <textarea
-        defaultValue={c.text ?? ""}
-        onBlur={(e) => {
-          if (e.target.value !== c.text) update({ ...c, text: e.target.value });
-        }}
-        placeholder="Describe these files (e.g. “231: Stable version”)…"
-        rows={Math.max(2, String(c.text ?? "").split("\n").length)}
-        className="w-full resize-y border-0 bg-transparent px-3 pt-2.5 text-sm focus:outline-none"
+      <RichTextEditor
+        html={c.html}
+        text={c.text}
+        onChange={(next) => update({ ...c, html: next.html, text: next.text })}
       />
-      <div className="space-y-1.5 px-2 pb-2">
+      <div className="space-y-1.5 rounded-lg border border-zinc-200 bg-white p-2">
         {files.map((f, i) => (
           <div
             key={f.assetId}
