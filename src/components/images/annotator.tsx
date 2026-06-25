@@ -165,6 +165,10 @@ export default function Annotator({
   >(null);
   const gesturePinched = useRef(false);
   const addedPoint = useRef<number | null>(null);
+  // Pan tool (desktop): drag the zoomed image around instead of annotating, so
+  // you're not stuck looking at the centre when zoomed in.
+  const [panTool, setPanTool] = useState(false);
+  const panDrag = useRef<null | { x: number; y: number; panX: number; panY: number }>(null);
 
   const clampPan = (z: number, px: number, py: number) => {
     const outer = outerRef.current;
@@ -299,6 +303,13 @@ export default function Annotator({
       return;
     }
 
+    // Pan tool: a single-finger / mouse drag moves the zoomed image.
+    if (panTool) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      panDrag.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      return;
+    }
+
     const p = norm(e);
     lastPt.current = p;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -350,6 +361,18 @@ export default function Annotator({
     }
     if (gesturePinched.current) return; // a finger left over after a pinch — don't draw
 
+    // Pan tool drag.
+    if (panDrag.current) {
+      setPan(
+        clampPan(
+          zoom,
+          panDrag.current.panX + (e.clientX - panDrag.current.x),
+          panDrag.current.panY + (e.clientY - panDrag.current.y)
+        )
+      );
+      return;
+    }
+
     const d = dragRef.current;
     if (!d) return;
     const p = norm(e);
@@ -392,6 +415,10 @@ export default function Annotator({
 
   const onPointerUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
+    if (panDrag.current) {
+      panDrag.current = null;
+      if (pointers.current.size === 0) return;
+    }
     if (pointers.current.size < 2) pinch.current = null;
     if (pointers.current.size === 0 && gesturePinched.current) {
       // The whole gesture was a pinch — don't commit any annotation from it.
@@ -474,14 +501,26 @@ export default function Annotator({
           {(["arrow", "point", "box", "circle"] as const).map((t) => (
             <button
               key={t}
-              onClick={() => setTool(t)}
+              onClick={() => {
+                setTool(t);
+                setPanTool(false);
+              }}
               className={`rounded-md px-2 py-1 text-sm ${
-                tool === t ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                tool === t && !panTool ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
               }`}
             >
               {toolLabel[t]}
             </button>
           ))}
+          <button
+            onClick={() => setPanTool((v) => !v)}
+            title="Pan — drag the zoomed image to move around"
+            className={`rounded-md px-2 py-1 text-sm ${
+              panTool ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+            }`}
+          >
+            ✋ Pan
+          </button>
           <div className="flex items-center gap-1">
             {COLORS.map((c) => (
               <button
@@ -554,6 +593,7 @@ export default function Annotator({
               <svg
                 ref={svgRef}
                 className="absolute inset-0 h-full w-full touch-none"
+                style={{ cursor: panTool ? "grab" : undefined }}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
