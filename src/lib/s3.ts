@@ -64,6 +64,39 @@ export async function signedViewUrl(key: string, expiresIn = 300) {
 }
 
 /**
+ * Signed GET that forces a download with a chosen filename. S3 echoes the
+ * `response-content-disposition` override back as the response header, so the
+ * saved file matches the name shown in the guide instead of the opaque S3 key.
+ */
+export async function signedDownloadUrl(
+  key: string,
+  filename: string,
+  expiresIn = 300
+) {
+  await ensureBucket();
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      ResponseContentDisposition: contentDisposition(filename),
+    }),
+    { expiresIn }
+  );
+}
+
+/**
+ * Build an `attachment` Content-Disposition value safe for any filename:
+ * an ASCII-folded fallback plus an RFC 5987 `filename*` for unicode names.
+ */
+function contentDisposition(name: string): string {
+  const clean = (name || "file").replace(/[\r\n"]/g, "").trim() || "file";
+  const ascii = clean.replace(/[^\x20-\x7e]/g, "_");
+  const encoded = encodeURIComponent(clean);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
  * Fetch an object and return it as a `data:` URL. Used by the admin PDF export
  * so the rendered page has fully-inlined images (no cross-origin canvas taint
  * when rasterizing to PDF). Returns null if the object can't be read.

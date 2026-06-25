@@ -5,8 +5,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { currentUser, requestMeta } from "@/lib/auth";
 import { currentGrant } from "@/lib/grant-auth";
-import { signedViewUrl } from "@/lib/s3";
+import { signedDownloadUrl } from "@/lib/s3";
 import { logEvent } from "@/lib/audit";
+
+// A file/file_text block references its attachments either as a flat
+// { assetId, name } (legacy) or as a { files: [{ assetId, name }] } array
+// (multi-file blocks). Flatten both shapes to one list of entries.
+type FileEntry = { assetId: string; name?: string };
+function fileEntries(content: unknown): FileEntry[] {
+  const c = content as { assetId?: string; name?: string; files?: unknown };
+  if (Array.isArray(c?.files)) {
+    return c.files.filter(
+      (f): f is FileEntry => !!f && typeof (f as FileEntry).assetId === "string"
+    );
+  }
+  if (typeof c?.assetId === "string") return [{ assetId: c.assetId, name: c.name }];
+  return [];
+}
 
 export async function GET(
   req: NextRequest,
@@ -26,38 +41,48 @@ export async function GET(
   if (!asset) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const staff = user && (user.role === "ADMIN" || user.role === "TECH");
+
+  // The display name lives in the referencing block's content (not on the
+  // ImageAsset), so scan the guild's file blocks: this both gates installer
+  // access (the file must be referenced) and gives us the download filename.
+  let referenced = false;
+  let fileName = "";
+  if (guildId) {
+    const blocks = await prisma.block.findMany({
+      where: { section: { guildId }, type: { in: ["file", "file_text"] } },
+      select: { content: true },
+    });
+    for (const b of blocks) {
+      const entry = fileEntries(b.content).find((e) => e.assetId === id);
+      if (entry) {
+        referenced = true;
+        if (entry.name) fileName = entry.name;
+        break;
+      }
+    }
+  }
+
   if (!staff) {
     // Installer paths: must have access to the guild AND the file must be
     // referenced by that guild's content.
-    if (!guildId) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
-    const hasAccess = grant
-      ? await prisma.grantGuild.findUnique({
-          where: { grantId_guildId: { grantId: grant.id, guildId } },
-        })
-      : // Installer account: grant must exist and not be past its time frame.
-        await prisma.installerGuild.findFirst({
-          where: {
-            userId: user!.id,
-            guildId,
-            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-          },
-        });
-    let referenced = false;
-    if (hasAccess) {
-      const blocks = await prisma.block.findMany({
-        where: { section: { guildId }, type: { in: ["file", "file_text"] } },
-        select: { content: true },
-      });
-      referenced = blocks.some(
-        (b) => (b.content as { assetId?: string })?.assetId === id
-      );
-    }
-    if (!referenced) {
+    const hasAccess =
+      guildId &&
+      (grant
+        ? await prisma.grantGuild.findUnique({
+            where: { grantId_guildId: { grantId: grant.id, guildId } },
+          })
+        : // Installer account: grant must exist and not be past its time frame.
+          await prisma.installerGuild.findFirst({
+            where: {
+              userId: user!.id,
+              guildId,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            },
+          }));
+    if (!hasAccess || !referenced) {
       await logEvent({
         actor: grant ? { grantId: grant.id } : { userId: user!.id },
-        guildId,
+        guildId: guildId ?? null,
         action: "denied",
         ip: meta.ip,
         userAgent: meta.userAgent,
@@ -76,6 +101,9 @@ export async function GET(
     meta: { assetId: id },
   });
 
-  const url = await signedViewUrl(asset.s3Key, 120);
+  // Force the saved file to match the name shown in the guide. Fall back to a
+  // sensible default when the block carried no name (e.g. legacy data).
+  const name = fileName || `file-${asset.id}`;
+  const url = await signedDownloadUrl(asset.s3Key, name, 120);
   return NextResponse.redirect(url);
 }
