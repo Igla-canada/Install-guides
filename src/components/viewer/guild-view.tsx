@@ -22,6 +22,40 @@ type AnnotationRow = {
 
 type Theme = "dark" | "light";
 
+// A saved zoom/crop view on an image: zoom + normalized pan (fractions of the
+// image's displayed width/height). Applied so the guide shows a zoomed region.
+type ImageView = { z: number; px: number; py: number };
+
+// Wrap an annotated image so it shows its saved zoom/crop: the box keeps the
+// image's normal shape (an invisible copy sizes it) while the visible copy +
+// its annotation overlay are scaled/translated together inside an overflow clip
+// — so callouts stay glued to the wires. No saved view → caller renders plainly.
+function CroppedFrame({
+  url,
+  view,
+  children,
+}: {
+  url: string;
+  view: ImageView;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative w-full overflow-hidden rounded-lg">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="" aria-hidden className="block w-full" style={{ visibility: "hidden" }} />
+      <div
+        className="absolute inset-0"
+        style={{
+          transformOrigin: "0 0",
+          transform: `translate(${view.px * 100}%, ${view.py * 100}%) scale(${view.z})`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // The numbered/colored legend shown under an annotated photo. Points show their
 // number (matching the on-image marker) so installers can map each one to its
 // note; labelled callouts/boxes also list their note here.
@@ -98,6 +132,8 @@ export default async function GuildView({
   // width / height seed each overlay's viewBox so callouts render at the right
   // scale even before client JS measures the image (server / no-JS / PDF).
   const aspectMap = new Map<string, number>();
+  // Saved zoom/crop view per image (baked in the annotator).
+  const viewMap = new Map<string, ImageView>();
   await Promise.all(
     assets.map(async (a) => {
       const url = inlineImages
@@ -106,6 +142,8 @@ export default async function GuildView({
       if (url) urlMap.set(a.id, url);
       annoMap.set(a.id, a.annotations as AnnotationRow[]);
       if (a.width && a.height) aspectMap.set(a.id, a.width / a.height);
+      const v = a.view as ImageView | null;
+      if (v && typeof v.z === "number") viewMap.set(a.id, v);
     })
   );
 
@@ -160,6 +198,7 @@ export default async function GuildView({
                     urlMap={urlMap}
                     annoMap={annoMap}
                     aspectMap={aspectMap}
+                    viewMap={viewMap}
                     guildId={doc.id}
                     t={t}
                   />
@@ -326,6 +365,7 @@ function BlockView({
   urlMap,
   annoMap,
   aspectMap,
+  viewMap,
   guildId,
   t,
 }: {
@@ -334,6 +374,7 @@ function BlockView({
   urlMap: Map<string, string>;
   annoMap: Map<string, AnnotationRow[]>;
   aspectMap: Map<string, number>;
+  viewMap: Map<string, ImageView>;
   guildId: string;
   t: ReturnType<typeof themeClasses>;
 }) {
@@ -361,6 +402,16 @@ function BlockView({
       const url = urlMap.get(id);
       if (!url) return null;
       const annos = type === "annotated_image" ? annoMap.get(id) ?? [] : [];
+      const view = viewMap.get(id);
+      const imgInner = (
+        <div className="relative inline-block w-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={String(c.caption ?? "")} className="w-full rounded-lg" data-zoomable />
+          {annos.length > 0 && (
+            <AnnoOverlay annos={annos as unknown as Anno[]} aspect={aspectMap.get(id)} />
+          )}
+        </div>
+      );
       return (
         <figure>
           {Boolean(c.heading) && (
@@ -368,16 +419,7 @@ function BlockView({
               {String(c.heading)}
             </div>
           )}
-          <div className="relative inline-block w-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={String(c.caption ?? "")} className="w-full rounded-lg" data-zoomable />
-            {annos.length > 0 && (
-              <AnnoOverlay
-                annos={annos as unknown as Anno[]}
-                aspect={aspectMap.get(id)}
-              />
-            )}
-          </div>
+          {view ? <CroppedFrame url={url} view={view}>{imgInner}</CroppedFrame> : imgInner}
           <AnnoLegend annos={annos} />
           {Boolean(c.caption) && (
             <figcaption className={`mt-1 text-xs ${t.muted}`}>
@@ -402,6 +444,17 @@ function BlockView({
             const url = urlMap.get(it.imageAssetId);
             if (!url) return null;
             const annos = annoMap.get(it.imageAssetId) ?? [];
+            const view = viewMap.get(it.imageAssetId);
+            const inner = (
+              <div className="relative">
+                {/* natural aspect ratio — not cropped to a square */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt={it.caption ?? ""} className="block w-full rounded-lg" data-zoomable />
+                {annos.length > 0 && (
+                  <AnnoOverlay annos={annos as unknown as Anno[]} aspect={aspectMap.get(it.imageAssetId)} />
+                )}
+              </div>
+            );
             return (
               <figure key={i}>
                 {it.caption && (
@@ -409,17 +462,7 @@ function BlockView({
                     {it.caption}
                   </figcaption>
                 )}
-                <div className="relative">
-                  {/* natural aspect ratio — not cropped to a square */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={it.caption ?? ""} className="block w-full rounded-lg" data-zoomable />
-                  {annos.length > 0 && (
-                    <AnnoOverlay
-                      annos={annos as unknown as Anno[]}
-                      aspect={aspectMap.get(it.imageAssetId)}
-                    />
-                  )}
-                </div>
+                {view ? <CroppedFrame url={url} view={view}>{inner}</CroppedFrame> : inner}
                 <AnnoLegend annos={annos} />
               </figure>
             );

@@ -93,26 +93,25 @@ export async function dispatchOps(
 
 export async function saveAnnotations(
   imageRef: string, // assetId or pending:<uuid>
-  annotations: unknown[]
+  annotations: unknown[],
+  view?: { z: number; px: number; py: number } | null
 ): Promise<{ ok: boolean; queued: boolean }> {
+  // Only include `view` when explicitly provided so we never clobber a saved
+  // crop on callers that don't manage it.
+  const body = view === undefined ? { annotations } : { annotations, view };
   if (!imageRef.startsWith("pending:")) {
     try {
       const res = await fetch(`/api/images/${imageRef}/annotations`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ annotations }),
+        body: JSON.stringify(body),
       });
       if (res.ok) return { ok: true, queued: false };
     } catch {
       /* fall through to queue */
     }
   }
-  await enqueue({
-    kind: "annotations",
-    imageRef,
-    payload: annotations,
-    ts: Date.now(),
-  });
+  await enqueue({ kind: "annotations", imageRef, payload: body, ts: Date.now() });
   return { ok: false, queued: true };
 }
 
@@ -259,10 +258,12 @@ export async function flushQueue(): Promise<void> {
       } else if (item.kind === "annotations" && item.imageRef) {
         const ref = (await substitutePendingRefs(db, item.imageRef)) as string;
         if (!ref.startsWith("pending:")) {
+          // payload is { annotations, view? }; tolerate the old array shape.
+          const annoBody = Array.isArray(payload) ? { annotations: payload } : payload;
           await fetch(`/api/images/${ref}/annotations`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ annotations: payload }),
+            body: JSON.stringify(annoBody),
           });
         }
       }

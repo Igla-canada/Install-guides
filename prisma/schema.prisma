@@ -220,6 +220,9 @@ model ImageAsset {
   s3Key        String       @unique
   width        Int?
   height       Int?
+  // Optional saved "view"/crop: { z, px, py } — zoom + normalized pan an author
+  // baked in so the guide shows a zoomed/cropped region. null = full image.
+  view         Json?
   mime         String
   uploadedById String?
   uploadedBy   UserAccount? @relation(fields: [uploadedById], references: [id])

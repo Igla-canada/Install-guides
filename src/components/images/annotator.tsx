@@ -205,7 +205,7 @@ export default function Annotator({
     if (imageRef.startsWith("pending:")) return; // nothing server-side yet
     void fetch(`/api/images/${imageRef}/annotations`)
       .then((r) => (r.ok ? r.json() : { annotations: [] }))
-      .then((d) =>
+      .then((d) => {
         setAnnos(
           (d.annotations ?? []).map((a: any) => ({
             shape: a.shape,
@@ -215,9 +215,23 @@ export default function Annotator({
             color: a.color,
             order: a.order,
           }))
-        )
-      );
+        );
+        if (d.view && typeof d.view.z === "number") setCropView(d.view);
+      });
   }, [imageRef]);
+
+  // The saved "view"/crop: the zoom + normalized pan baked in so the guide shows
+  // a zoomed-in region. Captured from the current zoom/pan via "Set as view".
+  const [cropView, setCropView] = useState<{ z: number; px: number; py: number } | null>(null);
+
+  const setViewFromCurrent = () => {
+    const wrap = wrapRef.current;
+    if (!wrap || zoom <= 1) {
+      setCropView(null);
+      return;
+    }
+    setCropView({ z: zoom, px: pan.x / wrap.offsetWidth, py: pan.y / wrap.offsetHeight });
+  };
 
   const norm = (e: React.PointerEvent) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -476,7 +490,8 @@ export default function Annotator({
     setSaving(true);
     const result = await saveAnnotations(
       imageRef,
-      annos.map((a, i) => ({ ...a, order: i }))
+      annos.map((a, i) => ({ ...a, order: i })),
+      cropView
     );
     setSaving(false);
     if (result.queued) {
@@ -563,6 +578,29 @@ export default function Annotator({
               </button>
             )}
           </div>
+
+          {/* Crop / saved view: bake the current zoom + position so the guide
+              shows this zoomed-in region (the canvas keeps its shape). */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={setViewFromCurrent}
+              disabled={zoom <= 1}
+              title="Use the current zoom + position as the image's view in the guide"
+              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-40"
+            >
+              ⛶ Set as view
+            </button>
+            {cropView && (
+              <button
+                onClick={() => setCropView(null)}
+                title="Show the full image again"
+                className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-200"
+              >
+                cropped {Math.round(cropView.z * 100)}% · reset
+              </button>
+            )}
+          </div>
+
           <div className="ml-auto flex gap-2">
             <button onClick={onClose} className="rounded-md px-3 py-1 text-sm hover:bg-zinc-100">
               Cancel
