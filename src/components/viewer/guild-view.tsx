@@ -8,8 +8,6 @@ import type { GuildDoc } from "@/lib/guild-doc";
 import { sectionColors } from "@/lib/blocks";
 import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
-import DOMPurify from "isomorphic-dompurify";
-import { RICH_ALLOWED_TAGS, RICH_ALLOWED_ATTR } from "@/lib/rich-text";
 
 type AnnotationRow = {
   id: string;
@@ -341,18 +339,15 @@ function BlockView({
 }) {
   switch (type) {
     case "text": {
-      // Rich text is authored as HTML; sanitise to the strict allowlist before
-      // showing it (never trust stored markup when serving an installer).
-      const rawHtml = typeof c.html === "string" ? c.html : "";
-      if (rawHtml.trim()) {
-        const clean = DOMPurify.sanitize(rawHtml, {
-          ALLOWED_TAGS: RICH_ALLOWED_TAGS,
-          ALLOWED_ATTR: RICH_ALLOWED_ATTR,
-        });
+      // Rich text is sanitised in the editor (browser DOMPurify) to a strict
+      // inline-formatting allowlist before it's ever stored, so the stored HTML
+      // is safe to render here. Plain/legacy/chat-made blocks fall back to text.
+      const html = typeof c.html === "string" ? c.html : "";
+      if (html.trim()) {
         return (
           <div
-            className="text-sm leading-relaxed [&_p]:my-0 [&_div]:my-0"
-            dangerouslySetInnerHTML={{ __html: clean }}
+            className="text-sm leading-relaxed [&_div]:my-0 [&_p]:my-0"
+            dangerouslySetInnerHTML={{ __html: html }}
           />
         );
       }

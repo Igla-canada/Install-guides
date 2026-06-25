@@ -6,6 +6,8 @@
 // viewer sanitises the HTML to a strict allowlist before showing it.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from "react";
+import DOMPurify from "dompurify";
+import { RICH_ALLOWED_TAGS, RICH_ALLOWED_ATTR } from "@/lib/rich-text";
 
 const COLORS = [
   "#111827", // near-black (default)
@@ -47,10 +49,14 @@ export default function RichTextEditor({
   const save = () => {
     const el = ref.current;
     if (!el) return;
-    const out = el.innerHTML;
-    // Treat a blank editable (just <br>/whitespace) as empty.
-    const isEmpty = el.textContent?.trim() === "" && !out.includes("<img");
-    onChange({ html: isEmpty ? "" : out, text: el.innerText });
+    // Sanitise here (in the browser) to the strict allowlist, so only safe
+    // inline-formatting markup is ever stored or later shown to an installer.
+    const clean = DOMPurify.sanitize(el.innerHTML, {
+      ALLOWED_TAGS: RICH_ALLOWED_TAGS,
+      ALLOWED_ATTR: RICH_ALLOWED_ATTR,
+    });
+    const isEmpty = el.textContent?.trim() === "";
+    onChange({ html: isEmpty ? "" : clean, text: el.innerText });
   };
 
   const cmd = (command: string, value?: string) => {
