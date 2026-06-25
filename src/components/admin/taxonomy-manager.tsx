@@ -134,6 +134,9 @@ async function deleteModel(formData: FormData) {
 
 const fieldCls = "rounded-md border border-zinc-300 px-2 py-1 text-sm";
 
+// Per-generation accent colours so each generation's guides are visually grouped.
+const GEN_COLORS = ["#2563eb", "#16a34a", "#a855f7", "#ea580c", "#0891b2", "#db2777"];
+
 export default async function TaxonomyManager({ error }: { error?: string }) {
   await requireRole("ADMIN");
   const makes = await prisma.make.findMany({
@@ -218,8 +221,18 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                     </div>
 
                     <div className="mt-2 space-y-2">
-                      {md.generations.map((g) => (
-                        <div key={g.id} className="rounded border border-zinc-100 bg-zinc-50 p-2">
+                      {md.generations.map((g, gi) => {
+                        // Colour-band each generation so its guides are visually
+                        // grouped; flag generations shared by 2+ guides (editing
+                        // their years/label affects every guide on them).
+                        const color = GEN_COLORS[gi % GEN_COLORS.length];
+                        const shared = g._count.guilds > 1;
+                        return (
+                        <div
+                          key={g.id}
+                          className="rounded border border-l-4 border-zinc-100 bg-zinc-50 p-2"
+                          style={{ borderLeftColor: color }}
+                        >
                           <form action={updateGeneration} className="flex flex-wrap items-end gap-2">
                             <input type="hidden" name="id" value={g.id} />
                             <label className="flex flex-col text-[11px] text-zinc-500">
@@ -238,6 +251,11 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                               Save
                             </button>
                             <span className="text-[11px] text-zinc-400">{g._count.guilds} guide(s)</span>
+                            {shared && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                                ⚠ {g._count.guilds} guides share this — editing affects both
+                              </span>
+                            )}
                           </form>
 
                           {g.guilds.length > 0 && (
@@ -250,7 +268,8 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   title={`Open "${gd.title}" editor in a new tab`}
-                                  className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs hover:bg-zinc-100"
+                                  className="inline-flex items-center gap-1 rounded-md border-l-4 border border-zinc-200 bg-white px-2 py-0.5 text-xs hover:bg-zinc-100"
+                                  style={{ borderLeftColor: color }}
                                 >
                                   ↗ {gd.title}
                                   {gd.status !== "PUBLISHED" && (
@@ -291,7 +310,8 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                             )}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
 
                       <form action={addGeneration} className="flex flex-wrap items-end gap-2 border-t border-dashed border-zinc-200 pt-2">
                         <input type="hidden" name="modelId" value={md.id} />

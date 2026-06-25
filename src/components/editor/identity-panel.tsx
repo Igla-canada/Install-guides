@@ -10,6 +10,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ClientDoc } from "./types";
 import type { Taxonomy } from "@/lib/taxonomy";
 
@@ -59,6 +60,7 @@ export default function IdentityPanel({
 }) {
   const [draft, setDraft] = useState<Draft>(() => baseDraft(doc));
   const [saving, setSaving] = useState(false);
+  const router = useRouter();
 
   // Re-sync to the document only when its SAVED identity actually changes (i.e.
   // after a successful save). Because we don't dispatch while editing, `doc`
@@ -133,6 +135,41 @@ export default function IdentityPanel({
       return next.length === 0 ? d : { ...d, productIds: next }; // keep at least one
     });
 
+  // Create a new model / generation inline. These CREATE taxonomy and re-point
+  // this guide immediately (not staged), so they're gated behind saving any
+  // other pending edits first. Adding a generation moves ONLY this guide onto
+  // it — the way to split a duplicate off a shared generation.
+  const [showAddModel, setShowAddModel] = useState(false);
+  const [newModel, setNewModel] = useState("");
+  const [showAddGen, setShowAddGen] = useState(false);
+  const [newGen, setNewGen] = useState({ name: "", from: "", to: "" });
+
+  const createModel = async () => {
+    const name = newModel.trim();
+    if (!name) return;
+    setSaving(true);
+    await dispatch([{ op: "create_model", name }]);
+    setSaving(false);
+    setNewModel("");
+    setShowAddModel(false);
+    router.refresh(); // refetch taxonomy so the new model shows in the dropdowns
+  };
+  const createGeneration = async () => {
+    const name = newGen.name.trim();
+    const ys = parseInt(newGen.from, 10);
+    if (!name || Number.isNaN(ys)) return;
+    const yeRaw = newGen.to.trim();
+    const ye = yeRaw ? parseInt(yeRaw, 10) : null;
+    setSaving(true);
+    await dispatch([
+      { op: "create_generation", name, yearStart: ys, yearEnd: ye !== null && Number.isNaN(ye) ? null : ye },
+    ]);
+    setSaving(false);
+    setNewGen({ name: "", from: "", to: "" });
+    setShowAddGen(false);
+    router.refresh(); // refetch taxonomy so the new generation shows in the dropdown
+  };
+
   // The guide title isn't identity — keep it instant (no Save gate).
   const setTitle = (title: string) =>
     void dispatch([{ op: "update_identity", data: { title } }]);
@@ -206,12 +243,50 @@ export default function IdentityPanel({
               onChange={pickMake}
               options={taxonomy.makes.map((m) => ({ value: m.id, label: m.name }))}
             />
-            <Select
-              label="Model"
-              value={draft.modelId}
-              onChange={pickModel}
-              options={(make?.models ?? []).map((m) => ({ value: m.id, label: m.name }))}
-            />
+            <div>
+              <Select
+                label="Model"
+                value={draft.modelId}
+                onChange={pickModel}
+                options={(make?.models ?? []).map((m) => ({ value: m.id, label: m.name }))}
+              />
+              {showAddModel ? (
+                <div className="mt-1 flex items-center gap-1">
+                  <input
+                    value={newModel}
+                    onChange={(e) => setNewModel(e.target.value)}
+                    placeholder="New model name"
+                    className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                  />
+                  <button
+                    onClick={() => void createModel()}
+                    disabled={dirty || saving || !newModel.trim()}
+                    className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddModel(false);
+                      setNewModel("");
+                    }}
+                    className="px-1 text-xs text-zinc-400 hover:text-zinc-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddModel(true)}
+                  className="mt-1 text-xs text-zinc-500 hover:text-zinc-800"
+                >
+                  + New model
+                </button>
+              )}
+              {dirty && showAddModel && (
+                <p className="mt-0.5 text-[11px] text-amber-600">Save or discard your changes first.</p>
+              )}
+            </div>
             <Select
               label="Generation"
               value={draft.generationId}
@@ -269,6 +344,67 @@ export default function IdentityPanel({
                 Renaming or re-yearing applies to every guide on the {doc.model.name}{" "}
                 “{generation?.name ?? draft.genName}” generation.
               </p>
+
+              {/* Split this guide onto its OWN generation (e.g. after duplicating
+                  a guide) so its years are independent of the shared one. */}
+              <div className="mt-2 border-t border-zinc-200 pt-2">
+                {showAddGen ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col text-[11px] text-zinc-500">
+                      New generation
+                      <input
+                        value={newGen.name}
+                        onChange={(e) => setNewGen((g) => ({ ...g, name: e.target.value }))}
+                        placeholder="e.g. 2026+"
+                        className="mt-0.5 w-40 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                      />
+                    </label>
+                    <label className="flex flex-col text-[11px] text-zinc-500">
+                      From
+                      <input
+                        type="number"
+                        value={newGen.from}
+                        onChange={(e) => setNewGen((g) => ({ ...g, from: e.target.value }))}
+                        placeholder="2026"
+                        className="mt-0.5 w-20 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                      />
+                    </label>
+                    <label className="flex flex-col text-[11px] text-zinc-500">
+                      To
+                      <input
+                        type="number"
+                        value={newGen.to}
+                        onChange={(e) => setNewGen((g) => ({ ...g, to: e.target.value }))}
+                        placeholder="now"
+                        className="mt-0.5 w-20 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                      />
+                    </label>
+                    <button
+                      onClick={() => void createGeneration()}
+                      disabled={dirty || saving || !newGen.name.trim() || !newGen.from.trim()}
+                      className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+                    >
+                      Add &amp; move
+                    </button>
+                    <button
+                      onClick={() => setShowAddGen(false)}
+                      className="px-1 text-xs text-zinc-400 hover:text-zinc-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowAddGen(true)}
+                    className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
+                  >
+                    + New generation — put just this guide on its own years
+                  </button>
+                )}
+                {dirty && showAddGen && (
+                  <p className="mt-0.5 text-[11px] text-amber-600">Save or discard your changes first.</p>
+                )}
+              </div>
             </div>
             <Select
               label="Trim (optional)"

@@ -34,6 +34,18 @@ export const opSchema = z.discriminatedUnion("op", [
     yearStart: z.number().int().optional(),
     yearEnd: z.number().int().nullable().optional(),
   }),
+  // Create a NEW model under this guild's make (find-or-create by name) and
+  // point this guide at it — so the editor can add a model without leaving.
+  z.object({ op: z.literal("create_model"), name: z.string().min(1) }),
+  // Create a NEW generation under this guild's model and move ONLY this guide
+  // onto it — how you split a duplicate off a shared generation so their years
+  // are independent. Name is auto-uniqued within the model.
+  z.object({
+    op: z.literal("create_generation"),
+    name: z.string().min(1),
+    yearStart: z.number().int(),
+    yearEnd: z.number().int().nullable().optional(),
+  }),
   // The set of products this guide covers (first = primary, used for display).
   z.object({ op: z.literal("set_products"), productIds: z.array(z.string().min(1)).min(1) }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
@@ -119,6 +131,60 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
           ...(op.yearStart !== undefined ? { yearStart: op.yearStart } : {}),
           ...(op.yearEnd !== undefined ? { yearEnd: op.yearEnd } : {}),
         },
+      });
+      return;
+    }
+    case "create_model": {
+      const guild = await tx.guild.findUniqueOrThrow({
+        where: { id: guildId },
+        select: { makeId: true, generationId: true },
+      });
+      const cur = await tx.generation.findUnique({ where: { id: guild.generationId } });
+      const name = op.name.trim();
+      // Find-or-create the model so typing an existing name just points at it.
+      let model = await tx.model.findFirst({ where: { makeId: guild.makeId, name } });
+      if (!model) model = await tx.model.create({ data: { makeId: guild.makeId, name } });
+      // Point at a generation (reuse the model's first, else clone the current
+      // guide's year frame into the new model so nothing is lost).
+      let gen = await tx.generation.findFirst({
+        where: { modelId: model.id },
+        orderBy: { yearStart: "asc" },
+      });
+      if (!gen) {
+        gen = await tx.generation.create({
+          data: {
+            modelId: model.id,
+            name: cur?.name ?? "All years",
+            yearStart: cur?.yearStart ?? new Date().getFullYear(),
+            yearEnd: cur?.yearEnd ?? null,
+          },
+        });
+      }
+      await tx.guild.update({
+        where: { id: guildId },
+        data: { modelId: model.id, generationId: gen.id, trimId: null },
+      });
+      return;
+    }
+    case "create_generation": {
+      const guild = await tx.guild.findUniqueOrThrow({
+        where: { id: guildId },
+        select: { modelId: true },
+      });
+      // Keep the generation name unique within the model.
+      const base = op.name.trim();
+      let name = base;
+      let n = 1;
+      while (await tx.generation.findFirst({ where: { modelId: guild.modelId, name } })) {
+        n += 1;
+        name = `${base} (${n})`;
+      }
+      const gen = await tx.generation.create({
+        data: { modelId: guild.modelId, name, yearStart: op.yearStart, yearEnd: op.yearEnd ?? null },
+      });
+      await tx.guild.update({
+        where: { id: guildId },
+        data: { generationId: gen.id, trimId: null },
       });
       return;
     }
@@ -422,13 +488,33 @@ export async function duplicateGuild(
   const doc = await loadGuildDoc(guildId);
   if (!doc) throw new Error("guild not found");
 
+  // Give the copy its OWN generation (cloned from the original's years, with a
+  // unique label) so editing one guide's years never affects the other. The
+  // author renames it afterwards. trim belongs to the old generation, so drop
+  // it on the copy.
+  const origGen = await prisma.generation.findUniqueOrThrow({ where: { id: doc.generationId } });
+  let genName = `${origGen.name} (copy)`;
+  let gn = 1;
+  while (await prisma.generation.findFirst({ where: { modelId: doc.modelId, name: genName } })) {
+    gn += 1;
+    genName = `${origGen.name} (copy ${gn})`;
+  }
+  const copyGen = await prisma.generation.create({
+    data: {
+      modelId: doc.modelId,
+      name: genName,
+      yearStart: origGen.yearStart,
+      yearEnd: origGen.yearEnd,
+    },
+  });
+
   const copy = await prisma.guild.create({
     data: {
       regionId: doc.regionId,
       makeId: doc.makeId,
       modelId: doc.modelId,
-      generationId: doc.generationId,
-      trimId: doc.trimId,
+      generationId: copyGen.id,
+      trimId: null,
       iglaProductId: doc.iglaProductId,
       title: `Copy of ${doc.title}`,
       status: "DRAFT",
