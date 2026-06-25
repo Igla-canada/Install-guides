@@ -4,6 +4,7 @@
 import { useRef, useState } from "react";
 import type { ClientBlock } from "./types";
 import ImageBlockEditor from "@/components/images/image-block-editor";
+import RichTextEditor from "./rich-text-editor";
 import { uploadImage } from "@/lib/client/offline";
 
 export default function BlockCard({
@@ -76,14 +77,10 @@ function BlockBody({
   switch (block.type) {
     case "text":
       return (
-        <textarea
-          defaultValue={c.text ?? ""}
-          onBlur={(e) => {
-            if (e.target.value !== c.text) update({ ...c, text: e.target.value });
-          }}
-          placeholder="Write…"
-          rows={Math.max(2, String(c.text ?? "").split("\n").length)}
-          className="w-full resize-y border-0 bg-transparent text-sm focus:outline-none"
+        <RichTextEditor
+          html={c.html}
+          text={c.text}
+          onChange={(next) => update({ ...c, html: next.html, text: next.text })}
         />
       );
 

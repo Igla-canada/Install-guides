@@ -8,6 +8,8 @@ import type { GuildDoc } from "@/lib/guild-doc";
 import { sectionColors } from "@/lib/blocks";
 import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
+import DOMPurify from "isomorphic-dompurify";
+import { RICH_ALLOWED_TAGS, RICH_ALLOWED_ATTR } from "@/lib/rich-text";
 
 type AnnotationRow = {
   id: string;
@@ -338,12 +340,28 @@ function BlockView({
   t: ReturnType<typeof themeClasses>;
 }) {
   switch (type) {
-    case "text":
+    case "text": {
+      // Rich text is authored as HTML; sanitise to the strict allowlist before
+      // showing it (never trust stored markup when serving an installer).
+      const rawHtml = typeof c.html === "string" ? c.html : "";
+      if (rawHtml.trim()) {
+        const clean = DOMPurify.sanitize(rawHtml, {
+          ALLOWED_TAGS: RICH_ALLOWED_TAGS,
+          ALLOWED_ATTR: RICH_ALLOWED_ATTR,
+        });
+        return (
+          <div
+            className="text-sm leading-relaxed [&_p]:my-0 [&_div]:my-0"
+            dangerouslySetInnerHTML={{ __html: clean }}
+          />
+        );
+      }
       return (
         <p className="whitespace-pre-wrap text-sm leading-relaxed">
           {String(c.text ?? "")}
         </p>
       );
+    }
     case "key_value_table": {
       const rows = (c.rows as Array<{ key: string; value: string }>) ?? [];
       return (
