@@ -9,7 +9,7 @@
 // taxonomy" manager; this panel only re-points a guide onto existing options.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClientDoc } from "./types";
 import type { Taxonomy } from "@/lib/taxonomy";
@@ -205,9 +205,29 @@ export default function IdentityPanel({
     router.refresh(); // refetch taxonomy so the new generation shows in the dropdown
   };
 
-  // The guide title isn't identity — keep it instant (no Save gate).
-  const setTitle = (title: string) =>
-    void dispatch([{ op: "update_identity", data: { title } }]);
+  // The guide title isn't identity — but it can't be a controlled input bound
+  // straight to doc.title: each keystroke dispatches an op, and the async server
+  // doc replacing local state mid-typing dropped characters and jumped the
+  // caret. So keep a local draft, debounce the save, and never overwrite the
+  // draft while the field is focused.
+  const [titleDraft, setTitleDraft] = useState(doc.title);
+  const titleFocused = useRef(false);
+  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!titleFocused.current) setTitleDraft(doc.title);
+  }, [doc.title]);
+  const pushTitle = (v: string) =>
+    void dispatch([{ op: "update_identity", data: { title: v } }]);
+  const onTitleChange = (v: string) => {
+    setTitleDraft(v);
+    if (titleTimer.current) clearTimeout(titleTimer.current);
+    titleTimer.current = setTimeout(() => pushTitle(v), 400);
+  };
+  const onTitleBlur = () => {
+    titleFocused.current = false;
+    if (titleTimer.current) clearTimeout(titleTimer.current);
+    if (titleDraft !== doc.title) pushTitle(titleDraft);
+  };
 
   const base = baseDraft(doc);
   const dirty = JSON.stringify(draft) !== JSON.stringify(base);
@@ -256,9 +276,13 @@ export default function IdentityPanel({
       <button onClick={onToggle} className="flex w-full items-center gap-2 px-4 py-3 text-left">
         <div className="min-w-0 flex-1">
           <input
-            value={doc.title}
+            value={titleDraft}
+            onFocus={() => {
+              titleFocused.current = true;
+            }}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => onTitleChange(e.target.value)}
+            onBlur={onTitleBlur}
             className="w-full truncate border-0 bg-transparent text-xl font-semibold focus:outline-none"
           />
           <p className="truncate text-xs text-zinc-500">

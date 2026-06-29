@@ -11,6 +11,7 @@ import { RICH_ALLOWED_TAGS, RICH_ALLOWED_ATTR } from "@/lib/rich-text";
 
 const COLORS = [
   "#111827", // near-black (default)
+  "#ffffff", // white
   "#dc2626", // red
   "#ea580c", // orange
   "#16a34a", // green
@@ -65,6 +66,29 @@ export default function RichTextEditor({
     save();
   };
 
+  // The native colour picker steals focus from the editable (losing the
+  // selection), so remember the selected range on mousedown and restore it
+  // before applying the colour.
+  const savedRange = useRef<Range | null>(null);
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && ref.current?.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange();
+    }
+  };
+  const applyColor = (c: string) => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    if (sel && savedRange.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+    document.execCommand("foreColor", false, c);
+    save();
+  };
+
   return (
     <div className="rounded-lg border border-zinc-200 bg-white focus-within:border-zinc-300">
       <div className="flex flex-wrap items-center gap-1 border-b border-zinc-100 px-1.5 py-1 text-sm">
@@ -113,7 +137,33 @@ export default function RichTextEditor({
               aria-label={`Colour ${c}`}
             />
           ))}
+          {/* Any custom colour. */}
+          <label
+            title="Custom colour — pick any"
+            className="relative ml-0.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-zinc-300 text-[10px]"
+            style={{
+              background:
+                "conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)",
+            }}
+          >
+            <input
+              type="color"
+              onMouseDown={saveSelection}
+              onChange={(e) => applyColor(e.target.value)}
+              className="absolute inset-0 cursor-pointer opacity-0"
+              aria-label="Custom text colour"
+            />
+          </label>
         </div>
+
+        <span className="mx-0.5 h-5 w-px bg-zinc-200" />
+
+        <ToolBtn title="Bullet list" onClick={() => cmd("insertUnorderedList")}>
+          <span className="text-xs">•≡</span>
+        </ToolBtn>
+        <ToolBtn title="Numbered list" onClick={() => cmd("insertOrderedList")}>
+          <span className="text-xs">1.</span>
+        </ToolBtn>
 
         <span className="mx-0.5 h-5 w-px bg-zinc-200" />
 
@@ -140,7 +190,7 @@ export default function RichTextEditor({
         suppressContentEditableWarning
         onBlur={save}
         data-placeholder="Write… (select words and use the toolbar to style them)"
-        className="min-h-[60px] px-3 py-2 text-sm leading-relaxed focus:outline-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)] [&_p]:my-0"
+        className="min-h-[60px] px-3 py-2 text-sm leading-relaxed focus:outline-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)] [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
       />
     </div>
   );

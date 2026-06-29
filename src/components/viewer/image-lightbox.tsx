@@ -71,6 +71,22 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [html]);
 
+  // While the lightbox is open, lock the page behind it: freeze body scroll and
+  // swallow wheel events on the overlay (a non-passive listener — React's
+  // onWheel can't preventDefault) so scrolling only zooms, never moves the page.
+  useEffect(() => {
+    if (!html) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const el = outerRef.current;
+    const stop = (e: WheelEvent) => e.preventDefault();
+    el?.addEventListener("wheel", stop, { passive: false });
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      el?.removeEventListener("wheel", stop);
+    };
+  }, [html]);
+
   const clampPan = (z: number, px: number, py: number) => {
     const outer = outerRef.current;
     const c = contentRef.current;

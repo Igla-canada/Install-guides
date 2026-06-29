@@ -91,8 +91,9 @@ export default function GuildEditor({
 
   return (
     <div className="mx-auto max-w-7xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Header — sticky under the global nav so Publish & friends stay reachable
+          no matter how far you scroll. */}
+      <div className="sticky top-12 z-30 -mx-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-white/95 px-4 py-2 backdrop-blur">
         <Link href={`/guides/${doc.id}`} className="text-sm text-zinc-500 hover:underline">
           ← Done / preview
         </Link>
@@ -291,7 +292,7 @@ export default function GuildEditor({
       <div className={`mt-4 flex gap-6 ${tab === "preview" ? "hidden" : ""}`}>
         {/* Layer view (left, desktop) — sticky outline of sections + blocks */}
         <div className="hidden lg:block lg:w-72 lg:shrink-0">
-          <div className="lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
+          <div className="lg:sticky lg:top-28 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
             <OutlinePanel doc={doc} dispatch={dispatch} />
           </div>
         </div>

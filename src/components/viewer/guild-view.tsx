@@ -629,7 +629,7 @@ function richBody(html: unknown, text: unknown, className: string) {
   if (h) {
     return (
       <div
-        className={`${className} [&_div]:my-0 [&_p]:my-0`}
+        className={`${className} [&_div]:my-0 [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5`}
         dangerouslySetInnerHTML={{ __html: h }}
       />
     );
