@@ -147,6 +147,8 @@ export default function IdentityPanel({
   const [newModel, setNewModel] = useState("");
   const [showAddGen, setShowAddGen] = useState(false);
   const [newGen, setNewGen] = useState({ name: "", from: "", to: "" });
+  const [showNewAltMake, setShowNewAltMake] = useState(false);
+  const [newAltMake, setNewAltMake] = useState("");
 
   const createModel = async () => {
     const name = newModel.trim();
@@ -157,6 +159,19 @@ export default function IdentityPanel({
     setNewModel("");
     setShowAddModel(false);
     router.refresh(); // refetch taxonomy so the new model shows in the dropdowns
+  };
+  // Create a brand-new make (not yet in the taxonomy) and bridge this guide to
+  // it. Immediate (not staged), so gated behind saving other pending edits —
+  // same rule as "+ New model".
+  const createAltMake = async () => {
+    const name = newAltMake.trim();
+    if (!name) return;
+    setSaving(true);
+    await dispatch([{ op: "create_alt_make", name }]);
+    setSaving(false);
+    setNewAltMake("");
+    setShowNewAltMake(false);
+    router.refresh(); // refetch taxonomy so the new make shows in the dropdowns
   };
   const createGeneration = async () => {
     const name = newGen.name.trim();
@@ -289,7 +304,7 @@ export default function IdentityPanel({
                   }}
                   className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
                 >
-                  <option value="">+ add make…</option>
+                  <option value="">+ add existing make…</option>
                   {taxonomy.makes
                     .filter((m) => m.id !== draft.makeId && !draft.altMakeIds.includes(m.id))
                     .map((m) => (
@@ -299,10 +314,54 @@ export default function IdentityPanel({
                     ))}
                 </select>
               </div>
+
+              {/* Create a make that isn't in the taxonomy yet (e.g. "RAM") and
+                  bridge to it. Immediate, so gated behind saving other edits. */}
+              <div className="mt-2">
+                {showNewAltMake ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <input
+                      value={newAltMake}
+                      onChange={(e) => setNewAltMake(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !dirty && !saving) void createAltMake();
+                      }}
+                      placeholder="New make name (e.g. RAM)"
+                      className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                    />
+                    <button
+                      onClick={() => void createAltMake()}
+                      disabled={dirty || saving || !newAltMake.trim()}
+                      className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+                    >
+                      Create &amp; add
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowNewAltMake(false);
+                        setNewAltMake("");
+                      }}
+                      className="px-1 text-xs text-zinc-400 hover:text-zinc-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowNewAltMake(true)}
+                    className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
+                  >
+                    + New make — type one that isn’t in the list
+                  </button>
+                )}
+                {dirty && showNewAltMake && (
+                  <p className="mt-0.5 text-[11px] text-amber-600">Save or discard your changes first.</p>
+                )}
+              </div>
               <p className="mt-1 text-[11px] text-zinc-400">
                 e.g. add “Dodge” to a RAM guide so the same truck is found under either
-                name. Only this guide is bridged — pick from existing makes (add a new
-                make in the admin Vehicle taxonomy first if it’s missing).
+                name. Only this guide is bridged. Pick an existing make, or create a new
+                one here if it isn’t in the system yet.
               </p>
             </div>
             <div>

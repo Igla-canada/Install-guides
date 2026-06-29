@@ -51,6 +51,9 @@ export const opSchema = z.discriminatedUnion("op", [
   // Secondary make(s) the guide is ALSO valid for (RAM↔Dodge). Empty = none.
   // The guide's own primary make is ignored if included.
   z.object({ op: z.literal("set_alt_makes"), makeIds: z.array(z.string().min(1)) }),
+  // Create a NEW make (find-or-create by name) and bridge THIS guide to it — so
+  // a secondary make that isn't in the taxonomy yet can be added without leaving.
+  z.object({ op: z.literal("create_alt_make"), name: z.string().min(1) }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
   z.object({ op: z.literal("set_cover"), imageAssetId: z.string().nullable() }),
   z.object({
@@ -213,6 +216,27 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
       await tx.guildMake.deleteMany({ where: { guildId } });
       if (ids.length)
         await tx.guildMake.createMany({ data: ids.map((makeId) => ({ guildId, makeId })) });
+      return;
+    }
+    case "create_alt_make": {
+      const guild = await tx.guild.findUniqueOrThrow({
+        where: { id: guildId },
+        select: { makeId: true },
+      });
+      const name = op.name.trim();
+      if (!name) return;
+      // Find-or-create by name (case-insensitive) so typing an existing make
+      // just bridges to it instead of erroring on the unique name.
+      let make = await tx.make.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+      });
+      if (!make) make = await tx.make.create({ data: { name } });
+      if (make.id === guild.makeId) return; // can't bridge to its own make
+      await tx.guildMake.upsert({
+        where: { guildId_makeId: { guildId, makeId: make.id } },
+        create: { guildId, makeId: make.id },
+        update: {},
+      });
       return;
     }
     case "update_properties":
