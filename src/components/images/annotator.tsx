@@ -12,9 +12,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useId, useRef, useState } from "react";
-import { saveAnnotations } from "@/lib/client/offline";
+import { saveAnnotations, uploadImage } from "@/lib/client/offline";
 
 type Shape = "point" | "arrow" | "box" | "circle";
+
+// Discrete zoom stops (the −/+ buttons walk these): 25%…200% in 25% steps.
+const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const MIN_Z = ZOOM_STEPS[0];
+const MAX_Z = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
 export type Anno = {
   shape: Shape;
@@ -135,10 +140,14 @@ export default function Annotator({
   imageRef,
   imageUrl,
   onClose,
+  onReplaceImage,
 }: {
   imageRef: string; // assetId or pending:<uuid>
   imageUrl: string;
   onClose: () => void;
+  // Swap the block's image to a new asset (used by "Set as view", which bakes a
+  // cropped image and points the block at it).
+  onReplaceImage?: (newAssetId: string) => void;
 }) {
   const [annos, setAnnos] = useState<Anno[]>([]);
   const [tool, setTool] = useState<Shape>("arrow");
@@ -178,19 +187,19 @@ export default function Annotator({
     const oh = outer.clientHeight;
     const sw = wrap.offsetWidth * z;
     const sh = wrap.offsetHeight * z;
-    return {
-      x: Math.min(0, Math.max(Math.min(0, ow - sw), px)),
-      y: Math.min(0, Math.max(Math.min(0, oh - sh), py)),
-    };
+    // Smaller than the viewport on an axis → center on it; otherwise clamp so
+    // you can't pan past an edge.
+    const axis = (o: number, s: number, p: number) =>
+      s <= o ? (o - s) / 2 : Math.min(0, Math.max(o - s, p));
+    return { x: axis(ow, sw, px), y: axis(oh, sh, py) };
   };
 
-  // Zoom keeping the viewport center fixed (used by the +/- buttons).
+  // Zoom keeping the viewport center fixed (used by the −/+ buttons).
   const zoomTo = (z: number) => {
-    const nz = Math.min(5, Math.max(1, z));
+    const nz = Math.min(MAX_Z, Math.max(MIN_Z, z));
     const outer = outerRef.current;
-    if (!outer || nz === 1) {
+    if (!outer) {
       setZoom(nz);
-      setPan({ x: 0, y: 0 });
       return;
     }
     const cx = outer.clientWidth / 2;
@@ -199,6 +208,20 @@ export default function Annotator({
     const uy = (cy - pan.y) / zoom;
     setZoom(nz);
     setPan(clampPan(nz, cx - nz * ux, cy - nz * uy));
+  };
+
+  // Walk to the next/previous discrete zoom stop.
+  const stepZoom = (dir: 1 | -1) => {
+    let idx = 0;
+    let best = Infinity;
+    ZOOM_STEPS.forEach((s, i) => {
+      const d = Math.abs(s - zoom);
+      if (d < best) {
+        best = d;
+        idx = i;
+      }
+    });
+    zoomTo(ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, idx + dir))]);
   };
 
   useEffect(() => {
@@ -216,21 +239,100 @@ export default function Annotator({
             order: a.order,
           }))
         );
-        if (d.view && typeof d.view.z === "number") setCropView(d.view);
       });
   }, [imageRef]);
 
-  // The saved "view"/crop: the zoom + normalized pan baked in so the guide shows
-  // a zoomed-in region. Captured from the current zoom/pan via "Set as view".
-  const [cropView, setCropView] = useState<{ z: number; px: number; py: number } | null>(null);
+  const [baking, setBaking] = useState(false);
 
-  const setViewFromCurrent = () => {
+  // "Set as view": bake the currently-visible (zoomed/panned) region into a NEW
+  // image, re-map the annotations onto that crop, upload it, and point the block
+  // at it. The result is a plain 100% image showing exactly the marked region —
+  // no runtime transform to drift, and annotations stay editable as overlay data.
+  const bakeView = async () => {
+    const outer = outerRef.current;
     const wrap = wrapRef.current;
-    if (!wrap || zoom <= 1) {
-      setCropView(null);
-      return;
+    if (!outer || !wrap || zoom <= 1) return;
+    const ow = outer.clientWidth;
+    const oh = outer.clientHeight;
+    const iw = wrap.offsetWidth; // image width at scale 1 (fills the canvas)
+    const ih = wrap.offsetHeight;
+    // The visible viewport mapped back into the image's normalized 0–1 space.
+    const left = clamp01((0 - pan.x) / (iw * zoom));
+    const right = clamp01((ow - pan.x) / (iw * zoom));
+    const top = clamp01((0 - pan.y) / (ih * zoom));
+    const bottom = clamp01((oh - pan.y) / (ih * zoom));
+    const cw = right - left;
+    const ch = bottom - top;
+    if (cw <= 0.001 || ch <= 0.001) return;
+
+    setBaking(true);
+    try {
+      // Same-origin bytes so the canvas isn't cross-origin tainted (pending
+      // images are already a local object URL).
+      const srcUrl = imageRef.startsWith("pending:")
+        ? imageUrl
+        : `/api/images/${imageRef}/raw`;
+      const resp = await fetch(srcUrl);
+      if (!resp.ok) throw new Error(`source ${resp.status}`);
+      const bitmap = await createImageBitmap(await resp.blob());
+      const NW = bitmap.width;
+      const NH = bitmap.height;
+      const sx = Math.round(left * NW);
+      const sy = Math.round(top * NH);
+      const sw = Math.max(1, Math.round(cw * NW));
+      const sh = Math.max(1, Math.round(ch * NH));
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context");
+      ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
+      bitmap.close?.();
+      const outBlob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob(res, "image/jpeg", 0.9)
+      );
+      if (!outBlob) throw new Error("toBlob failed");
+
+      // Re-map every annotation coordinate into the cropped image's space.
+      const mapX = (nx: number) => (nx - left) / cw;
+      const mapY = (ny: number) => (ny - top) / ch;
+      const remapped = annos.map((a, i) => {
+        if (a.shape === "point")
+          return { ...a, order: i, coords: { x: mapX(a.coords.x), y: mapY(a.coords.y) } };
+        if (a.shape === "arrow")
+          return {
+            ...a,
+            order: i,
+            coords: {
+              x1: mapX(a.coords.x1),
+              y1: mapY(a.coords.y1),
+              x2: mapX(a.coords.x2),
+              y2: mapY(a.coords.y2),
+            },
+          };
+        return {
+          ...a,
+          order: i,
+          coords: {
+            ...a.coords,
+            x: mapX(a.coords.x),
+            y: mapY(a.coords.y),
+            w: a.coords.w / cw,
+            h: a.coords.h / ch,
+          },
+        };
+      });
+
+      const { assetId: newId } = await uploadImage(outBlob, "cropped.jpg");
+      await saveAnnotations(newId, remapped);
+      onReplaceImage?.(newId);
+      onClose();
+    } catch (e) {
+      console.error("bakeView failed", e);
+      alert("Couldn't create the cropped image. Check your connection and try again.");
+    } finally {
+      setBaking(false);
     }
-    setCropView({ z: zoom, px: pan.x / wrap.offsetWidth, py: pan.y / wrap.offsetHeight });
   };
 
   const norm = (e: React.PointerEvent) => {
@@ -364,13 +466,13 @@ export default function Annotator({
       const o = outer.getBoundingClientRect();
       const pts = [...pointers.current.values()];
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
-      const nz = Math.min(5, Math.max(1, (pinch.current.startZoom * dist) / pinch.current.startDist));
+      const nz = Math.min(MAX_Z, Math.max(MIN_Z, (pinch.current.startZoom * dist) / pinch.current.startDist));
       const midX = (pts[0].x + pts[1].x) / 2 - o.left;
       const midY = (pts[0].y + pts[1].y) / 2 - o.top;
       const ux = (pinch.current.midX - o.left - pinch.current.panX) / pinch.current.startZoom;
       const uy = (pinch.current.midY - o.top - pinch.current.panY) / pinch.current.startZoom;
       setZoom(nz);
-      setPan(nz === 1 ? { x: 0, y: 0 } : clampPan(nz, midX - nz * ux, midY - nz * uy));
+      setPan(clampPan(nz, midX - nz * ux, midY - nz * uy));
       return;
     }
     if (gesturePinched.current) return; // a finger left over after a pinch — don't draw
@@ -490,8 +592,7 @@ export default function Annotator({
     setSaving(true);
     const result = await saveAnnotations(
       imageRef,
-      annos.map((a, i) => ({ ...a, order: i })),
-      cropView
+      annos.map((a, i) => ({ ...a, order: i }))
     );
     setSaving(false);
     if (result.queued) {
@@ -553,8 +654,8 @@ export default function Annotator({
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => zoomTo(zoom - 0.5)}
-              disabled={zoom <= 1}
+              onClick={() => stepZoom(-1)}
+              disabled={zoom <= MIN_Z}
               title="Zoom out"
               className="rounded-md border border-zinc-300 px-2 py-1 text-sm leading-none disabled:opacity-40"
             >
@@ -562,8 +663,8 @@ export default function Annotator({
             </button>
             <span className="w-10 text-center text-xs text-zinc-500">{Math.round(zoom * 100)}%</span>
             <button
-              onClick={() => zoomTo(zoom + 0.5)}
-              disabled={zoom >= 5}
+              onClick={() => stepZoom(1)}
+              disabled={zoom >= MAX_Z}
               title="Zoom in"
               className="rounded-md border border-zinc-300 px-2 py-1 text-sm leading-none disabled:opacity-40"
             >
@@ -579,27 +680,16 @@ export default function Annotator({
             )}
           </div>
 
-          {/* Crop / saved view: bake the current zoom + position so the guide
-              shows this zoomed-in region (the canvas keeps its shape). */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={setViewFromCurrent}
-              disabled={zoom <= 1}
-              title="Use the current zoom + position as the image's view in the guide"
-              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-40"
-            >
-              ⛶ Set as view
-            </button>
-            {cropView && (
-              <button
-                onClick={() => setCropView(null)}
-                title="Show the full image again"
-                className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-200"
-              >
-                cropped {Math.round(cropView.z * 100)}% · reset
-              </button>
-            )}
-          </div>
+          {/* Set as view: crop the image to the current zoom/position into a NEW
+              image and swap it in — a flat 100% image of exactly this region. */}
+          <button
+            onClick={() => void bakeView()}
+            disabled={zoom <= 1 || baking}
+            title="Crop the image to what you see now and replace it with that"
+            className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-40"
+          >
+            {baking ? "Cropping…" : "⛶ Set as view (crop)"}
+          </button>
 
           <div className="ml-auto flex gap-2">
             <button onClick={onClose} className="rounded-md px-3 py-1 text-sm hover:bg-zinc-100">

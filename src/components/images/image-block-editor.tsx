@@ -207,6 +207,7 @@ function SingleEditor({
         <Annotator
           imageRef={content.imageAssetId}
           imageUrl={url}
+          onReplaceImage={(newId) => onChange({ ...content, imageAssetId: newId })}
           onClose={() => {
             setAnnotating(false);
             setAnnoVersion((v) => v + 1);
@@ -242,6 +243,12 @@ function GalleryEditor({
               items: items.map((x, j) => (j === i ? { ...x, caption } : x)),
             })
           }
+          onReplace={(newId) =>
+            onChange({
+              ...content,
+              items: items.map((x, j) => (j === i ? { ...x, imageAssetId: newId } : x)),
+            })
+          }
           onRemove={() =>
             onChange({ ...content, items: items.filter((_, j) => j !== i) })
           }
@@ -262,10 +269,12 @@ function GalleryEditor({
 function GalleryItem({
   item,
   onCaption,
+  onReplace,
   onRemove,
 }: {
   item: { imageAssetId: string; caption?: string };
   onCaption: (caption: string) => void;
+  onReplace: (newAssetId: string) => void;
   onRemove: () => void;
 }) {
   const url = useImageUrl(item.imageAssetId);
@@ -316,6 +325,7 @@ function GalleryItem({
         <Annotator
           imageRef={item.imageAssetId}
           imageUrl={url}
+          onReplaceImage={onReplace}
           onClose={() => {
             setAnnotating(false);
             setAnnoVersion((v) => v + 1);
