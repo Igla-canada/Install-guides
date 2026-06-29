@@ -53,7 +53,7 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
       const container = img.parentElement;
       if (!container) return;
       openRef.current = true;
-      setZoom(1);
+      setZoom(MIN_ZOOM); // open zoomed-out so the whole image is visible
       setPan({ x: 0, y: 0 });
       // Strip data-zoomable so the cloned image can't re-trigger this handler.
       setHtml(container.innerHTML.replaceAll("data-zoomable", "data-z"));
@@ -69,6 +69,13 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, [html]);
+
+  // Center the (zoomed-out) image once it has laid out on open.
+  useEffect(() => {
+    if (!html) return;
+    const id = requestAnimationFrame(() => setPan((p) => clampPan(MIN_ZOOM, p.x, p.y)));
+    return () => cancelAnimationFrame(id);
   }, [html]);
 
   // While the lightbox is open, lock the page behind it: freeze body scroll and

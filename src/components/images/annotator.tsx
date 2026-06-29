@@ -1122,7 +1122,12 @@ export function AnnoOverlay({
     const measure = () => {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) {
-        setVb(`0 0 ${ANNO_VBASE} ${Math.round((ANNO_VBASE * r.height) / r.width)}`);
+        // Cap the viewBox at the actual on-screen width: big images keep the
+        // authored fraction (labels scale up), but small images (gallery
+        // thumbnails, phones) shrink the viewBox to ~display px so the same
+        // label boxes stay a readable size instead of becoming microscopic.
+        const w = Math.min(r.width, ANNO_VBASE);
+        setVb(`0 0 ${Math.round(w)} ${Math.round((w * r.height) / r.width)}`);
       }
     };
     measure();
