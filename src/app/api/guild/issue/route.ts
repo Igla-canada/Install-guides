@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     // full candidate list (chooser) rather than serving the wrong guide.
     let candidates = result.candidates;
     const unitProduct = product ?? elig.unitType ?? null;
-    if (unitProduct) {
+    if (unitProduct && candidates.length) {
       const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
       const target = norm(unitProduct);
       const exact = candidates.filter((c) => c.products.some((p) => norm(p) === target));
@@ -112,7 +112,34 @@ export async function POST(req: NextRequest) {
         })
       );
       const narrowed = exact.length ? exact : fuzzy;
-      if (narrowed.length) candidates = narrowed;
+      if (narrowed.length) {
+        candidates = narrowed;
+      } else {
+        // The vehicle HAS published guide(s), just not for THIS unit's product
+        // type (e.g. a RAM 1500 has an IGLA FD guide but the scanned unit is an
+        // IGLA 231). Don't serve the wrong-type guide and don't pretend nothing
+        // exists — tell the caller which products this vehicle is covered for so
+        // the portal can say "no IGLA 231 guide, but an IGLA FD guide exists".
+        const availableProducts = [...new Set(candidates.flatMap((c) => c.products))];
+        await logEvent({
+          actor: null,
+          action: "resolve",
+          guildId: null,
+          meta: {
+            source: "portal",
+            unit: unitSerial,
+            outcome: "wrong_product",
+            unitType: unitProduct,
+            availableProducts,
+          },
+        });
+        return NextResponse.json({
+          ok: false,
+          error: "wrong_product",
+          unitType: unitProduct,
+          availableProducts,
+        });
+      }
     } else if (productLine) {
       const pl = productLine.toLowerCase();
       const byLine = candidates.filter((c) => c.productLine.toLowerCase() === pl);
