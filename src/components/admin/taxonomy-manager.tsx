@@ -157,6 +157,24 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
           },
         },
       },
+      // Guides whose PRIMARY make is elsewhere but that are bridged to this make
+      // (secondary make). Shown as read-only "shadows" so the admin sees the
+      // vehicle exists under this make too, without it being a real taxonomy row.
+      altGuilds: {
+        include: {
+          guild: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              make: { select: { name: true } },
+              model: { select: { name: true } },
+              generation: { select: { name: true } },
+              altModelAliases: { select: { name: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -181,7 +199,8 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
             <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
               {mk.name}{" "}
               <span className="text-xs font-normal text-zinc-400">
-                ({mk.models.length} model{mk.models.length === 1 ? "" : "s"})
+                ({mk.models.length} model{mk.models.length === 1 ? "" : "s"}
+                {mk.altGuilds.length > 0 && `, ${mk.altGuilds.length} bridged`})
               </span>
             </summary>
 
@@ -194,6 +213,42 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                   Rename
                 </button>
               </form>
+
+              {/* Shadow rows: guides whose primary make is elsewhere but that are
+                  bridged to this make (RAM 1500 → Dodge). Read-only — edit them
+                  from their real make. */}
+              {mk.altGuilds.length > 0 && (
+                <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-2">
+                  <div className="text-[11px] font-medium text-zinc-500">
+                    Bridged from other makes — these guides also match “{mk.name}”
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {mk.altGuilds.map((b) => {
+                      const g = b.guild;
+                      const label = g.altModelAliases[0]?.name ?? g.model.name;
+                      return (
+                        <a
+                          key={g.id}
+                          href={`/guides/${g.id}/edit`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`Bridged from ${g.make.name} › ${g.model.name} (${g.generation.name}). Open editor.`}
+                          className="inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100"
+                        >
+                          <span className="opacity-50">⤳</span>
+                          {label}
+                          <span className="text-[10px] text-zinc-400">
+                            (from {g.make.name} › {g.model.name})
+                          </span>
+                          {g.status !== "PUBLISHED" && (
+                            <span className="text-[10px] text-zinc-400">({g.status.toLowerCase()})</span>
+                          )}
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {mk.models.map((md) => {
                 const siblings = mk.models.filter((x) => x.id !== md.id);
