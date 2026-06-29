@@ -155,6 +155,9 @@ export default async function GuildView({
   const props = {
     ...((doc.properties ?? {}) as Record<string, string>),
     "IGLA Type": realProducts.join(", "),
+    // "Years" always mirrors the generation's year frame (identity), so it can't
+    // drift from what the Igla app actually matches on.
+    Years: `${doc.generation.yearStart}-${doc.generation.yearEnd ?? ""}`,
   };
   const t = themeClasses(theme);
 

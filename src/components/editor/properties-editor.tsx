@@ -19,7 +19,11 @@ export default function PropertiesEditor({
   const realProducts = (
     doc.products?.length ? doc.products.map((p) => p.iglaProduct.name) : [doc.iglaProduct.name]
   ).join(", ");
-  const entries = Object.entries(props).filter(([k]) => k !== "IGLA Type");
+  // "Years" mirrors the generation years from the identity panel, so changing
+  // the generation's year frame is the single source of truth — no separate
+  // free-text years to keep in sync.
+  const genYears = `${doc.generation.yearStart}-${doc.generation.yearEnd ?? ""}`;
+  const entries = Object.entries(props).filter(([k]) => k !== "IGLA Type" && k !== "Years");
   const [open, setOpen] = useState(true);
   const [newKey, setNewKey] = useState("");
 
@@ -46,6 +50,18 @@ export default function PropertiesEditor({
               {realProducts || "—"}
             </span>
             <span className="text-xs text-zinc-400" title="Set via Igla product(s) in the identity panel">
+              auto
+            </span>
+          </div>
+          {/* Derived, read-only — mirrors the generation years in identity. */}
+          <div className="flex items-center gap-2">
+            <span className="w-40 shrink-0 truncate text-sm font-medium text-zinc-500">
+              Years
+            </span>
+            <span className="flex-1 rounded-md bg-zinc-50 px-2 py-1 text-sm text-zinc-600">
+              {genYears}
+            </span>
+            <span className="text-xs text-zinc-400" title="Set via Generation years in the identity panel">
               auto
             </span>
           </div>
