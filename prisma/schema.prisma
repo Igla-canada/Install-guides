@@ -178,6 +178,7 @@ model Guild {
   auditEvents AuditEvent[]
   products    GuildProduct[] // every product this guide covers (primary included)
   altMakes    GuildMake[] // secondary make(s) this guide is ALSO valid for (e.g. a RAM 1500 guide bridged to "Dodge"). Bridge is per-guide; resolution matches the bridged guide by its own model name.
+  altModelAliases GuildModelAlias[] // extra model NAME(s) this guide answers to (e.g. a RAM "1500" guide also called "Ram 1500" under Dodge). Free text — a resolution hint, NOT the canonical model identity (which stays the FK above).
 
   // One published guild per identity tuple is enforced in application logic at
   // publish time (Postgres treats NULL trimId as distinct, so a DB unique
@@ -197,6 +198,18 @@ model GuildMake {
 
   @@id([guildId, makeId])
   @@index([makeId])
+}
+
+// Extra model NAME(s) a guide also answers to. The same truck is "1500" under
+// RAM but "Ram 1500" under Dodge; rather than create phantom Model rows, the
+// guide carries the alternate names as free-text resolution hints. The canonical
+// model stays the FK on Guild — this only widens what the resolver matches.
+model GuildModelAlias {
+  guildId String
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  name    String
+
+  @@id([guildId, name])
 }
 
 model Section {

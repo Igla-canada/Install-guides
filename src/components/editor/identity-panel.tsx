@@ -17,6 +17,7 @@ import type { Taxonomy } from "@/lib/taxonomy";
 type Draft = {
   makeId: string;
   altMakeIds: string[];
+  altModelNames: string[];
   modelId: string;
   generationId: string;
   trimId: string | null;
@@ -34,6 +35,7 @@ function baseDraft(doc: ClientDoc): Draft {
   return {
     makeId: doc.makeId,
     altMakeIds: doc.altMakes?.map((a) => a.makeId) ?? [],
+    altModelNames: doc.altModelAliases?.map((a) => a.name) ?? [],
     modelId: doc.modelId,
     generationId: doc.generationId,
     trimId: doc.trimId ?? null,
@@ -70,6 +72,7 @@ export default function IdentityPanel({
   const docSig = [
     doc.makeId,
     (doc.altMakes?.map((a) => a.makeId) ?? []).join(","),
+    (doc.altModelAliases?.map((a) => a.name) ?? []).join("|"),
     doc.modelId,
     doc.generationId,
     doc.trimId ?? "",
@@ -149,6 +152,7 @@ export default function IdentityPanel({
   const [newGen, setNewGen] = useState({ name: "", from: "", to: "" });
   const [showNewAltMake, setShowNewAltMake] = useState(false);
   const [newAltMake, setNewAltMake] = useState("");
+  const [newAltModel, setNewAltModel] = useState("");
 
   const createModel = async () => {
     const name = newModel.trim();
@@ -172,6 +176,18 @@ export default function IdentityPanel({
     setNewAltMake("");
     setShowNewAltMake(false);
     router.refresh(); // refetch taxonomy so the new make shows in the dropdowns
+  };
+  // Stage an alternate model name (free text). Not a taxonomy entry — just a
+  // matching hint saved with the rest of the identity edits.
+  const addAltModel = () => {
+    const name = newAltModel.trim();
+    if (!name) return;
+    setDraft((d) =>
+      d.altModelNames.some((x) => x.toLowerCase() === name.toLowerCase())
+        ? d
+        : { ...d, altModelNames: [...d.altModelNames, name] }
+    );
+    setNewAltModel("");
   };
   const createGeneration = async () => {
     const name = newGen.name.trim();
@@ -211,6 +227,9 @@ export default function IdentityPanel({
 
     if (!sameIds(draft.altMakeIds, base.altMakeIds))
       ops.push({ op: "set_alt_makes", makeIds: draft.altMakeIds });
+
+    if (!sameIds(draft.altModelNames, base.altModelNames))
+      ops.push({ op: "set_alt_models", names: draft.altModelNames });
 
     // Year/name edits apply to the (possibly newly) selected generation. Note
     // this renames the SHARED generation for every guide on it — by design.
@@ -407,6 +426,72 @@ export default function IdentityPanel({
               {dirty && showAddModel && (
                 <p className="mt-0.5 text-[11px] text-amber-600">Save or discard your changes first.</p>
               )}
+            </div>
+            {/* Secondary model name(s): the same vehicle is called something else
+                under another make (RAM "1500" ≡ Dodge "Ram 1500"). Free text,
+                staged with the rest of the identity. */}
+            <div className="sm:col-span-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+              <span className="text-xs font-medium text-zinc-500">
+                Also matches model name(s){" "}
+                <span className="font-normal text-zinc-400">— what this vehicle is called elsewhere</span>
+              </span>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {draft.altModelNames.map((name) => (
+                  <span
+                    key={name}
+                    className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs ring-1 ring-zinc-300"
+                  >
+                    {name}
+                    <button
+                      onClick={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          altModelNames: d.altModelNames.filter((x) => x !== name),
+                        }))
+                      }
+                      className="text-zinc-400 hover:text-zinc-700"
+                      aria-label={`Remove ${name}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                <input
+                  list="alt-model-suggestions"
+                  value={newAltModel}
+                  onChange={(e) => setNewAltModel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addAltModel();
+                    }
+                  }}
+                  placeholder="e.g. Ram 1500"
+                  className="min-w-[8rem] flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
+                />
+                <datalist id="alt-model-suggestions">
+                  {[...new Set(
+                    [draft.makeId, ...draft.altMakeIds]
+                      .flatMap((mid) => taxonomy.makes.find((m) => m.id === mid)?.models ?? [])
+                      .map((m) => m.name)
+                  )]
+                    .filter((n) => !draft.altModelNames.includes(n))
+                    .map((n) => (
+                      <option key={n} value={n} />
+                    ))}
+                </datalist>
+                <button
+                  onClick={addAltModel}
+                  disabled={!newAltModel.trim()}
+                  className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-zinc-400">
+                Type a name and press Enter. e.g. a RAM “1500” guide also answers to
+                “Ram 1500” when looked up as a Dodge. Doesn’t change the real model.
+              </p>
             </div>
             <Select
               label="Generation"

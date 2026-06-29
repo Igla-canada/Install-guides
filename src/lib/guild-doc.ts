@@ -54,6 +54,9 @@ export const opSchema = z.discriminatedUnion("op", [
   // Create a NEW make (find-or-create by name) and bridge THIS guide to it — so
   // a secondary make that isn't in the taxonomy yet can be added without leaving.
   z.object({ op: z.literal("create_alt_make"), name: z.string().min(1) }),
+  // Extra model NAME(s) this guide also answers to (RAM "1500" ≡ Dodge "Ram
+  // 1500"). Free text; empty clears. The canonical model FK is untouched.
+  z.object({ op: z.literal("set_alt_models"), names: z.array(z.string().min(1)) }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
   z.object({ op: z.literal("set_cover"), imageAssetId: z.string().nullable() }),
   z.object({
@@ -239,6 +242,23 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
       });
       return;
     }
+    case "set_alt_models": {
+      // Trim, drop blanks, de-dupe case-insensitively (keep first spelling).
+      const seen = new Set<string>();
+      const names: string[] = [];
+      for (const raw of op.names) {
+        const name = raw.trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        names.push(name);
+      }
+      await tx.guildModelAlias.deleteMany({ where: { guildId } });
+      if (names.length)
+        await tx.guildModelAlias.createMany({ data: names.map((name) => ({ guildId, name })) });
+      return;
+    }
     case "update_properties":
       await tx.guild.update({
         where: { id: guildId },
@@ -416,6 +436,7 @@ export async function loadGuildDoc(guildId: string) {
       iglaProduct: { include: { productLine: true } },
       products: { include: { iglaProduct: { include: { productLine: true } } } },
       altMakes: { include: { make: true } },
+      altModelAliases: true,
       coverImage: true,
       sections: {
         orderBy: { order: "asc" },

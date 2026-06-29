@@ -50,6 +50,16 @@ export type ResolveResult = {
 const normalize = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+// Does any of a guide's model names (its canonical model + per-guide aliases)
+// match the requested model text? Tolerant of spelling/spacing ("1500" ≡
+// "Ram 1500") via containment either way.
+function modelNameMatches(names: string[], target: string): boolean {
+  return names.some((nm) => {
+    const n = normalize(nm);
+    return n === target || n.includes(target) || target.includes(n);
+  });
+}
+
 export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> {
   // --- 0: exact dropdown ids (portal fed by /api/taxonomy) ------------------
   let makeText = input.make ?? null;
@@ -160,7 +170,16 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
     trim: true,
     iglaProduct: { include: { productLine: true } },
     products: { include: { iglaProduct: { include: { productLine: true } } } },
+    altModelAliases: true,
   } satisfies Prisma.GuildInclude;
+
+  const target = modelText ? normalize(modelText.trim()) : null;
+  const productWhere = product
+    ? { products: { some: { iglaProductId: product.id } } }
+    : {};
+  // Every name a guide answers to: its canonical model + per-guide aliases.
+  const allNames = (g: { model: { name: string }; altModelAliases: { name: string }[] }) =>
+    [g.model.name, ...g.altModelAliases.map((a) => a.name)];
 
   // Primary path: guides whose OWN make (and model, when a model name was given
   // and resolved) match. Skipped when a model name was given but didn't resolve
@@ -172,40 +191,48 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
             status: "PUBLISHED",
             makeId: make.id,
             ...(model ? { modelId: model.id } : {}),
-            // A guide covers a SET of products — match if the resolved product is in it.
-            ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
+            ...productWhere,
           },
           include,
           take: 10,
         })
       : [];
 
+  // Alias rescue (same make): the requested model name didn't resolve to a Model
+  // row, but a guide under this make may answer to it via a per-guide alternate
+  // model name (e.g. a "1500" guide that also lists "Ram 1500").
+  const aliasGuilds =
+    make && modelUnresolved && target
+      ? (
+          await prisma.guild.findMany({
+            where: { status: "PUBLISHED", makeId: make.id, ...productWhere },
+            include,
+            take: 10,
+          })
+        ).filter((g) => modelNameMatches(allNames(g), target))
+      : [];
+
   // Bridge path: guides authored under a DIFFERENT make but declared valid for
   // THIS make (a RAM 1500 guide bridged to "Dodge"). Their model row lives under
-  // their own make, so match the model by NAME against the requested text
-  // (or take all bridged guides when no model text was given).
-  const target = modelText ? normalize(modelText.trim()) : null;
+  // their own make, so match by model NAME — canonical or alias — against the
+  // requested text (or take all bridged guides when no model text was given).
   const bridgeGuilds = make
     ? (
         await prisma.guild.findMany({
           where: {
             status: "PUBLISHED",
             altMakes: { some: { makeId: make.id } },
-            ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
+            ...productWhere,
           },
           include,
           take: 10,
         })
-      ).filter((g) => {
-        if (!target) return true;
-        const n = normalize(g.model.name);
-        return n === target || n.includes(target) || target.includes(n);
-      })
+      ).filter((g) => (target ? modelNameMatches(allNames(g), target) : true))
     : [];
 
   // Merge (primary first), de-dupe by id.
   const seen = new Set<string>();
-  const allGuilds = [...primaryGuilds, ...bridgeGuilds].filter((g) => {
+  const allGuilds = [...primaryGuilds, ...aliasGuilds, ...bridgeGuilds].filter((g) => {
     if (seen.has(g.id)) return false;
     seen.add(g.id);
     return true;

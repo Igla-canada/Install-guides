@@ -40,6 +40,10 @@ function applyOne(doc: ClientDoc, op: any): ClientDoc {
       });
       return { ...doc, altMakes };
     }
+    case "set_alt_models": {
+      const names: string[] = op.names ?? [];
+      return { ...doc, altModelAliases: names.map((name) => ({ name })) };
+    }
     case "update_generation":
       return {
         ...doc,
