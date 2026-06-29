@@ -39,6 +39,7 @@ export type ClientDoc = {
     iglaProductId: string;
     iglaProduct: { name: string; productLine: { name: string } };
   }>;
+  altMakes?: Array<{ makeId: string; make: { name: string } }>;
   sections: ClientSection[];
   updatedAt: string;
 };

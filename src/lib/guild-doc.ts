@@ -48,6 +48,9 @@ export const opSchema = z.discriminatedUnion("op", [
   }),
   // The set of products this guide covers (first = primary, used for display).
   z.object({ op: z.literal("set_products"), productIds: z.array(z.string().min(1)).min(1) }),
+  // Secondary make(s) the guide is ALSO valid for (RAM↔Dodge). Empty = none.
+  // The guide's own primary make is ignored if included.
+  z.object({ op: z.literal("set_alt_makes"), makeIds: z.array(z.string().min(1)) }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
   z.object({ op: z.literal("set_cover"), imageAssetId: z.string().nullable() }),
   z.object({
@@ -198,6 +201,18 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
       await tx.guildProduct.createMany({
         data: ids.map((iglaProductId) => ({ guildId, iglaProductId })),
       });
+      return;
+    }
+    case "set_alt_makes": {
+      const guild = await tx.guild.findUniqueOrThrow({
+        where: { id: guildId },
+        select: { makeId: true },
+      });
+      // Never bridge a guide to its own primary make; de-dupe the rest.
+      const ids = [...new Set(op.makeIds)].filter((id) => id !== guild.makeId);
+      await tx.guildMake.deleteMany({ where: { guildId } });
+      if (ids.length)
+        await tx.guildMake.createMany({ data: ids.map((makeId) => ({ guildId, makeId })) });
       return;
     }
     case "update_properties":
@@ -376,6 +391,7 @@ export async function loadGuildDoc(guildId: string) {
       trim: true,
       iglaProduct: { include: { productLine: true } },
       products: { include: { iglaProduct: { include: { productLine: true } } } },
+      altMakes: { include: { make: true } },
       coverImage: true,
       sections: {
         orderBy: { order: "asc" },

@@ -30,6 +30,7 @@ model Make {
   models  Model[]
   aliases VehicleAlias[]
   guilds  Guild[]
+  altGuilds GuildMake[] // guides whose SECONDARY make is this one (RAM↔Dodge)
   quickPicks QuickPick[]
 }
 
@@ -176,11 +177,26 @@ model Guild {
   grantGuilds GrantGuild[]
   auditEvents AuditEvent[]
   products    GuildProduct[] // every product this guide covers (primary included)
+  altMakes    GuildMake[] // secondary make(s) this guide is ALSO valid for (e.g. a RAM 1500 guide bridged to "Dodge"). Bridge is per-guide; resolution matches the bridged guide by its own model name.
 
   // One published guild per identity tuple is enforced in application logic at
   // publish time (Postgres treats NULL trimId as distinct, so a DB unique
   // constraint alone can't express it across draft/published states).
   @@index([makeId, modelId, generationId, trimId, iglaProductId, regionId, status])
+}
+
+// A guide's SECONDARY make(s). When a model line was rebranded mid-life (Dodge
+// Ram → RAM) the guide lives under one primary make but should still be found
+// under the other name. This bridge is per-guide (not a make-wide alias) so it
+// can't mis-route unrelated models (a Dodge Charger never matches a RAM guide).
+model GuildMake {
+  guildId String
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  makeId  String
+  make    Make   @relation(fields: [makeId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, makeId])
+  @@index([makeId])
 }
 
 model Section {

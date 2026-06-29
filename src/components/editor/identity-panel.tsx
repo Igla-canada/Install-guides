@@ -16,6 +16,7 @@ import type { Taxonomy } from "@/lib/taxonomy";
 
 type Draft = {
   makeId: string;
+  altMakeIds: string[];
   modelId: string;
   generationId: string;
   trimId: string | null;
@@ -32,6 +33,7 @@ const sameIds = (a: string[], b: string[]) =>
 function baseDraft(doc: ClientDoc): Draft {
   return {
     makeId: doc.makeId,
+    altMakeIds: doc.altMakes?.map((a) => a.makeId) ?? [],
     modelId: doc.modelId,
     generationId: doc.generationId,
     trimId: doc.trimId ?? null,
@@ -67,6 +69,7 @@ export default function IdentityPanel({
   // stays put during editing, so this never clobbers an in-progress draft.
   const docSig = [
     doc.makeId,
+    (doc.altMakes?.map((a) => a.makeId) ?? []).join(","),
     doc.modelId,
     doc.generationId,
     doc.trimId ?? "",
@@ -94,6 +97,7 @@ export default function IdentityPanel({
     setDraft((d) => ({
       ...d,
       makeId,
+      altMakeIds: d.altMakeIds.filter((x) => x !== makeId), // can't bridge to its own make
       modelId: md?.id ?? "",
       generationId: g?.id ?? "",
       trimId: null,
@@ -190,6 +194,9 @@ export default function IdentityPanel({
     if (!sameIds(draft.productIds, base.productIds))
       ops.push({ op: "set_products", productIds: draft.productIds });
 
+    if (!sameIds(draft.altMakeIds, base.altMakeIds))
+      ops.push({ op: "set_alt_makes", makeIds: draft.altMakeIds });
+
     // Year/name edits apply to the (possibly newly) selected generation. Note
     // this renames the SHARED generation for every guide on it — by design.
     const selGen = taxonomy.makes
@@ -243,6 +250,61 @@ export default function IdentityPanel({
               onChange={pickMake}
               options={taxonomy.makes.map((m) => ({ value: m.id, label: m.name }))}
             />
+            {/* Secondary make(s): same vehicle is found under another make name
+                (RAM↔Dodge). Per-guide bridge — only THIS guide is matched. */}
+            <div className="sm:col-span-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+              <span className="text-xs font-medium text-zinc-500">
+                Also matches make(s){" "}
+                <span className="font-normal text-zinc-400">— secondary / former name</span>
+              </span>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {draft.altMakeIds.map((id) => {
+                  const m = taxonomy.makes.find((x) => x.id === id);
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs ring-1 ring-zinc-300"
+                    >
+                      {m?.name ?? "—"}
+                      <button
+                        onClick={() =>
+                          setDraft((d) => ({
+                            ...d,
+                            altMakeIds: d.altMakeIds.filter((x) => x !== id),
+                          }))
+                        }
+                        className="text-zinc-400 hover:text-zinc-700"
+                        aria-label={`Remove ${m?.name ?? "make"}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  );
+                })}
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) setDraft((d) => ({ ...d, altMakeIds: [...d.altMakeIds, v] }));
+                  }}
+                  className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
+                >
+                  <option value="">+ add make…</option>
+                  {taxonomy.makes
+                    .filter((m) => m.id !== draft.makeId && !draft.altMakeIds.includes(m.id))
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <p className="mt-1 text-[11px] text-zinc-400">
+                e.g. add “Dodge” to a RAM guide so the same truck is found under either
+                name. Only this guide is bridged — pick from existing makes (add a new
+                make in the admin Vehicle taxonomy first if it’s missing).
+              </p>
+            </div>
             <div>
               <Select
                 label="Model"

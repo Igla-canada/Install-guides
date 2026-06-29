@@ -4,6 +4,7 @@
 //   3. Unit serial → inventory → product (required to pick among product guilds)
 // Returns one published guild when unambiguous, otherwise a ranked candidate
 // list for the installer to pick from (e.g. per-trim guilds).
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { decodeVin } from "./vin";
 import { productFromSerial } from "./inventory";
@@ -129,24 +130,12 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
       null;
   }
 
-  // If the caller named a make/model we couldn't resolve, there is no guide for that
-  // vehicle. Bail out with NO candidates — never fall through to an unfiltered query,
-  // which would hand back every published guide ("no guide for this make" must mean none).
+  // Did the caller name a make/model we couldn't resolve? Tracked so the
+  // primary query never falls through to an unfiltered make dump ("no guide for
+  // this model" must mean none). A model that didn't resolve under the make can
+  // still hit the BRIDGE path below (e.g. "Dodge Ram 1500" → a RAM 1500 guide).
   const makeUnresolved = Boolean(makeText && makeText.trim()) && !make;
   const modelUnresolved = Boolean(make && modelText && modelText.trim()) && !model;
-  if (makeUnresolved || modelUnresolved) {
-    return {
-      match: null,
-      candidates: [],
-      diagnostics: {
-        vehicleSource,
-        makeResolved: make?.name ?? null,
-        modelResolved: model?.name ?? null,
-        generationMatched: false,
-        productResolved: null,
-      },
-    };
-  }
 
   // Year → generation range (kept for diagnostics only; the actual year filter below uses
   // each guild's OWN generation, which is authoritative even if a guild's generation row was
@@ -164,24 +153,62 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
   // --- 3: product -----------------------------------------------------------
   const product = input.serial ? await productFromSerial(input.serial) : null;
 
-  // --- query published guilds (make/model/product in SQL; year applied below) -----------
-  const allGuilds = await prisma.guild.findMany({
-    where: {
-      status: "PUBLISHED",
-      ...(make ? { makeId: make.id } : {}),
-      ...(model ? { modelId: model.id } : {}),
-      // A guide covers a SET of products — match if the resolved product is in it.
-      ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
-    },
-    include: {
-      make: true,
-      model: true,
-      generation: true,
-      trim: true,
-      iglaProduct: { include: { productLine: true } },
-      products: { include: { iglaProduct: { include: { productLine: true } } } },
-    },
-    take: 10,
+  const include = {
+    make: true,
+    model: true,
+    generation: true,
+    trim: true,
+    iglaProduct: { include: { productLine: true } },
+    products: { include: { iglaProduct: { include: { productLine: true } } } },
+  } satisfies Prisma.GuildInclude;
+
+  // Primary path: guides whose OWN make (and model, when a model name was given
+  // and resolved) match. Skipped when a model name was given but didn't resolve
+  // — querying by make alone would wrongly return every guide for that make.
+  const primaryGuilds =
+    make && !makeUnresolved && !modelUnresolved
+      ? await prisma.guild.findMany({
+          where: {
+            status: "PUBLISHED",
+            makeId: make.id,
+            ...(model ? { modelId: model.id } : {}),
+            // A guide covers a SET of products — match if the resolved product is in it.
+            ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
+          },
+          include,
+          take: 10,
+        })
+      : [];
+
+  // Bridge path: guides authored under a DIFFERENT make but declared valid for
+  // THIS make (a RAM 1500 guide bridged to "Dodge"). Their model row lives under
+  // their own make, so match the model by NAME against the requested text
+  // (or take all bridged guides when no model text was given).
+  const target = modelText ? normalize(modelText.trim()) : null;
+  const bridgeGuilds = make
+    ? (
+        await prisma.guild.findMany({
+          where: {
+            status: "PUBLISHED",
+            altMakes: { some: { makeId: make.id } },
+            ...(product ? { products: { some: { iglaProductId: product.id } } } : {}),
+          },
+          include,
+          take: 10,
+        })
+      ).filter((g) => {
+        if (!target) return true;
+        const n = normalize(g.model.name);
+        return n === target || n.includes(target) || target.includes(n);
+      })
+    : [];
+
+  // Merge (primary first), de-dupe by id.
+  const seen = new Set<string>();
+  const allGuilds = [...primaryGuilds, ...bridgeGuilds].filter((g) => {
+    if (seen.has(g.id)) return false;
+    seen.add(g.id);
+    return true;
   });
 
   // Keep guilds whose own generation covers the requested model-year.
@@ -216,9 +243,10 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
     };
   });
 
-  // Single confident hit only when the vehicle resolved to a model and exactly one
-  // published guide survived the make/model/product/year filtering.
-  const match = candidates.length === 1 && model ? candidates[0] : null;
+  // Single confident hit when exactly one published guide survived filtering and
+  // the vehicle pinned a model — either a resolved Model row (primary path) or a
+  // model name we matched against a bridged guide (target).
+  const match = candidates.length === 1 && (model != null || target != null) ? candidates[0] : null;
 
   return {
     match,

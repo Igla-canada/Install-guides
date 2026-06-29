@@ -32,6 +32,14 @@ function applyOne(doc: ClientDoc, op: any): ClientDoc {
       });
       return { ...doc, products, iglaProductId: ids[0] ?? doc.iglaProductId };
     }
+    case "set_alt_makes": {
+      const ids: string[] = op.makeIds ?? [];
+      const altMakes = ids.map((id) => {
+        const existing = doc.altMakes?.find((a) => a.makeId === id);
+        return existing ?? { makeId: id, make: { name: "…" } };
+      });
+      return { ...doc, altMakes };
+    }
     case "update_generation":
       return {
         ...doc,
