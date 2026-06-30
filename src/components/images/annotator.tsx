@@ -763,15 +763,16 @@ export default function Annotator({
                       Circle marker (no label)
                     </span>
                   ) : (
-                    <input
+                    <textarea
                       value={a.label}
                       onChange={(e) => update(i, { label: e.target.value })}
+                      rows={Math.min(5, Math.max(1, a.label.split("\n").length))}
                       placeholder={
                         a.shape === "point"
                           ? "Label (shown in the list below the photo)"
-                          : "Label (shown in the box, e.g. CAN-H)"
+                          : "Label (box) — press Enter for a new line"
                       }
-                      className="min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
+                      className="min-w-0 flex-1 resize-none rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
                     />
                   )}
                   <button
