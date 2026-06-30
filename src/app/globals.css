@@ -32,6 +32,22 @@ body {
   display: none;
 }
 
+/* Rich-text editor only: white text would be invisible on the white editing
+   surface, so give white-coloured runs a dark backing while editing. This is
+   scoped to .rte-surface (the contentEditable) — the served guide/preview has no
+   such class, so white text shows as real white there. Covers how the different
+   browsers encode foreColor white (Chrome/Safari rgb(), Firefox <font>). */
+.rte-surface font[color="#ffffff" i],
+.rte-surface font[color="white" i],
+.rte-surface [style*="rgb(255, 255, 255)"],
+.rte-surface [style*="rgb(255,255,255)"],
+.rte-surface [style*="#ffffff" i],
+.rte-surface [style*="color: white" i],
+.rte-surface [style*="color:white" i] {
+  background-color: #3f3f46; /* zinc-700 — editor only */
+  border-radius: 2px;
+}
+
 /* Repeating diagonal watermark for installer views (serve-time, per view). */
 .watermark-layer {
   position: fixed;

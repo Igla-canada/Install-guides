@@ -26,6 +26,44 @@ const GRID_COLS: Record<number, string> = {
   4: "grid-cols-4",
 };
 
+// Drag an image from one holder and drop it into another (even in a different
+// block). Native HTML5 DnD "move": the source only clears when the drop is
+// accepted somewhere else (dropEffect === "move"), so a drop onto its own holder
+// is a no-op and a failed drag changes nothing.
+const IMG_DND = "application/x-igla-image";
+
+function dropTarget(currentId: string | undefined, setAsset: (id: string) => void) {
+  return {
+    onDragOver: (e: React.DragEvent) => {
+      if (e.dataTransfer.types.includes(IMG_DND)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }
+    },
+    onDrop: (e: React.DragEvent) => {
+      const id = e.dataTransfer.getData(IMG_DND);
+      if (!id || id === currentId) return; // nothing / same image → reject (no move)
+      e.preventDefault();
+      setAsset(id);
+    },
+  };
+}
+
+function dragSource(assetId: string | undefined, clearSelf: () => void) {
+  return {
+    // Don't let a not-yet-uploaded image be dragged away (it has no real id yet).
+    draggable: !!assetId && !assetId.startsWith("pending:"),
+    onDragStart: (e: React.DragEvent) => {
+      if (!assetId) return;
+      e.dataTransfer.setData(IMG_DND, assetId);
+      e.dataTransfer.effectAllowed = "move";
+    },
+    onDragEnd: (e: React.DragEvent) => {
+      if (e.dataTransfer.dropEffect === "move") clearSelf();
+    },
+  };
+}
+
 export default function ImageBlockEditor({
   content,
   annotatable,
@@ -142,10 +180,11 @@ function SingleEditor({
       <button
         onClick={onPick}
         disabled={busy}
+        {...dropTarget(undefined, (id) => onChange({ ...content, imageAssetId: id }))}
         className="flex w-full flex-col items-center rounded-lg border-2 border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
       >
         <span className="text-2xl">📷</span>
-        {busy ? "Uploading…" : "Take photo / upload"}
+        {busy ? "Uploading…" : "Take photo / upload — or drag an image here"}
       </button>
     );
   }
@@ -166,10 +205,16 @@ function SingleEditor({
         className="group/img relative cursor-pointer"
         onClick={() => annotatable && url && setAnnotating(true)}
         title={annotatable ? "Tap to annotate wires" : undefined}
+        {...dropTarget(content.imageAssetId, (id) => onChange({ ...content, imageAssetId: id }))}
       >
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={content.caption ?? ""} className="w-full rounded-lg" />
+          <img
+            src={url}
+            alt={content.caption ?? ""}
+            className="w-full rounded-lg"
+            {...dragSource(content.imageAssetId, () => onChange({ ...content, imageAssetId: undefined }))}
+          />
         ) : (
           <div className="flex h-40 items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-400">
             Loading image…
@@ -295,11 +340,17 @@ function GalleryItem({
         className="group/gi relative cursor-pointer"
         onClick={() => url && setAnnotating(true)}
         title="Tap to annotate"
+        {...dropTarget(item.imageAssetId, onReplace)}
       >
         {url ? (
           // natural aspect ratio so images aren't crushed into tiny squares
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={item.caption ?? ""} className="block w-full rounded-lg" />
+          <img
+            src={url}
+            alt={item.caption ?? ""}
+            className="block w-full rounded-lg"
+            {...dragSource(item.imageAssetId, onRemove)}
+          />
         ) : (
           <div className="aspect-[4/3] w-full rounded-lg bg-zinc-100" />
         )}

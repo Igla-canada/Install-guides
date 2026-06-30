@@ -190,7 +190,7 @@ export default function RichTextEditor({
         suppressContentEditableWarning
         onBlur={save}
         data-placeholder="Write… (select words and use the toolbar to style them)"
-        className="min-h-[60px] px-3 py-2 text-sm leading-relaxed focus:outline-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)] [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
+        className="rte-surface min-h-[60px] px-3 py-2 text-sm leading-relaxed focus:outline-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)] [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
       />
     </div>
   );
