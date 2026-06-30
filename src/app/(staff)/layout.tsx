@@ -13,6 +13,7 @@ const NAV = [
   { href: "/guides", label: "Guides", roles: ["ADMIN", "TECH"] },
   { href: "/grants", label: "Access links", roles: ["ADMIN", "TECH"] },
   { href: "/quick-picks", label: "Quick picks", roles: ["ADMIN", "TECH"] },
+  { href: "/files", label: "Files", roles: ["ADMIN"] },
   { href: "/export", label: "Export PDF", roles: ["ADMIN", "TECH"] },
   { href: "/alerts", label: "Alerts", roles: ["ADMIN"] },
   { href: "/audit", label: "Audit log", roles: ["ADMIN"] },

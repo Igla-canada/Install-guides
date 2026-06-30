@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ClientBlock } from "./types";
 import ImageBlockEditor from "@/components/images/image-block-editor";
 import RichTextEditor from "./rich-text-editor";
@@ -373,6 +373,7 @@ function FileTextBlockEditor({
   const fileRef = useRef<HTMLInputElement>(null);
   const replaceIdx = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const files = fileTextEntries(c);
 
@@ -463,16 +464,103 @@ function FileTextBlockEditor({
             </button>
           </div>
         ))}
-        <button
-          onClick={() => {
-            replaceIdx.current = null;
-            fileRef.current?.click();
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              replaceIdx.current = null;
+              fileRef.current?.click();
+            }}
+            disabled={busy}
+            className="flex flex-1 items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 px-4 py-2.5 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
+          >
+            📎 {busy ? "Uploading…" : files.length ? "Attach another file" : "Attach file (.bin, settings, …)"}
+          </button>
+          <button
+            onClick={() => setPickerOpen(true)}
+            disabled={busy}
+            className="flex flex-1 items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 px-4 py-2.5 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
+          >
+            📁 Use existing file
+          </button>
+        </div>
+      </div>
+      {pickerOpen && (
+        <ExistingFilePicker
+          onClose={() => setPickerOpen(false)}
+          onPick={(f) => {
+            writeFiles([...files, { assetId: f.id, name: f.name, size: f.size ?? undefined }]);
+            setPickerOpen(false);
           }}
-          disabled={busy}
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 px-4 py-2.5 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
-        >
-          📎 {busy ? "Uploading…" : files.length ? "Attach another file" : "Attach file (.bin, settings, …)"}
-        </button>
+        />
+      )}
+    </div>
+  );
+}
+
+// Picker over the reusable file library (Files Manager). Lets an author drop an
+// already-uploaded large file into a block without re-uploading it.
+function ExistingFilePicker({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (f: { id: string; name: string; size: number | null }) => void;
+}) {
+  const [files, setFiles] = useState<Array<{ id: string; name: string; size: number | null }> | null>(
+    null
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/files/library")
+      .then((r) => (r.ok ? r.json() : { files: [] }))
+      .then((d) => !cancelled && setFiles(d.files ?? []))
+      .catch(() => !cancelled && setFiles([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[70vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+          <h3 className="text-sm font-semibold">Use an existing file</h3>
+          <button onClick={onClose} className="text-sm text-zinc-400 hover:text-zinc-700">
+            ✕
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {files == null ? (
+            <p className="p-3 text-sm text-zinc-400">Loading…</p>
+          ) : files.length === 0 ? (
+            <p className="p-3 text-sm text-zinc-400">
+              No files in the library yet. An admin can add them in the Files manager.
+            </p>
+          ) : (
+            files.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => onPick(f)}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100"
+              >
+                <span className="text-lg">📄</span>
+                <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
+                {typeof f.size === "number" && (
+                  <span className="text-xs text-zinc-400">
+                    {f.size > 1048576
+                      ? `${(f.size / 1048576).toFixed(1)} MB`
+                      : `${Math.round(f.size / 1024)} KB`}
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

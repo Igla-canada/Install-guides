@@ -253,11 +253,18 @@ model ImageAsset {
   // baked in so the guide shows a zoomed/cropped region. null = full image.
   view         Json?
   mime         String
+  size         Int? // byte size (recorded for library files so the manager can show it)
+  // Non-null = a reusable "library" file (the Files Manager) with this display
+  // name, uploaded once and picked into many guides. null = a regular per-guide
+  // image/file.
+  libraryName  String?
   uploadedById String?
   uploadedBy   UserAccount? @relation(fields: [uploadedById], references: [id])
   createdAt    DateTime     @default(now())
   annotations  Annotation[]
   coverOf      Guild[]      @relation("GuildCover")
+
+  @@index([libraryName])
 }
 
 model Annotation {
