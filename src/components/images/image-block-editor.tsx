@@ -27,10 +27,14 @@ const GRID_COLS: Record<number, string> = {
 };
 
 // Drag an image from one holder and drop it into another (even in a different
-// block). Native HTML5 DnD "move": the source only clears when the drop is
-// accepted somewhere else (dropEffect === "move"), so a drop onto its own holder
-// is a no-op and a failed drag changes nothing.
+// block). Native HTML5 DnD "move". The source must clear ONLY when the image was
+// actually dropped on a different holder — never when released over empty space.
+// `dataTransfer.dropEffect` in dragEnd is unreliable across browsers, so instead
+// a drop on a valid target flips this shared flag (one drag at a time); dragEnd
+// reads it. If it's still false the drag failed and the source is left untouched
+// (the image "bounces back" to where it was).
 const IMG_DND = "application/x-igla-image";
+const imgDrag = { landed: false };
 
 function dropTarget(currentId: string | undefined, setAsset: (id: string) => void) {
   return {
@@ -42,8 +46,9 @@ function dropTarget(currentId: string | undefined, setAsset: (id: string) => voi
     },
     onDrop: (e: React.DragEvent) => {
       const id = e.dataTransfer.getData(IMG_DND);
-      if (!id || id === currentId) return; // nothing / same image → reject (no move)
+      if (!id || id === currentId) return; // nothing / same holder → not a move
       e.preventDefault();
+      imgDrag.landed = true; // a real drop happened on another holder
       setAsset(id);
     },
   };
@@ -55,11 +60,14 @@ function dragSource(assetId: string | undefined, clearSelf: () => void) {
     draggable: !!assetId && !assetId.startsWith("pending:"),
     onDragStart: (e: React.DragEvent) => {
       if (!assetId) return;
+      imgDrag.landed = false; // reset for this drag
       e.dataTransfer.setData(IMG_DND, assetId);
       e.dataTransfer.effectAllowed = "move";
     },
-    onDragEnd: (e: React.DragEvent) => {
-      if (e.dataTransfer.dropEffect === "move") clearSelf();
+    onDragEnd: () => {
+      // Clear the source ONLY if the image actually landed on another holder.
+      if (imgDrag.landed) clearSelf();
+      imgDrag.landed = false;
     },
   };
 }
