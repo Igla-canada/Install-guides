@@ -84,68 +84,8 @@ function BlockBody({
         />
       );
 
-    case "connections_table": {
-      type Row = { name: string; location: string; color: string; pin: string; note: string };
-      const rows: Row[] = c.rows ?? [];
-      const setRows = (next: Row[]) => update({ ...c, rows: next });
-      const cols: Array<{ key: keyof Row; label: string; w: string }> = [
-        { key: "name", label: "", w: "w-28" },
-        { key: "location", label: "Location", w: "flex-1" },
-        { key: "color", label: "Color", w: "w-24" },
-        { key: "pin", label: "Pin", w: "w-14" },
-        { key: "note", label: "Note", w: "flex-1" },
-      ];
-      return (
-        <div className="overflow-x-auto">
-          <div className="min-w-[480px]">
-            <div className="flex gap-1 px-1 text-xs font-medium uppercase text-zinc-400">
-              {cols.map((col) => (
-                <span key={col.key} className={col.w}>
-                  {col.label}
-                </span>
-              ))}
-              <span className="w-5" />
-            </div>
-            {rows.map((r, i) => (
-              <div key={i} className="mt-1 flex gap-1">
-                {cols.map((col) => (
-                  <input
-                    key={col.key}
-                    defaultValue={r[col.key]}
-                    placeholder={col.key === "name" ? "e.g. CAN-H" : col.label}
-                    onBlur={(e) => {
-                      if (e.target.value !== r[col.key])
-                        setRows(
-                          rows.map((x, j) =>
-                            j === i ? { ...x, [col.key]: e.target.value } : x
-                          )
-                        );
-                    }}
-                    className={`${col.w} rounded border border-zinc-200 bg-white px-2 py-1 text-sm ${
-                      col.key === "name" ? "font-semibold" : ""
-                    }`}
-                  />
-                ))}
-                <button
-                  onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                  className="w-5 text-zinc-300 hover:text-red-500"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() =>
-                setRows([...rows, { name: "", location: "", color: "", pin: "", note: "" }])
-              }
-              className="mt-1 text-xs text-zinc-400 hover:text-zinc-600"
-            >
-              + connection
-            </button>
-          </div>
-        </div>
-      );
-    }
+    case "connections_table":
+      return <ConnectionsTableEditor c={c} update={update} />;
 
     case "key_value_table": {
       const rows: Array<{ key: string; value: string }> = c.rows ?? [];
@@ -532,6 +472,124 @@ function FileTextBlockEditor({
           className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-zinc-300 px-4 py-2.5 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
         >
           📎 {busy ? "Uploading…" : files.length ? "Attach another file" : "Attach file (.bin, settings, …)"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Connections table: editable rows with a drag handle to reorder them. Inputs
+// stay uncontrolled (commit on blur), so after a reorder/delete we bump a nonce
+// to remount the rows and refresh their defaultValues to the new order.
+type ConnRow = { name: string; location: string; color: string; pin: string; note: string };
+
+function ConnectionsTableEditor({
+  c,
+  update,
+}: {
+  c: any;
+  update: (content: any) => void;
+}) {
+  const rows: ConnRow[] = c.rows ?? [];
+  const setRows = (next: ConnRow[]) => update({ ...c, rows: next });
+  const cols: Array<{ key: keyof ConnRow; label: string; w: string }> = [
+    { key: "name", label: "", w: "w-28" },
+    { key: "location", label: "Location", w: "flex-1" },
+    { key: "color", label: "Color", w: "w-24" },
+    { key: "pin", label: "Pin", w: "w-14" },
+    { key: "note", label: "Note", w: "flex-1" },
+  ];
+  const [nonce, setNonce] = useState(0);
+  const dragIndex = useRef<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    const next = [...rows];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setRows(next);
+    setNonce((n) => n + 1);
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[480px]">
+        <div className="flex gap-1 px-1 text-xs font-medium uppercase text-zinc-400">
+          <span className="w-5" />
+          {cols.map((col) => (
+            <span key={col.key} className={col.w}>
+              {col.label}
+            </span>
+          ))}
+          <span className="w-5" />
+        </div>
+        {rows.map((r, i) => (
+          <div
+            key={`${nonce}-${i}`}
+            className={`mt-1 flex items-center gap-1 rounded ${
+              overIndex === i ? "ring-2 ring-zinc-400" : ""
+            }`}
+            onDragOver={(e) => {
+              if (dragIndex.current === null) return;
+              e.preventDefault();
+              if (overIndex !== i) setOverIndex(i);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIndex.current !== null) reorder(dragIndex.current, i);
+              dragIndex.current = null;
+              setOverIndex(null);
+            }}
+          >
+            <span
+              draggable
+              onDragStart={(e) => {
+                dragIndex.current = i;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", String(i)); // Firefox needs data to start a drag
+              }}
+              onDragEnd={() => {
+                dragIndex.current = null;
+                setOverIndex(null);
+              }}
+              title="Drag to reorder"
+              className="w-5 shrink-0 cursor-grab select-none text-center text-zinc-300 hover:text-zinc-600 active:cursor-grabbing"
+            >
+              ⠿
+            </span>
+            {cols.map((col) => (
+              <input
+                key={col.key}
+                defaultValue={r[col.key]}
+                placeholder={col.key === "name" ? "e.g. CAN-H" : col.label}
+                onBlur={(e) => {
+                  if (e.target.value !== r[col.key])
+                    setRows(rows.map((x, j) => (j === i ? { ...x, [col.key]: e.target.value } : x)));
+                }}
+                className={`${col.w} rounded border border-zinc-200 bg-white px-2 py-1 text-sm ${
+                  col.key === "name" ? "font-semibold" : ""
+                }`}
+              />
+            ))}
+            <button
+              onClick={() => {
+                setRows(rows.filter((_, j) => j !== i));
+                setNonce((n) => n + 1);
+              }}
+              className="w-5 text-zinc-300 hover:text-red-500"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() =>
+            setRows([...rows, { name: "", location: "", color: "", pin: "", note: "" }])
+          }
+          className="mt-1 text-xs text-zinc-400 hover:text-zinc-600"
+        >
+          + connection
         </button>
       </div>
     </div>
