@@ -137,6 +137,8 @@ const fieldCls = "rounded-md border border-zinc-300 px-2 py-1 text-sm";
 // Per-generation accent colours so each generation's guides are visually grouped.
 const GEN_COLORS = ["#2563eb", "#16a34a", "#a855f7", "#ea580c", "#0891b2", "#db2777"];
 
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 export default async function TaxonomyManager({ error }: { error?: string }) {
   await requireRole("ADMIN");
   const makes = await prisma.make.findMany({
@@ -151,8 +153,19 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
             include: {
               _count: { select: { guilds: true } },
               // The actual guides on this generation, so the admin can open each
-              // one to see what it is before renaming/moving/deleting.
-              guilds: { select: { id: true, title: true, status: true }, orderBy: { title: "asc" } },
+              // one to see what it is before renaming/moving/deleting. Their alt
+              // model names let us ghost a shared guide onto its sibling
+              // generations (e.g. one "Range Rover" guide that also answers to
+              // "Evoque", "Velar", …).
+              guilds: {
+                select: {
+                  id: true,
+                  title: true,
+                  status: true,
+                  altModelAliases: { select: { name: true } },
+                },
+                orderBy: { title: "asc" },
+              },
             },
           },
         },
@@ -253,6 +266,18 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
               {mk.models.map((md) => {
                 const siblings = mk.models.filter((x) => x.id !== md.id);
                 const modelEmpty = md.generations.length === 0 && md._count.guilds === 0;
+                // Every guide under this model with its home generation + the
+                // model names it also answers to — used to ghost a shared guide
+                // onto the sibling generations it covers via those alt names.
+                const modelGuilds = md.generations.flatMap((gen) =>
+                  gen.guilds.map((gd) => ({
+                    id: gd.id,
+                    title: gd.title,
+                    status: gd.status,
+                    genId: gen.id,
+                    altNames: gd.altModelAliases.map((a) => norm(a.name)),
+                  }))
+                );
                 return (
                   <div key={md.id} className="rounded-md border border-zinc-200 p-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -282,6 +307,12 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                         // their years/label affects every guide on them).
                         const color = GEN_COLORS[gi % GEN_COLORS.length];
                         const shared = g._count.guilds > 1;
+                        // Guides that live on ANOTHER generation of this model but
+                        // also answer to this generation's label via an alt model
+                        // name — shown here as read-only ghosts.
+                        const ghosts = modelGuilds.filter(
+                          (gd) => gd.genId !== g.id && gd.altNames.includes(norm(g.name))
+                        );
                         return (
                         <div
                           key={g.id}
@@ -327,6 +358,28 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                                   style={{ borderLeftColor: color }}
                                 >
                                   ↗ {gd.title}
+                                  {gd.status !== "PUBLISHED" && (
+                                    <span className="text-[10px] text-zinc-400">({gd.status.toLowerCase()})</span>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+
+                          {ghosts.length > 0 && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] text-zinc-400">Also (ghost):</span>
+                              {ghosts.map((gd) => (
+                                <a
+                                  key={gd.id}
+                                  href={`/guides/${gd.id}/edit`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={`"${gd.title}" also answers to "${g.name}" via its alternate model names. Edit it from its home generation.`}
+                                  className="inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100"
+                                >
+                                  <span className="opacity-50">⤳</span>
+                                  {gd.title}
                                   {gd.status !== "PUBLISHED" && (
                                     <span className="text-[10px] text-zinc-400">({gd.status.toLowerCase()})</span>
                                   )}
