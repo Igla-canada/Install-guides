@@ -59,6 +59,24 @@ export const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_alt_models"), names: z.array(z.string().min(1)) }),
   z.object({ op: z.literal("update_properties"), properties: z.record(z.string(), z.string()) }),
   z.object({ op: z.literal("set_cover"), imageAssetId: z.string().nullable() }),
+  // Undo/restore: rewrite the whole content (title, properties, cover, and the
+  // section/block tree) from a client-held snapshot. Identity FKs are untouched.
+  z.object({
+    op: z.literal("restore_content"),
+    snapshot: z.object({
+      title: z.string().optional(),
+      properties: z.record(z.string(), z.string()).nullable().optional(),
+      coverImageId: z.string().nullable().optional(),
+      sections: z.array(
+        z.object({
+          title: z.string(),
+          type: z.string(),
+          collapsedDefault: z.boolean().optional(),
+          blocks: z.array(z.object({ type: z.string(), content: z.unknown() })),
+        })
+      ),
+    }),
+  }),
   z.object({
     op: z.literal("add_section"),
     title: z.string().min(1),
@@ -271,6 +289,40 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
         data: { coverImageId: op.imageAssetId },
       });
       return;
+    case "restore_content": {
+      const snap = op.snapshot;
+      await tx.section.deleteMany({ where: { guildId } });
+      await tx.guild.update({
+        where: { id: guildId },
+        data: {
+          ...(snap.title !== undefined ? { title: snap.title } : {}),
+          ...(snap.properties !== undefined
+            ? { properties: (snap.properties ?? {}) as Prisma.InputJsonValue }
+            : {}),
+          ...(snap.coverImageId !== undefined ? { coverImageId: snap.coverImageId } : {}),
+        },
+      });
+      for (let si = 0; si < snap.sections.length; si++) {
+        const s = snap.sections[si];
+        await tx.section.create({
+          data: {
+            guildId,
+            order: si,
+            title: s.title,
+            type: s.type,
+            collapsedDefault: s.collapsedDefault ?? false,
+            blocks: {
+              create: s.blocks.map((b, bi) => ({
+                order: bi,
+                type: b.type,
+                content: (b.content ?? {}) as Prisma.InputJsonValue,
+              })),
+            },
+          },
+        });
+      }
+      return;
+    }
     case "add_section": {
       const sections = await tx.section.findMany({
         where: { guildId },

@@ -5,7 +5,7 @@
 // holds its own copy of the document (AGENTS.md #2).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   dispatchOps,
@@ -23,6 +23,22 @@ import CoverEditor from "./cover-editor";
 import PropertiesEditor from "./properties-editor";
 import ChatPanel from "./chat-panel";
 import { SECTION_TYPES } from "@/lib/blocks";
+
+// The undo payload: the content that restore_content rewrites (identity FKs are
+// not touched — they have their own staged Save/Discard).
+function contentSnapshot(d: ClientDoc) {
+  return {
+    title: d.title,
+    properties: d.properties,
+    coverImageId: d.coverImageId,
+    sections: d.sections.map((s) => ({
+      title: s.title,
+      type: s.type,
+      collapsedDefault: s.collapsedDefault,
+      blocks: s.blocks.map((b) => ({ type: b.type, content: b.content })),
+    })),
+  };
+}
 
 export default function GuildEditor({
   initialDoc,
@@ -59,8 +75,22 @@ export default function GuildEditor({
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
+  // Undo (Ctrl/Cmd+Z): snapshot the doc BEFORE each edit; undo restores the last
+  // snapshot by rewriting the content (a restore_content op). Kept in refs so it
+  // doesn't churn renders; a count drives the button's enabled state.
+  const docRef = useRef(doc);
+  docRef.current = doc;
+  const undoStack = useRef<ClientDoc[]>([]);
+  const undoing = useRef(false);
+  const [undoCount, setUndoCount] = useState(0);
+
   const dispatch = useCallback(
     async (ops: any[]) => {
+      if (!undoing.current) {
+        undoStack.current.push(JSON.parse(JSON.stringify(docRef.current)));
+        if (undoStack.current.length > 50) undoStack.current.shift();
+        setUndoCount(undoStack.current.length);
+      }
       // Optimistic local apply; server doc replaces it on success.
       setDoc((d) => applyOpsLocal(d, ops));
       const result = await dispatchOps(initialDoc.id, ops);
@@ -68,6 +98,31 @@ export default function GuildEditor({
     },
     [initialDoc.id]
   );
+
+  const undo = useCallback(() => {
+    const prev = undoStack.current.pop();
+    setUndoCount(undoStack.current.length);
+    if (!prev) return;
+    undoing.current = true;
+    void dispatch([{ op: "restore_content", snapshot: contentSnapshot(prev) }]);
+    undoing.current = false; // dispatch's push-skip check already ran synchronously
+  }, [dispatch]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isZ = e.key === "z" || e.key === "Z";
+      if ((e.ctrlKey || e.metaKey) && isZ && !e.shiftKey && !e.altKey) {
+        // Let inputs / contentEditable keep their own native undo while focused.
+        const el = document.activeElement as HTMLElement | null;
+        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable))
+          return;
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo]);
 
   useEffect(() => {
     const update = () => void queuedCount().then(setPending);
@@ -116,6 +171,14 @@ export default function GuildEditor({
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={undo}
+            disabled={undoCount === 0}
+            title="Undo (Ctrl/Cmd+Z)"
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-40"
+          >
+            ↶ Undo
+          </button>
           <button
             onClick={() => {
               setPreviewNonce((n) => n + 1);

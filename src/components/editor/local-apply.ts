@@ -58,6 +58,32 @@ function applyOne(doc: ClientDoc, op: any): ClientDoc {
       return { ...doc, properties: op.properties };
     case "set_cover":
       return { ...doc, coverImageId: op.imageAssetId };
+    case "restore_content": {
+      const snap = op.snapshot;
+      const uid = () =>
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `r${Math.round(performance.now() * 1000)}${Math.random()}`;
+      return {
+        ...doc,
+        ...(snap.title !== undefined ? { title: snap.title } : {}),
+        ...(snap.properties !== undefined ? { properties: snap.properties } : {}),
+        ...(snap.coverImageId !== undefined ? { coverImageId: snap.coverImageId } : {}),
+        sections: (snap.sections ?? []).map((s: any, si: number) => ({
+          id: uid(),
+          order: si,
+          title: s.title,
+          type: s.type,
+          collapsedDefault: s.collapsedDefault ?? false,
+          blocks: (s.blocks ?? []).map((b: any, bi: number) => ({
+            id: uid(),
+            order: bi,
+            type: b.type,
+            content: b.content,
+          })),
+        })),
+      };
+    }
     case "add_section": {
       const sections = [...doc.sections];
       let index = sections.length;

@@ -7,7 +7,7 @@
 // offline (queued in IndexedDB, see src/lib/client/offline.ts).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { uploadImage } from "@/lib/client/offline";
 import { useImageUrl } from "./use-image-url";
 import Annotator, { AnnoOverlay, type Anno } from "./annotator";
@@ -27,49 +27,152 @@ const GRID_COLS: Record<number, string> = {
 };
 
 // Drag an image from one holder and drop it into another (even in a different
-// block). Native HTML5 DnD "move". The source must clear ONLY when the image was
-// actually dropped on a different holder — never when released over empty space.
-// `dataTransfer.dropEffect` in dragEnd is unreliable across browsers, so instead
-// a drop on a valid target flips this shared flag (one drag at a time); dragEnd
-// reads it. If it's still false the drag failed and the source is left untouched
-// (the image "bounces back" to where it was).
+// block). Native HTML5 DnD, one drag at a time, coordinated through this shared
+// object so the two holders SWAP rather than duplicate/vanish:
+//  - drop on another holder → target takes the dragged image; the source takes
+//    the target's OLD image (swap), or is cleared if the target was empty (move).
+//  - drop within the SAME gallery → the gallery swaps the two items in ONE
+//    update (`done`), so the source's dragEnd doesn't clobber it.
+//  - drop on nothing → nothing changes (the image "bounces back").
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const IMG_DND = "application/x-igla-image";
-const imgDrag = { landed: false };
+const imgDrag: {
+  id: string | null;
+  setSource: ((id: string | undefined) => void) | null;
+  galleryKey: string | null;
+  index: number;
+  landed: boolean;
+  done: boolean;
+  targetOldId: string | undefined;
+} = {
+  id: null,
+  setSource: null,
+  galleryKey: null,
+  index: -1,
+  landed: false,
+  done: false,
+  targetOldId: undefined,
+};
 
-function dropTarget(currentId: string | undefined, setAsset: (id: string) => void) {
+function startDrag(
+  e: React.DragEvent,
+  assetId: string | undefined,
+  setSource: (id: string | undefined) => void,
+  gallery?: { key: string; index: number }
+) {
+  if (!assetId) return;
+  imgDrag.id = assetId;
+  imgDrag.setSource = setSource;
+  imgDrag.galleryKey = gallery?.key ?? null;
+  imgDrag.index = gallery?.index ?? -1;
+  imgDrag.landed = false;
+  imgDrag.done = false;
+  imgDrag.targetOldId = undefined;
+  e.dataTransfer.setData(IMG_DND, assetId);
+  e.dataTransfer.effectAllowed = "move";
+}
+
+function endDrag() {
+  if (imgDrag.landed && !imgDrag.done && imgDrag.setSource) {
+    imgDrag.setSource(imgDrag.targetOldId); // swap the target's old image back (or clear)
+  }
+  imgDrag.id = null;
+  imgDrag.setSource = null;
+  imgDrag.galleryKey = null;
+  imgDrag.index = -1;
+  imgDrag.landed = false;
+  imgDrag.done = false;
+  imgDrag.targetOldId = undefined;
+}
+
+function allowDrop(e: React.DragEvent) {
+  if (e.dataTransfer.types.includes(IMG_DND)) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }
+}
+
+function imgDragProps(
+  assetId: string | undefined,
+  setSource: (id: string | undefined) => void,
+  gallery?: { key: string; index: number }
+) {
   return {
-    onDragOver: (e: React.DragEvent) => {
-      if (e.dataTransfer.types.includes(IMG_DND)) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-      }
-    },
-    onDrop: (e: React.DragEvent) => {
-      const id = e.dataTransfer.getData(IMG_DND);
-      if (!id || id === currentId) return; // nothing / same holder → not a move
-      e.preventDefault();
-      imgDrag.landed = true; // a real drop happened on another holder
-      setAsset(id);
-    },
+    draggable: !!assetId && !assetId.startsWith("pending:"),
+    onDragStart: (e: React.DragEvent) => startDrag(e, assetId, setSource, gallery),
+    onDragEnd: endDrag,
   };
 }
 
-function dragSource(assetId: string | undefined, clearSelf: () => void) {
-  return {
-    // Don't let a not-yet-uploaded image be dragged away (it has no real id yet).
-    draggable: !!assetId && !assetId.startsWith("pending:"),
-    onDragStart: (e: React.DragEvent) => {
-      if (!assetId) return;
-      imgDrag.landed = false; // reset for this drag
-      e.dataTransfer.setData(IMG_DND, assetId);
-      e.dataTransfer.effectAllowed = "move";
-    },
-    onDragEnd: () => {
-      // Clear the source ONLY if the image actually landed on another holder.
-      if (imgDrag.landed) clearSelf();
-      imgDrag.landed = false;
-    },
-  };
+// Drop onto a single-image holder (currentId undefined = an empty holder).
+function dropOnSingle(
+  e: React.DragEvent,
+  currentId: string | undefined,
+  setAsset: (id: string) => void
+) {
+  if (!imgDrag.id || imgDrag.id === currentId) return;
+  e.preventDefault();
+  imgDrag.landed = true;
+  imgDrag.targetOldId = currentId;
+  setAsset(imgDrag.id);
+}
+
+// Drop onto a gallery item — swap within the same gallery (one update), else
+// take the dragged image and hand the source the item's old image.
+function dropOnGalleryItem(
+  e: React.DragEvent,
+  myKey: string,
+  targetIndex: number,
+  items: any[],
+  content: any,
+  onChange: (c: any) => void
+) {
+  if (!imgDrag.id) return;
+  e.preventDefault();
+  if (imgDrag.galleryKey === myKey) {
+    const from = imgDrag.index;
+    imgDrag.landed = true;
+    imgDrag.done = true;
+    if (from < 0 || from === targetIndex) return;
+    const next = items.slice();
+    [next[from], next[targetIndex]] = [next[targetIndex], next[from]];
+    onChange({ ...content, items: next });
+    return;
+  }
+  const oldId = items[targetIndex]?.imageAssetId as string | undefined;
+  if (imgDrag.id === oldId) return;
+  imgDrag.landed = true;
+  imgDrag.targetOldId = oldId;
+  onChange({
+    ...content,
+    items: items.map((x, j) => (j === targetIndex ? { ...x, imageAssetId: imgDrag.id } : x)),
+  });
+}
+
+// Drop onto the gallery's "+ Add" tile — append (or move to end within-gallery).
+function dropOnGalleryAdd(
+  e: React.DragEvent,
+  myKey: string,
+  items: any[],
+  content: any,
+  onChange: (c: any) => void
+) {
+  if (!imgDrag.id) return;
+  e.preventDefault();
+  if (imgDrag.galleryKey === myKey) {
+    const from = imgDrag.index;
+    imgDrag.landed = true;
+    imgDrag.done = true;
+    if (from < 0) return;
+    const next = items.slice();
+    const [m] = next.splice(from, 1);
+    next.push(m);
+    onChange({ ...content, items: next });
+    return;
+  }
+  imgDrag.landed = true;
+  imgDrag.targetOldId = undefined; // append = a move; source clears
+  onChange({ ...content, items: [...items, { imageAssetId: imgDrag.id }] });
 }
 
 export default function ImageBlockEditor({
@@ -188,7 +291,8 @@ function SingleEditor({
       <button
         onClick={onPick}
         disabled={busy}
-        {...dropTarget(undefined, (id) => onChange({ ...content, imageAssetId: id }))}
+        onDragOver={allowDrop}
+        onDrop={(e) => dropOnSingle(e, undefined, (id) => onChange({ ...content, imageAssetId: id }))}
         className="flex w-full flex-col items-center rounded-lg border-2 border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-400 hover:border-zinc-400 hover:text-zinc-600"
       >
         <span className="text-2xl">📷</span>
@@ -213,7 +317,8 @@ function SingleEditor({
         className="group/img relative cursor-pointer"
         onClick={() => annotatable && url && setAnnotating(true)}
         title={annotatable ? "Tap to annotate wires" : undefined}
-        {...dropTarget(content.imageAssetId, (id) => onChange({ ...content, imageAssetId: id }))}
+        onDragOver={allowDrop}
+        onDrop={(e) => dropOnSingle(e, content.imageAssetId, (id) => onChange({ ...content, imageAssetId: id }))}
       >
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -221,7 +326,7 @@ function SingleEditor({
             src={url}
             alt={content.caption ?? ""}
             className="w-full rounded-lg"
-            {...dragSource(content.imageAssetId, () => onChange({ ...content, imageAssetId: undefined }))}
+            {...imgDragProps(content.imageAssetId, (id) => onChange({ ...content, imageAssetId: id }))}
           />
         ) : (
           <div className="flex h-40 items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-400">
@@ -284,32 +389,39 @@ function GalleryEditor({
 }) {
   const items = content.items ?? [];
   const cols = GRID_COLS[content.columns ?? 2] ?? GRID_COLS[2];
+  const galleryKey = useId();
   return (
     <div className={`grid gap-2 ${cols}`}>
-      {items.map((item, i) => (
-        <GalleryItem
-          key={`${item.imageAssetId}-${i}`}
-          item={item}
-          onCaption={(caption) =>
-            onChange({
-              ...content,
-              items: items.map((x, j) => (j === i ? { ...x, caption } : x)),
-            })
-          }
-          onReplace={(newId) =>
-            onChange({
-              ...content,
-              items: items.map((x, j) => (j === i ? { ...x, imageAssetId: newId } : x)),
-            })
-          }
-          onRemove={() =>
-            onChange({ ...content, items: items.filter((_, j) => j !== i) })
-          }
-        />
-      ))}
+      {items.map((item, i) => {
+        const replace = (newId: string) =>
+          onChange({ ...content, items: items.map((x, j) => (j === i ? { ...x, imageAssetId: newId } : x)) });
+        const remove = () => onChange({ ...content, items: items.filter((_, j) => j !== i) });
+        return (
+          <GalleryItem
+            key={`${item.imageAssetId}-${i}`}
+            item={item}
+            onCaption={(caption) =>
+              onChange({
+                ...content,
+                items: items.map((x, j) => (j === i ? { ...x, caption } : x)),
+              })
+            }
+            onReplace={replace}
+            onRemove={remove}
+            dragProps={imgDragProps(
+              item.imageAssetId,
+              (id) => (id ? replace(id) : remove()),
+              { key: galleryKey, index: i }
+            )}
+            onDropImg={(e) => dropOnGalleryItem(e, galleryKey, i, items, content, onChange)}
+          />
+        );
+      })}
       <button
         onClick={onAdd}
         disabled={busy}
+        onDragOver={allowDrop}
+        onDrop={(e) => dropOnGalleryAdd(e, galleryKey, items, content, onChange)}
         className="flex min-h-24 flex-col items-center justify-center rounded-lg border-2 border-dashed border-zinc-300 text-sm text-zinc-400 hover:border-zinc-400"
       >
         <span className="text-xl">📷</span>
@@ -324,11 +436,19 @@ function GalleryItem({
   onCaption,
   onReplace,
   onRemove,
+  dragProps,
+  onDropImg,
 }: {
   item: { imageAssetId: string; caption?: string };
   onCaption: (caption: string) => void;
   onReplace: (newAssetId: string) => void;
   onRemove: () => void;
+  dragProps: {
+    draggable: boolean;
+    onDragStart: (e: React.DragEvent) => void;
+    onDragEnd: () => void;
+  };
+  onDropImg: (e: React.DragEvent) => void;
 }) {
   const url = useImageUrl(item.imageAssetId);
   const [annotating, setAnnotating] = useState(false);
@@ -348,7 +468,8 @@ function GalleryItem({
         className="group/gi relative cursor-pointer"
         onClick={() => url && setAnnotating(true)}
         title="Tap to annotate"
-        {...dropTarget(item.imageAssetId, onReplace)}
+        onDragOver={allowDrop}
+        onDrop={onDropImg}
       >
         {url ? (
           // natural aspect ratio so images aren't crushed into tiny squares
@@ -357,7 +478,7 @@ function GalleryItem({
             src={url}
             alt={item.caption ?? ""}
             className="block w-full rounded-lg"
-            {...dragSource(item.imageAssetId, onRemove)}
+            {...dragProps}
           />
         ) : (
           <div className="aspect-[4/3] w-full rounded-lg bg-zinc-100" />
