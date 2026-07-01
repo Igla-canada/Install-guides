@@ -30,6 +30,31 @@ async function renameMake(formData: FormData) {
   redirect("/users?tab=taxonomy");
 }
 
+async function deleteMake(formData: FormData) {
+  "use server";
+  await requireRole("ADMIN");
+  const id = String(formData.get("id"));
+  // Only an empty make can go: no models, no guilds, and not a secondary make
+  // bridged from any guide.
+  const [models, guilds, bridges] = await Promise.all([
+    prisma.model.count({ where: { makeId: id } }),
+    prisma.guild.count({ where: { makeId: id } }),
+    prisma.guildMake.count({ where: { makeId: id } }),
+  ]);
+  if (models > 0 || guilds > 0 || bridges > 0) {
+    redirect("/users?tab=taxonomy&taxError=Remove+everything+under+this+make+first+(models+and+bridged+guides)");
+  }
+  const ok = await prisma.make
+    .delete({ where: { id } })
+    .then(() => true)
+    .catch(() => false);
+  if (!ok) {
+    redirect("/users?tab=taxonomy&taxError=Could+not+delete+this+make");
+  }
+  refresh();
+  redirect("/users?tab=taxonomy");
+}
+
 async function renameModel(formData: FormData) {
   "use server";
   await requireRole("ADMIN");
@@ -218,14 +243,24 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
             </summary>
 
             <div className="space-y-3 border-t border-zinc-100 p-3">
-              <form action={renameMake} className="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="id" value={mk.id} />
-                <span className="text-xs text-zinc-400">Make name</span>
-                <input name="name" defaultValue={mk.name} className={`${fieldCls} w-48`} />
-                <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
-                  Rename
-                </button>
-              </form>
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={renameMake} className="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="id" value={mk.id} />
+                  <span className="text-xs text-zinc-400">Make name</span>
+                  <input name="name" defaultValue={mk.name} className={`${fieldCls} w-48`} />
+                  <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
+                    Rename
+                  </button>
+                </form>
+                {mk.models.length === 0 && mk.altGuilds.length === 0 && (
+                  <form action={deleteMake} className="ml-auto">
+                    <input type="hidden" name="id" value={mk.id} />
+                    <button className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">
+                      Delete empty make
+                    </button>
+                  </form>
+                )}
+              </div>
 
               {/* Shadow rows: guides whose primary make is elsewhere but that are
                   bridged to this make (RAM 1500 → Dodge). Read-only — edit them
@@ -275,6 +310,7 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                     title: gd.title,
                     status: gd.status,
                     genId: gen.id,
+                    genName: gen.name,
                     altNames: gd.altModelAliases.map((a) => norm(a.name)),
                   }))
                 );
@@ -375,11 +411,12 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                                   href={`/guides/${gd.id}/edit`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title={`"${gd.title}" also answers to "${g.name}" via its alternate model names. Edit it from its home generation.`}
+                                  title={`"${gd.title}" also answers to "${g.name}" via its alternate model names. Edit it from ${gd.genName}.`}
                                   className="inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100"
                                 >
                                   <span className="opacity-50">⤳</span>
                                   {gd.title}
+                                  <span className="text-[10px] text-zinc-400">(from {gd.genName})</span>
                                   {gd.status !== "PUBLISHED" && (
                                     <span className="text-[10px] text-zinc-400">({gd.status.toLowerCase()})</span>
                                   )}
