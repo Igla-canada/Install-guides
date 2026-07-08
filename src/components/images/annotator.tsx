@@ -1122,19 +1122,25 @@ export function AnnoOverlay({
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) {
-        // Cap the viewBox at the actual on-screen width: big images keep the
-        // authored fraction (labels scale up), but small images (gallery
-        // thumbnails, phones) shrink the viewBox to ~display px so the same
-        // label boxes stay a readable size instead of becoming microscopic.
-        const w = Math.min(r.width, ANNO_VBASE);
-        setVb(`0 0 ${Math.round(w)} ${Math.round((w * r.height) / r.width)}`);
-      }
+      if (r.width <= 0 || r.height <= 0) return;
+      // On a WIDE screen, cap the viewBox at the on-screen width so labels keep
+      // a readable size even on small desktop gallery thumbnails. On a NARROW
+      // (phone) viewport the image is the main view, so keep labels PROPORTIONAL
+      // to it (viewBox = full reference width) — otherwise they blow up and
+      // cover the photo. Installers tap to zoom for detail.
+      const wideViewport = typeof window !== "undefined" && window.innerWidth >= 640;
+      const w = wideViewport ? Math.min(r.width, ANNO_VBASE) : ANNO_VBASE;
+      setVb(`0 0 ${Math.round(w)} ${Math.round((w * r.height) / r.width)}`);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    // Re-measure on viewport changes (rotate / cross the phone↔desktop breakpoint).
+    if (typeof window !== "undefined") window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      if (typeof window !== "undefined") window.removeEventListener("resize", measure);
+    };
   }, []);
   if (annos.length === 0) return null;
   return (
