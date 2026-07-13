@@ -1,5 +1,5 @@
 // Shared hierarchical guide browser used by BOTH the admin library (/guides)
-// and the installer home (/my-guilds), so the two look identical. Drill-down:
+// and the installer home (/my-guides), so the two look identical. Drill-down:
 // manufacturers → models → years that model has guides for → the guides
 // themselves; search (?q=) falls back to a flat filtered table.
 //

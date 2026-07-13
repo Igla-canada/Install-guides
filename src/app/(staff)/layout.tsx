@@ -27,7 +27,7 @@ export default async function StaffLayout({
 }) {
   const user = await currentUser();
   if (!user) redirect("/login");
-  if (user.role === "INSTALLER") redirect("/my-guilds");
+  if (user.role === "INSTALLER") redirect("/my-guides");
 
   return (
     <div className="flex min-h-screen flex-col">

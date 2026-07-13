@@ -28,7 +28,7 @@ async function loginAction(formData: FormData) {
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  redirect(result.user.role === "INSTALLER" ? "/my-guilds" : "/dashboard");
+  redirect(result.user.role === "INSTALLER" ? "/my-guides" : "/dashboard");
 }
 
 export default async function LoginPage(props: {

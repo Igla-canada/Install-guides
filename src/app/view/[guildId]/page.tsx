@@ -22,9 +22,10 @@ export default async function InstallerGuildViewPage(props: {
   const grant = await prisma.installerGuild.findUnique({
     where: { userId_guildId: { userId: user.id, guildId } },
   });
-  // Grant must exist and still be within its time frame (null = permanent).
+  // "All guides" installers bypass per-guild grants entirely. Otherwise the
+  // grant must exist and still be within its time frame (null = permanent).
   const expired = Boolean(grant?.expiresAt && grant.expiresAt <= new Date());
-  const allowed = grant && !expired;
+  const allowed = user.allGuides || (grant && !expired);
   const doc = allowed ? await loadGuildDoc(guildId) : null;
   if (!allowed || !doc || doc.status !== "PUBLISHED") {
     await logEvent({
@@ -35,7 +36,7 @@ export default async function InstallerGuildViewPage(props: {
       userAgent: meta.userAgent,
       meta: { reason: expired ? "grant_expired" : "guild_not_granted" },
     });
-    redirect("/my-guilds");
+    redirect("/my-guides");
   }
 
   await logEvent({

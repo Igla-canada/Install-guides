@@ -71,14 +71,16 @@ export async function GET(
         ? await prisma.grantGuild.findUnique({
             where: { grantId_guildId: { grantId: grant.id, guildId } },
           })
-        : // Installer account: grant must exist and not be past its time frame.
-          await prisma.installerGuild.findFirst({
+        : // "All guides" installers bypass per-guild grants; otherwise the grant
+          // must exist and not be past its time frame.
+          user!.allGuides ||
+          (await prisma.installerGuild.findFirst({
             where: {
               userId: user!.id,
               guildId,
               OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
             },
-          }));
+          })));
     if (!hasAccess || !referenced) {
       await logEvent({
         actor: grant ? { grantId: grant.id } : { userId: user!.id },

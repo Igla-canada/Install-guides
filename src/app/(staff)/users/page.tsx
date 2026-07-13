@@ -119,6 +119,15 @@ async function setInstallerGuilds(formData: FormData) {
   "use server";
   await requireRole("ADMIN");
   const userId = String(formData.get("userId"));
+  // "All guides" blanket access: when on, per-guild rows are irrelevant — the
+  // installer sees every published guide (old + future). Persist the flag and
+  // skip rebuilding the per-guild list.
+  const allGuides = formData.get("allGuides") === "on";
+  await prisma.userAccount.update({ where: { id: userId }, data: { allGuides } });
+  if (allGuides) {
+    revalidatePath("/users");
+    return;
+  }
   const guildIds = formData.getAll("guildIds").map(String);
   // Preserve existing expiries for rows the admin left as "keep".
   const existing = await prisma.installerGuild.findMany({ where: { userId } });
@@ -298,11 +307,14 @@ export default async function UsersPage(props: {
                     {u.role === "INSTALLER" ? (
                       <details>
                         <summary className="cursor-pointer text-xs text-zinc-500">
-                          {access.length} guide{access.length === 1 ? "" : "s"} granted
+                          {u.allGuides
+                            ? "All guides (incl. future)"
+                            : `${access.length} guide${access.length === 1 ? "" : "s"} granted`}
                         </summary>
                         <InstallerAccessForm
                           userId={u.id}
                           guilds={publishedGuilds}
+                          allGuides={u.allGuides}
                           access={access.map((a) => ({
                             guildId: a.guildId,
                             expiresAt: a.expiresAt ? a.expiresAt.getTime() : null,

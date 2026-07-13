@@ -1,7 +1,7 @@
 // Guide library — hierarchical browsing, not a flat dump:
 // manufacturers → models → years that model has guides for → the guides.
 // Search (?q=) falls back to a flat filtered table. The browsing UI is shared
-// with the installer home (/my-guilds) via GuideBrowser; this page adds the
+// with the installer home (/my-guides) via GuideBrowser; this page adds the
 // staff-only chrome (status tabs, "+ New guide", editor links + metadata).
 import { prisma } from "@/lib/db";
 import { GuideBrowser } from "@/components/guides/guide-browser";

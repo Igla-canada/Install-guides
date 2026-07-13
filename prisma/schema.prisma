@@ -339,6 +339,11 @@ model UserAccount {
   role         UserRole
   passwordHash String
   status       UserStatus @default(ACTIVE)
+  // Installer only: blanket access to EVERY published guide, including ones
+  // published after this was set. When true, per-guide InstallerGuild rows are
+  // ignored (the installer sees all published guides, permanently). Admins never
+  // have to re-grant on each new publish.
+  allGuides    Boolean    @default(false)
   createdAt    DateTime   @default(now())
 
   sessions       Session[]

@@ -27,17 +27,22 @@ export default function InstallerAccessForm({
   userId,
   guilds,
   access,
+  allGuides: allGuidesInit,
   expiryOptions,
   action,
 }: {
   userId: string;
   guilds: Guild[];
   access: Access[];
+  allGuides: boolean;
   expiryOptions: ExpiryOption[];
   action: (formData: FormData) => void | Promise<void>;
 }) {
   // Captured once for the "expired" hint — render must stay pure.
   const [now] = useState(() => Date.now());
+  // Blanket access to every published guide (old + future). When on, the
+  // per-guide picker is irrelevant, so we collapse it.
+  const [allGuides, setAllGuides] = useState(allGuidesInit);
   const current = new Map(access.map((a) => [a.guildId, a.expiresAt] as const));
   const granted = (id: string) => current.has(id);
 
@@ -89,18 +94,46 @@ export default function InstallerAccessForm({
   return (
     <form action={action} className="mt-2 space-y-2">
       <input type="hidden" name="userId" value={userId} />
-      {/* Hidden inputs carry the actual selection + per-guild expiry. */}
-      {guilds
-        .filter((g) => rows[g.id]?.checked)
-        .map((g) => (
-          <span key={g.id}>
-            <input type="hidden" name="guildIds" value={g.id} />
-            <input type="hidden" name={`expiry__${g.id}`} value={rows[g.id].expiry} />
+      {/* Hidden inputs carry the actual selection + per-guild expiry.
+          Skipped entirely when "all guides" is on (the server ignores them). */}
+      {!allGuides &&
+        guilds
+          .filter((g) => rows[g.id]?.checked)
+          .map((g) => (
+            <span key={g.id}>
+              <input type="hidden" name="guildIds" value={g.id} />
+              <input type="hidden" name={`expiry__${g.id}`} value={rows[g.id].expiry} />
+            </span>
+          ))}
+
+      {/* All-guides blanket access. A native checkbox named "allGuides" submits
+          "on" when checked (server treats that as: ignore the per-guild list and
+          grant every published guide, including ones published later). */}
+      <label className="flex items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs">
+        <input
+          type="checkbox"
+          name="allGuides"
+          checked={allGuides}
+          onChange={(e) => setAllGuides(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-medium text-indigo-900">
+            Access to ALL guides (including future ones)
           </span>
-        ))}
+          <span className="block text-indigo-700/80">
+            Permanent access to every published guide. New guides are included
+            automatically — no need to re-grant.
+          </span>
+        </span>
+      </label>
 
       {/* Bulk: grant everything (or everything checked) with one time frame. */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-md bg-zinc-50 p-2 text-xs">
+      <div
+        className={`flex flex-wrap items-center gap-1.5 rounded-md bg-zinc-50 p-2 text-xs ${
+          allGuides ? "pointer-events-none opacity-40" : ""
+        }`}
+      >
         <span className="font-medium text-zinc-600">Bulk:</span>
         <select
           value={bulk}
@@ -137,7 +170,11 @@ export default function InstallerAccessForm({
         </button>
       </div>
 
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded border border-zinc-200 p-2">
+      <div
+        className={`max-h-56 space-y-1 overflow-y-auto rounded border border-zinc-200 p-2 ${
+          allGuides ? "pointer-events-none opacity-40" : ""
+        }`}
+      >
         {guilds.map((g) => {
           const row = rows[g.id];
           return (
@@ -180,7 +217,7 @@ export default function InstallerAccessForm({
       </div>
 
       <button className="rounded-md bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700">
-        Save access ({countChecked})
+        {allGuides ? "Save access (all guides)" : `Save access (${countChecked})`}
       </button>
     </form>
   );
