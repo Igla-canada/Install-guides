@@ -32,6 +32,17 @@ export type BlockContent =
   // File + a description in one block: a text area that carries the attachment
   // with it (e.g. "231: Stable version" + the .bin). The single file option.
   | { kind: "file_text"; text: string; assetId: string; name: string; size?: number }
+  // A frozen snapshot of an Igla unit-settings template (mirrors the official
+  // Igla config software). Structure is fixed once added; an admin edits the
+  // per-control VALUES only, techs/installers see it read-only. Shape defined in
+  // src/lib/igla-config.ts (IglaConfigDoc). `productId`/`productName` record the
+  // unit type this was seeded from.
+  | {
+      kind: "igla_settings";
+      productId?: string;
+      productName?: string;
+      sections: import("./igla-config").IglaSection[];
+    }
   | { kind: "divider" };
 
 // The block picker. One photo option (gallery — handles single or multiple
@@ -91,6 +102,10 @@ export function defaultContent(type: string): object {
       return { assetId: "", name: "" };
     case "file_text":
       return { text: "", assetId: "", name: "" };
+    case "igla_settings":
+      // Real content is snapshot from the product's template at add-time; this
+      // is only the graceful fallback if something adds it without a template.
+      return { sections: [] };
     default:
       return {};
   }

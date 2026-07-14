@@ -90,8 +90,24 @@ model IglaProduct {
   guilds        Guild[] // guilds whose PRIMARY product this is
   guildLinks    GuildProduct[] // all guilds that cover this product (incl. primary)
   inventoryUnits InventoryUnit[]
+  configTemplate IglaConfigTemplate?
 
   @@unique([productLineId, name])
+}
+
+// Admin-managed master template for the "Igla settings" section, one per product
+// (unit type). `doc` is a JSONB tree — sections -> rows -> control (toggle /
+// select / slider / number / io) with available options + DEFAULT values — that
+// mirrors the official Igla configuration software. When an admin adds the
+// settings section to a guide, this doc is SNAPSHOT into an `igla_settings`
+// block (frozen); later edits here never touch existing guides. See
+// src/lib/igla-config.ts for the doc shape.
+model IglaConfigTemplate {
+  id            String      @id @default(cuid())
+  iglaProductId String      @unique
+  iglaProduct   IglaProduct @relation(fields: [iglaProductId], references: [id], onDelete: Cascade)
+  doc           Json        @default("{}")
+  updatedAt     DateTime    @updatedAt
 }
 
 // A guide can cover several products (e.g. 231 + Alarm) — one canonical document

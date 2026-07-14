@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ClientBlock } from "./types";
 import ImageBlockEditor from "@/components/images/image-block-editor";
 import RichTextEditor from "./rich-text-editor";
+import IglaSettingsBlockEditor from "./igla-settings-block";
 import { uploadImage } from "@/lib/client/offline";
 
 export default function BlockCard({
@@ -13,6 +14,7 @@ export default function BlockCard({
   total,
   sectionId,
   dispatch,
+  isAdmin,
 }: {
   block: ClientBlock;
   index: number;
@@ -20,6 +22,7 @@ export default function BlockCard({
   sectionId: string;
   guildId: string;
   dispatch: (ops: any[]) => Promise<void>;
+  isAdmin: boolean;
 }) {
   const update = (content: any) =>
     void dispatch([{ op: "update_block", blockId: block.id, content }]);
@@ -60,7 +63,7 @@ export default function BlockCard({
           ✕
         </button>
       </div>
-      <BlockBody block={block} update={update} sectionId={sectionId} />
+      <BlockBody block={block} update={update} sectionId={sectionId} isAdmin={isAdmin} />
     </div>
   );
 }
@@ -68,10 +71,12 @@ export default function BlockCard({
 function BlockBody({
   block,
   update,
+  isAdmin,
 }: {
   block: ClientBlock;
   update: (content: any) => void;
   sectionId: string;
+  isAdmin: boolean;
 }) {
   const c = block.content ?? {};
   switch (block.type) {
@@ -270,6 +275,9 @@ function BlockBody({
 
     case "file_text":
       return <FileTextBlockEditor content={c} update={update} />;
+
+    case "igla_settings":
+      return <IglaSettingsBlockEditor c={c} update={update} isAdmin={isAdmin} />;
 
     case "divider":
       return <hr className="border-zinc-200" />;

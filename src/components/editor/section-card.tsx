@@ -12,6 +12,8 @@ import {
   sectionColors,
 } from "@/lib/blocks";
 
+type IglaProductLite = { id: string; name: string; line: string; hasTemplate: boolean };
+
 export default function SectionCard({
   section,
   index,
@@ -19,6 +21,7 @@ export default function SectionCard({
   guildId,
   dispatch,
   quickPicks,
+  isAdmin,
 }: {
   section: ClientSection;
   index: number;
@@ -26,8 +29,40 @@ export default function SectionCard({
   guildId: string;
   dispatch: (ops: any[]) => Promise<void>;
   quickPicks: ClientQuickPick[];
+  isAdmin: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  // The Igla-settings insert flow: pick a unit type (product with a template),
+  // then snapshot that template into a frozen igla_settings block. Admin only.
+  const [iglaPicker, setIglaPicker] = useState<IglaProductLite[] | null>(null);
+
+  const openIglaPicker = async () => {
+    setAddOpen(false);
+    const r = await fetch("/api/igla-config/products");
+    if (!r.ok) return;
+    const list: IglaProductLite[] = (await r.json()).products;
+    setIglaPicker(list.filter((p) => p.hasTemplate));
+  };
+
+  const addIglaSettings = async (productId: string) => {
+    setIglaPicker(null);
+    const r = await fetch(`/api/igla-config/${productId}`);
+    if (!r.ok) return;
+    const data = await r.json();
+    void dispatch([
+      {
+        op: "add_block",
+        blockId: crypto.randomUUID(),
+        sectionId: section.id,
+        type: "igla_settings",
+        content: {
+          productId: data.productId,
+          productName: data.productName,
+          sections: data.doc.sections ?? [],
+        },
+      },
+    ]);
+  };
   const [addOpen, setAddOpen] = useState(false);
 
   const sectionPicks = quickPicks.filter(
@@ -191,6 +226,7 @@ export default function SectionCard({
               sectionId={section.id}
               guildId={guildId}
               dispatch={dispatch}
+              isAdmin={isAdmin}
             />
           ))}
 
@@ -214,6 +250,17 @@ export default function SectionCard({
                     </button>
                   ))}
                 </div>
+                {isAdmin && (
+                  <div className="mt-2 border-t border-zinc-100 pt-2">
+                    <button
+                      onClick={() => void openIglaPicker()}
+                      className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100"
+                      title="Insert the pre-built Igla unit settings (copied from the product template)"
+                    >
+                      ⚙ Igla settings (unit config)
+                    </button>
+                  </div>
+                )}
                 {sectionPicks.length > 0 && (
                   <>
                     <div className="mt-2 border-t border-zinc-100 px-2 pt-2 text-xs font-medium uppercase text-zinc-400">
@@ -235,6 +282,49 @@ export default function SectionCard({
               </div>
             )}
           </div>
+
+          {/* Unit-type picker for inserting the Igla settings block */}
+          {iglaPicker && (
+            <div
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+              onClick={() => setIglaPicker(null)}
+            >
+              <div
+                className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-sm font-semibold">Insert Igla settings</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Pick the unit type. Its template is copied into this guide as a
+                  frozen snapshot — you then set the per-car values.
+                </p>
+                <div className="mt-3 space-y-1">
+                  {iglaPicker.length === 0 && (
+                    <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      No unit type has a settings template yet. Build one in{" "}
+                      <strong>Admin → Igla settings</strong> first.
+                    </p>
+                  )}
+                  {iglaPicker.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => void addIglaSettings(p.id)}
+                      className="flex w-full items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                    >
+                      <span>{p.name}</span>
+                      <span className="text-xs text-zinc-400">{p.line}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setIglaPicker(null)}
+                  className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

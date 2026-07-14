@@ -382,6 +382,7 @@ export default function GuildEditor({
                 guildId={doc.id}
                 dispatch={dispatch}
                 quickPicks={quickPicks}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

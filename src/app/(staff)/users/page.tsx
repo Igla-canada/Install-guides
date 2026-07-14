@@ -8,6 +8,7 @@ import MakeLogo from "@/components/guides/make-logo";
 import NotifyTest from "@/components/admin/notify-test";
 import InstallerAccessForm from "@/components/users/installer-access-form";
 import TaxonomyManager from "@/components/admin/taxonomy-manager";
+import IglaConfigManager from "@/components/admin/igla-config-manager";
 
 async function setMakeLogo(formData: FormData) {
   "use server";
@@ -152,6 +153,7 @@ const ADMIN_TABS = [
   { id: "users", label: "Users" },
   { id: "products", label: "Products" },
   { id: "taxonomy", label: "Vehicle taxonomy" },
+  { id: "igla-settings", label: "Igla settings" },
   { id: "logos", label: "Logos" },
 ] as const;
 
@@ -442,6 +444,21 @@ export default async function UsersPage(props: {
       )}
 
       {tab === "taxonomy" && <TaxonomyManager error={taxError} />}
+
+      {/* Igla settings templates — the pre-built unit-config section, one master
+          template per product (unit type), mirroring the official Igla software. */}
+      {tab === "igla-settings" && (
+        <>
+          <p className="mt-4 max-w-3xl text-sm text-zinc-500">
+            Master templates for the pre-built <strong>Igla settings</strong>{" "}
+            section — one per unit type. Build the sections and dropdowns to match
+            the official Igla configuration software; when a guide adds the
+            settings section it copies the template as it is now (a frozen
+            snapshot), where an admin sets the per-car values.
+          </p>
+          <IglaConfigManager />
+        </>
+      )}
 
       {/* Manufacturer logos — shown on the Guides menu tiles. Known brands get
           a logo automatically; paste a URL to set or fix any of them. */}

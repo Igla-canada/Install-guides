@@ -8,6 +8,8 @@ import type { GuildDoc } from "@/lib/guild-doc";
 import { sectionColors } from "@/lib/blocks";
 import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
+import IglaSettingsView from "@/components/viewer/igla-settings-view";
+import type { IglaSection as IglaSectionType } from "@/lib/igla-config";
 
 type AnnotationRow = {
   id: string;
@@ -614,6 +616,13 @@ function BlockView({
         </div>
       );
     }
+    case "igla_settings":
+      return (
+        <IglaSettingsView
+          content={c as { productName?: string; sections?: IglaSectionType[] }}
+          dark={t.text !== "text-zinc-900"}
+        />
+      );
     case "divider":
       return <hr className={t.tableBorder} />;
     default:
