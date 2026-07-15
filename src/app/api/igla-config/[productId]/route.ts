@@ -1,8 +1,10 @@
 // One product's Igla-settings template.
 //
-//  GET — the template doc, or an empty doc if none yet (ADMIN + TECH: tech reads
-//        it to snapshot into a guide's igla_settings block; admin edits it).
-//  PUT — replace the template doc (ADMIN only).
+//  GET    — the template doc, or an empty doc if none yet (ADMIN + TECH: tech
+//           reads it to snapshot into a guide's igla_settings block).
+//  PUT    — replace the template doc (ADMIN only).
+//  DELETE — clear the template (ADMIN only). The product stays in the catalog;
+//           guides that already embedded a snapshot keep their frozen copy.
 import { NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -60,5 +62,20 @@ export async function PUT(
     create: { iglaProductId: productId, doc },
     update: { doc },
   });
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ productId: string }> }
+) {
+  const denied = await guard("ADMIN");
+  if (denied) return denied;
+  const { productId } = await params;
+  // Clears only the template. The product stays; guides that already embedded a
+  // snapshot are untouched (frozen copies). No-op if there's no template.
+  await prisma.iglaConfigTemplate
+    .delete({ where: { iglaProductId: productId } })
+    .catch(() => null);
   return NextResponse.json({ ok: true });
 }

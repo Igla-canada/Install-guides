@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import {
   CONTROL_TYPES,
   blankControl,
+  emptyDoc,
   type IglaConfigDoc,
   type IglaControlType,
   type IglaOption,
@@ -108,6 +109,24 @@ export default function IglaConfigManager() {
       rows: [...s.rows, { id: uid(), label: "New setting", control: blankControl("toggle") }],
     }));
 
+  const deleteTemplate = async (p: ProductLite) => {
+    if (
+      !confirm(
+        `Clear the settings template for "${p.name}"?\n\nThis removes the template — the unit type goes back to empty. Guides already built keep their own frozen copy. This cannot be undone.`
+      )
+    )
+      return;
+    const r = await fetch(`/api/igla-config/${p.id}`, { method: "DELETE" });
+    if (!r.ok) return;
+    // If we were editing this one, drop back to an empty editor.
+    if (selected === p.id) {
+      setDoc(emptyDoc());
+      setDirty(false);
+      setMsg("Template cleared.");
+    }
+    await loadProducts();
+  };
+
   const loadFdDefaults = () => {
     if (
       doc &&
@@ -131,16 +150,16 @@ export default function IglaConfigManager() {
         </p>
         <ul className="mt-3 space-y-1">
           {products.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className="relative">
               <button
                 onClick={() => void selectProduct(p.id)}
-                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm ${
+                className={`flex w-full items-center rounded-md border px-3 py-2 pr-20 text-left text-sm ${
                   selected === p.id
                     ? "border-zinc-900 bg-zinc-900 text-white"
                     : "border-zinc-200 hover:bg-zinc-50"
                 }`}
               >
-                <span>
+                <span className="min-w-0">
                   {p.name}
                   <span
                     className={`block text-xs ${
@@ -150,16 +169,28 @@ export default function IglaConfigManager() {
                     {p.line}
                   </span>
                 </span>
+              </button>
+              {/* Status pill + clear-template button. The cluster ignores
+                  pointer events so clicking anywhere else still selects the row;
+                  only the trash button re-enables them. */}
+              <div className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
                 <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
-                    p.hasTemplate
-                      ? "bg-green-100 text-green-800"
-                      : "bg-zinc-100 text-zinc-500"
+                  className={`rounded-full px-2 py-0.5 text-[10px] ${
+                    p.hasTemplate ? "bg-green-100 text-green-800" : "bg-zinc-100 text-zinc-500"
                   }`}
                 >
                   {p.hasTemplate ? `${p.sectionCount} sect.` : "empty"}
                 </span>
-              </button>
+                {p.hasTemplate && (
+                  <button
+                    onClick={() => void deleteTemplate(p)}
+                    className="pointer-events-auto rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                    title={`Clear the ${p.name} template`}
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
             </li>
           ))}
           {products.length === 0 && (
