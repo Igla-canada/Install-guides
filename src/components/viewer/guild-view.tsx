@@ -9,6 +9,7 @@ import { sectionColors } from "@/lib/blocks";
 import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
 import IglaSettingsView from "@/components/viewer/igla-settings-view";
+import IglaSettingsLauncher from "@/components/viewer/igla-settings-launcher";
 import type { IglaSection as IglaSectionType } from "@/lib/igla-config";
 
 type AnnotationRow = {
@@ -100,6 +101,7 @@ export default async function GuildView({
   theme = "dark",
   inlineImages = false,
   watermark,
+  settingsInline = false,
 }: {
   doc: GuildDoc;
   theme?: Theme;
@@ -107,6 +109,9 @@ export default async function GuildView({
   inlineImages?: boolean;
   /** Stamp the zoom lightbox for installer-facing views (leak traceability). */
   watermark?: { label: string; reference: string };
+  /** Render Igla settings blocks inline (static print/PDF) instead of behind a
+      "Click to see settings" button + overlay (interactive views). */
+  settingsInline?: boolean;
 }) {
   // Collect every asset reference, sign URLs and fetch annotations in bulk.
   const imageIds = new Set<string>();
@@ -206,6 +211,9 @@ export default async function GuildView({
                     viewMap={viewMap}
                     guildId={doc.id}
                     t={t}
+                    guildName={doc.title}
+                    settingsInline={settingsInline}
+                    watermarkLabel={watermark?.label}
                   />
                 ))}
                 {s.blocks.length === 0 && (
@@ -373,6 +381,9 @@ function BlockView({
   viewMap,
   guildId,
   t,
+  guildName,
+  settingsInline,
+  watermarkLabel,
 }: {
   type: string;
   content: Record<string, unknown>;
@@ -382,6 +393,9 @@ function BlockView({
   viewMap: Map<string, ImageView>;
   guildId: string;
   t: ReturnType<typeof themeClasses>;
+  guildName: string;
+  settingsInline: boolean;
+  watermarkLabel?: string;
 }) {
   switch (type) {
     case "text":
@@ -616,13 +630,22 @@ function BlockView({
         </div>
       );
     }
-    case "igla_settings":
-      return (
-        <IglaSettingsView
-          content={c as { productName?: string; sections?: IglaSectionType[] }}
-          dark={t.text !== "text-zinc-900"}
+    case "igla_settings": {
+      const settings = c as { productName?: string; sections?: IglaSectionType[] };
+      const dark = t.text !== "text-zinc-900";
+      // Static exports (print/PDF) can't open an overlay, so render inline;
+      // interactive views collapse behind a "Click to see settings" button.
+      return settingsInline ? (
+        <IglaSettingsView content={settings} dark={dark} />
+      ) : (
+        <IglaSettingsLauncher
+          content={settings}
+          guildName={guildName}
+          dark={dark}
+          watermarkLabel={watermarkLabel}
         />
       );
+    }
     case "divider":
       return <hr className={t.tableBorder} />;
     default:

@@ -34,7 +34,7 @@ export default async function PrintGuildPage(props: {
       <p className="mb-4 text-xs text-zinc-400 print:fixed print:bottom-2 print:left-2">
         {stamp}
       </p>
-      <GuildView doc={doc} theme="light" />
+      <GuildView doc={doc} theme="light" settingsInline />
     </main>
   );
 }

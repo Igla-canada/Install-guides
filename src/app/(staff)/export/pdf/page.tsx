@@ -63,7 +63,7 @@ export default async function ExportPdfPage(props: {
             className="mx-auto max-w-3xl rounded-lg bg-white p-6 text-zinc-900 shadow-sm"
           >
             {/* light theme + inlined images so the PDF capture has no taint */}
-            <GuildView doc={doc} theme="light" inlineImages />
+            <GuildView doc={doc} theme="light" inlineImages settingsInline />
           </div>
         ))}
       </div>
