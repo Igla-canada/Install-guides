@@ -2,7 +2,7 @@
 // Streams from S3 so we don't buffer every firmware blob in memory at once.
 import { PassThrough, Readable } from "stream";
 import { NextRequest, NextResponse } from "next/server";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { requireRole, requestMeta } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
   });
 
   const pass = new PassThrough();
-  const archive = archiver("zip", { zlib: { level: 1 } });
+  // archiver v8 is ESM-only named exports (no default `archiver('zip')`).
+  const archive = new ZipArchive({ zlib: { level: 1 } });
   archive.on("error", (err) => pass.destroy(err));
   archive.pipe(pass);
 
@@ -83,8 +84,15 @@ export async function POST(req: NextRequest) {
           f.id,
           usedNames,
         );
-        // AWS SDK v3 Body is async iterable / Readable in Node.
-        archive.append(res.Body as NodeJS.ReadableStream, { name: entryName });
+        // Normalize SDK stream/bytes into a Node Readable for archiver.
+        const body = res.Body as {
+          transformToByteArray?: () => Promise<Uint8Array>;
+        } & NodeJS.ReadableStream;
+        const stream =
+          typeof body.transformToByteArray === "function"
+            ? Readable.from(Buffer.from(await body.transformToByteArray()))
+            : Readable.from(body as AsyncIterable<Uint8Array>);
+        archive.append(stream, { name: entryName });
       }
       await archive.finalize();
     } catch (e) {
