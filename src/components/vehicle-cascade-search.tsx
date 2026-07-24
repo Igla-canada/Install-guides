@@ -16,6 +16,7 @@ export type CascadeFilter = {
   make: string;
   model: string;
   year: string;
+  q: string;
 };
 
 /**
@@ -32,11 +33,15 @@ export default function VehicleCascadeSearch({
   extraParams,
   onApply,
   searchLabel = "Search",
+  makeEmptyLabel = "All makes",
+  modelEmptyLabel = "All models",
+  showTextSearch = false,
+  textSearchPlaceholder = "Type to search (e.g. a, RAV4, BMW)…",
 }: {
   makes: Array<string | CascadeOption>;
   modelsByMake: Record<string, Array<string | CascadeOption>>;
   yearOptions: number[];
-  initial?: { make?: string; model?: string; year?: string };
+  initial?: { make?: string; model?: string; year?: string; q?: string };
   /** URL navigation target (dealer / guides). Ignored when `onApply` is set. */
   actionPath?: string;
   /** Extra query params preserved on Search/Clear (e.g. status=DRAFT). */
@@ -44,18 +49,25 @@ export default function VehicleCascadeSearch({
   /** Client-side apply (admin). When set, does not change the URL. */
   onApply?: (filter: CascadeFilter) => void;
   searchLabel?: string;
+  makeEmptyLabel?: string;
+  modelEmptyLabel?: string;
+  /** Free-text search box (compatibility lists). */
+  showTextSearch?: boolean;
+  textSearchPlaceholder?: string;
 }) {
   const router = useRouter();
   const makeOpts = useMemo(() => asOptions(makes), [makes]);
   const [make, setMake] = useState(initial?.make ?? "");
   const [model, setModel] = useState(initial?.model ?? "");
   const [year, setYear] = useState(initial?.year ?? "");
+  const [q, setQ] = useState(initial?.q ?? "");
 
   useEffect(() => {
     setMake(initial?.make ?? "");
     setModel(initial?.model ?? "");
     setYear(initial?.year ?? "");
-  }, [initial?.make, initial?.model, initial?.year]);
+    setQ(initial?.q ?? "");
+  }, [initial?.make, initial?.model, initial?.year, initial?.q]);
 
   const models = useMemo(() => {
     if (!make) {
@@ -76,6 +88,7 @@ export default function VehicleCascadeSearch({
   const makeValue = makeOpts.some((m) => m.value === make) ? make : "";
   const modelValue = models.some((m) => m.value === model) ? model : "";
   const yearValue = yearOptions.some((y) => String(y) === year) ? year : "";
+  const qValue = q.trim();
 
   function buildParams(filter: CascadeFilter) {
     const p = new URLSearchParams();
@@ -87,11 +100,17 @@ export default function VehicleCascadeSearch({
     if (filter.make) p.set("make", filter.make);
     if (filter.model) p.set("model", filter.model);
     if (filter.year) p.set("year", filter.year);
+    if (filter.q) p.set("q", filter.q);
     return p;
   }
 
   function apply() {
-    const filter = { make: makeValue, model: modelValue, year: yearValue };
+    const filter = {
+      make: makeValue,
+      model: modelValue,
+      year: yearValue,
+      q: qValue,
+    };
     if (onApply) {
       onApply(filter);
       return;
@@ -105,8 +124,9 @@ export default function VehicleCascadeSearch({
     setMake("");
     setModel("");
     setYear("");
+    setQ("");
     if (onApply) {
-      onApply({ make: "", model: "", year: "" });
+      onApply({ make: "", model: "", year: "", q: "" });
       return;
     }
     if (!actionPath) return;
@@ -120,10 +140,30 @@ export default function VehicleCascadeSearch({
     router.push(qs ? `${actionPath}?${qs}` : actionPath);
   }
 
-  const hasFilter = Boolean(makeValue || modelValue || yearValue);
+  const hasFilter = Boolean(makeValue || modelValue || yearValue || qValue);
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white px-3 py-3">
+      {showTextSearch && (
+        <label className="mb-2 block text-sm">
+          <span className="text-xs font-medium text-zinc-500">
+            Quick search
+          </span>
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                apply();
+              }
+            }}
+            placeholder={textSearchPlaceholder}
+            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          />
+        </label>
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <label className="block min-w-[10rem] flex-1 text-sm">
           <span className="text-xs font-medium text-zinc-500">Make</span>
@@ -135,7 +175,7 @@ export default function VehicleCascadeSearch({
             }}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
-            <option value="">All makes</option>
+            <option value="">{makeEmptyLabel}</option>
             {makeOpts.map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
@@ -151,7 +191,7 @@ export default function VehicleCascadeSearch({
             onChange={(e) => setModel(e.target.value)}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
-            <option value="">All models</option>
+            <option value="">{modelEmptyLabel}</option>
             {models.map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
@@ -161,7 +201,9 @@ export default function VehicleCascadeSearch({
         </label>
 
         <label className="block w-36 text-sm">
-          <span className="text-xs font-medium text-zinc-500">Year (optional)</span>
+          <span className="text-xs font-medium text-zinc-500">
+            Year (optional)
+          </span>
           <select
             value={yearValue}
             onChange={(e) => setYear(e.target.value)}
