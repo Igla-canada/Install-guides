@@ -8,6 +8,8 @@ import { loadGuildDoc, duplicateGuild, publishGuild, PublishConflictError } from
 import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
 import GrantPanel from "@/components/guides/grant-panel";
+import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
+import { guidesBackHref, withFromParam } from "@/lib/guides-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +26,11 @@ export default async function GuildPreviewPage(props: {
   // Back to the exact list the user came from (carried via ?from=), else fall
   // back to this guide's own make/model/year drill level. Only accept internal
   // /guides URLs so the link can't be pointed off-site.
-  const backHref =
-    from && from.startsWith("/guides")
-      ? from
-      : `/guides?make=${doc.makeId}&model=${doc.modelId}&year=${doc.generation.yearStart}`;
+  const backHref = guidesBackHref(
+    from,
+    `/guides?make=${doc.makeId}&model=${doc.modelId}&year=${doc.generation.yearStart}`,
+  );
+  const editHref = withFromParam(`/guides/${id}/edit`, from);
 
   // Existing users an admin can share this guide with (prefills the link form).
   const shareUsers = await prisma.userAccount.findMany({
@@ -54,7 +57,10 @@ export default async function GuildPreviewPage(props: {
       guildIds: [id],
     });
     redirect(
-      `/guides/${id}?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`
+      withFromParam(
+        `/guides/${id}?created=${encodeURIComponent(token)}&label=${encodeURIComponent(granteeLabel)}`,
+        from,
+      ),
     );
   }
 
@@ -63,7 +69,7 @@ export default async function GuildPreviewPage(props: {
     "use server";
     const u = await requireRole("ADMIN", "TECH");
     const newId = await duplicateGuild(id, u.id);
-    redirect(`/guides/${newId}/edit`);
+    redirect(withFromParam(`/guides/${newId}/edit`, from));
   }
 
   // Publish straight from this preview, so admins don't have to open the editor
@@ -75,11 +81,11 @@ export default async function GuildPreviewPage(props: {
       await publishGuild(id, u.id);
     } catch (e) {
       if (e instanceof PublishConflictError) {
-        redirect(`/guides/${id}?publish_error=conflict`);
+        redirect(withFromParam(`/guides/${id}?publish_error=conflict`, from));
       }
       throw e;
     }
-    redirect(`/guides/${id}`);
+    redirect(withFromParam(`/guides/${id}`, from));
   }
 
   const statusClass =
@@ -100,6 +106,10 @@ export default async function GuildPreviewPage(props: {
         <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
           {doc.status.toLowerCase()}
         </span>
+        <HideFromCompatibilityToggle
+          guildId={doc.id}
+          initialHidden={Boolean(doc.hideFromCompatibility)}
+        />
         <span className="text-sm text-zinc-400">
           Preview — what the installer sees
         </span>
@@ -124,9 +134,13 @@ export default async function GuildPreviewPage(props: {
               </button>
             </form>
           ) : (
-            <span className="text-xs text-zinc-400" title="Restore from the editor before publishing">
-              Archived
-            </span>
+            <Link
+              href={editHref}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100"
+              title="Archived backup — restore from the editor ⋯ menu"
+            >
+              Archived · restore in editor
+            </Link>
           )}
           <Link
             href={`/export/pdf?ids=${id}`}
@@ -146,7 +160,7 @@ export default async function GuildPreviewPage(props: {
             </button>
           </form>
           <Link
-            href={`/guides/${id}/edit`}
+            href={editHref}
             className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
           >
             ✎ Edit

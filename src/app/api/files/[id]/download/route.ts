@@ -103,9 +103,9 @@ export async function GET(
     meta: { assetId: id },
   });
 
-  // Force the saved file to match the name shown in the guide. Fall back to a
-  // sensible default when the block carried no name (e.g. legacy data).
-  const name = fileName || `file-${asset.id}`;
+  // Prefer the name from the guide block; library files use libraryName;
+  // last resort is a stable id-based name.
+  const name = fileName || asset.libraryName || `file-${asset.id}`;
   const url = await signedDownloadUrl(asset.s3Key, name, 120);
   return NextResponse.redirect(url);
 }

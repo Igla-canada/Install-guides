@@ -72,7 +72,7 @@ export default async function MyGuidesPage(props: {
           sp={sp}
           basePath="/my-guides"
           title="Your installation guides"
-          guideHref={(id) => `/view/${id}`}
+          guideBasePath="/view"
         />
       </main>
     </div>

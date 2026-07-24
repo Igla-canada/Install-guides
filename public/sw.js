@@ -23,8 +23,12 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  // Never cache API responses or signed S3 URLs.
-  if (url.pathname.startsWith("/api/") || url.origin !== self.location.origin) {
+  // Never cache API responses, signed S3 URLs, or Next.js build/HMR assets.
+  if (
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/_next/") ||
+    url.origin !== self.location.origin
+  ) {
     return;
   }
   event.respondWith(

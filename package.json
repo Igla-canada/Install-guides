@@ -13,7 +13,12 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "token:service": "tsx scripts/create-service-token.ts",
-    "import:notion": "tsx --env-file=.env scripts/import-notion.ts"
+    "import:notion": "tsx --env-file=.env scripts/import-notion.ts",
+    "import:ghost": "tsx --env-file=.env scripts/import-ghost.ts",
+    "compat:seed": "tsx --env-file=.env scripts/seed-vehicle-compatibility.ts",
+    "compat:refresh": "tsx --env-file=.env scripts/seed-vehicle-compatibility.ts --refresh",
+    "import:ghost:all": "tsx --env-file=.env scripts/import-ghost.ts --all",
+    "import:ghost:repair": "tsx --env-file=.env scripts/import-ghost.ts --all --replace"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -25,6 +30,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.19.3",
+    "archiver": "^8.0.0",
     "bcryptjs": "^3.0.3",
     "dompurify": "^3.4.11",
     "html2canvas-pro": "^2.0.4",
@@ -34,10 +40,13 @@
     "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "sharp": "^0.35.3",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20",

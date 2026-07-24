@@ -102,6 +102,7 @@ export default async function GuildView({
   inlineImages = false,
   watermark,
   settingsInline = false,
+  wide = false,
 }: {
   doc: GuildDoc;
   theme?: Theme;
@@ -112,6 +113,8 @@ export default async function GuildView({
   /** Render Igla settings blocks inline (static print/PDF) instead of behind a
       "Click to see settings" button + overlay (interactive views). */
   settingsInline?: boolean;
+  /** Wider column for almost-fullscreen peek / PDF-style reading. */
+  wide?: boolean;
 }) {
   // Collect every asset reference, sign URLs and fetch annotations in bulk.
   const imageIds = new Set<string>();
@@ -167,9 +170,11 @@ export default async function GuildView({
     Years: `${doc.generation.yearStart}-${doc.generation.yearEnd ?? ""}`,
   };
   const t = themeClasses(theme);
+  // Peek / PDF-style overlay can request a wider column so photos are readable.
+  const widthClass = wide ? "max-w-6xl" : "max-w-3xl";
 
   return (
-    <article className={`mx-auto max-w-3xl ${t.text}`}>
+    <article className={`mx-auto ${widthClass} ${t.text}`}>
       {doc.coverImageId && urlMap.has(doc.coverImageId) && (
         // eslint-disable-next-line @next/next/no-img-element
         <img

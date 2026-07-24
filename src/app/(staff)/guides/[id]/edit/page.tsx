@@ -5,14 +5,16 @@ import { loadTaxonomy } from "@/lib/taxonomy";
 import { prisma } from "@/lib/db";
 import { logEvent } from "@/lib/audit";
 import GuildEditor from "@/components/editor/guild-editor";
+import { safeGuidesFrom, withFromParam } from "@/lib/guides-nav";
 
 export default async function GuildEditorPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ publish_error?: string }>;
+  searchParams: Promise<{ publish_error?: string; from?: string }>;
 }) {
   const user = await requireRole("ADMIN", "TECH");
   const { id } = await props.params;
-  const { publish_error } = await props.searchParams;
+  const { publish_error, from: fromRaw } = await props.searchParams;
+  const from = safeGuidesFrom(fromRaw);
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
 
@@ -44,12 +46,12 @@ export default async function GuildEditorPage(props: {
       await publishGuild(id, u.id);
     } catch (e) {
       if (e instanceof PublishConflictError) {
-        redirect(`/guides/${id}/edit?publish_error=conflict`);
+        redirect(withFromParam(`/guides/${id}/edit?publish_error=conflict`, from));
       }
       throw e;
     }
     // After a successful publish, show what installers will see.
-    redirect(`/guides/${id}`);
+    redirect(withFromParam(`/guides/${id}`, from));
   }
 
   async function rollbackAction(formData: FormData) {
@@ -57,7 +59,7 @@ export default async function GuildEditorPage(props: {
     const u = await requireRole("ADMIN", "TECH");
     const versionNo = Number(formData.get("versionNo"));
     await rollbackGuild(id, versionNo, u.id);
-    redirect(`/guides/${id}/edit`);
+    redirect(withFromParam(`/guides/${id}/edit`, from));
   }
 
   // Unpublish: take a live guide back to DRAFT so it can be edited without
@@ -82,7 +84,7 @@ export default async function GuildEditorPage(props: {
         userAgent: meta.userAgent,
       });
     }
-    redirect(`/guides/${id}/edit`);
+    redirect(withFromParam(`/guides/${id}/edit`, from));
   }
 
   // Archive keeps everything (content, versions, audit history) but hides the
@@ -104,7 +106,7 @@ export default async function GuildEditorPage(props: {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    redirect(`/guides/${id}/edit`);
+    redirect(withFromParam(`/guides/${id}/edit`, from));
   }
 
   // Hard delete — admin only, irreversible (sections, versions, grant links
@@ -122,7 +124,7 @@ export default async function GuildEditorPage(props: {
       meta: { guildId: id, title: g.title },
     });
     await prisma.guild.delete({ where: { id } });
-    redirect("/guides");
+    redirect(from ?? "/guides");
   }
 
   return (
@@ -139,6 +141,7 @@ export default async function GuildEditorPage(props: {
       isAdmin={user.role === "ADMIN"}
       publishError={publish_error}
       currentUserId={user.id}
+      previewHref={withFromParam(`/guides/${id}`, from)}
     />
   );
 }

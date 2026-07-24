@@ -23,6 +23,7 @@ import CoverEditor from "./cover-editor";
 import PropertiesEditor from "./properties-editor";
 import ChatPanel from "./chat-panel";
 import { SECTION_TYPES } from "@/lib/blocks";
+import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
 
 // The undo payload: the content that restore_content rewrites (identity FKs are
 // not touched — they have their own staged Save/Discard).
@@ -52,6 +53,7 @@ export default function GuildEditor({
   deleteAction,
   isAdmin,
   publishError,
+  previewHref,
 }: {
   initialDoc: ClientDoc;
   taxonomy: Taxonomy;
@@ -65,6 +67,8 @@ export default function GuildEditor({
   isAdmin: boolean;
   publishError?: string;
   currentUserId: string;
+  /** Preview page URL, including `?from=` so ← Guides returns to the starting list. */
+  previewHref: string;
 }) {
   const [doc, setDoc] = useState<ClientDoc>(initialDoc);
   const [pending, setPending] = useState(0);
@@ -149,7 +153,7 @@ export default function GuildEditor({
       {/* Header — sticky under the global nav so Publish & friends stay reachable
           no matter how far you scroll. */}
       <div className="sticky top-12 z-30 -mx-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-white/95 px-4 py-2 backdrop-blur">
-        <Link href={`/guides/${doc.id}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={previewHref} className="text-sm text-zinc-500 hover:underline">
           ← Done / preview
         </Link>
         <span
@@ -161,6 +165,13 @@ export default function GuildEditor({
         >
           {doc.status.toLowerCase()}
         </span>
+        <HideFromCompatibilityToggle
+          guildId={doc.id}
+          initialHidden={Boolean(doc.hideFromCompatibility)}
+          onChange={(hidden) =>
+            setDoc((d) => ({ ...d, hideFromCompatibility: hidden }))
+          }
+        />
         {pending > 0 && (
           <button
             onClick={() => void flushQueue()}

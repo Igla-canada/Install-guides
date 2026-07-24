@@ -28,7 +28,8 @@ export default async function FilesPage() {
       <p className="mt-1 text-sm text-zinc-500">
         Upload large files (firmware, settings — up to 100&nbsp;MB) once here, then
         pick them in any guide’s “file + text” block via <em>Use existing file</em>.
-        No need to re-upload the same file for every guide.
+        Download one file, selected files (ZIP or one-by-one), or the whole library
+        as a ZIP.
       </p>
       <FilesManager initial={initial} />
     </div>

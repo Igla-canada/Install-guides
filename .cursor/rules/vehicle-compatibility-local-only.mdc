@@ -1,0 +1,42 @@
+---
+description: Vehicle Compatibility List stays local-only until the user explicitly asks to push it
+alwaysApply: true
+---
+
+# Vehicle Compatibility — local-only until explicit release
+
+The Vehicle Compatibility List is a **separate** feature from guide management and from normal website updates.
+
+## Never include in routine commits or pushes
+
+Do **NOT** stage, commit, or push Vehicle Compatibility work when the user asks to:
+
+- commit / push a "website update"
+- `git add .` / commit "the changes"
+- deploy, open a PR, or sync with GitHub/Vercel for general site work
+
+Only include Vehicle Compatibility files when the user **explicitly** says to push/commit/release the **compatibility list** (or vehicle compatibility feature) by name.
+
+## Files in scope (do not auto-commit/push)
+
+- `src/lib/vehicle-compatibility.ts`
+- `src/lib/vehicle-compatibility-actions.ts` (if present)
+- `src/components/admin/vehicle-compatibility-manager.tsx`
+- `src/app/(staff)/compatibility/**`
+- `src/app/dealer/compatibility/**`
+- `src/app/api/compatibility/**`
+- `src/components/compatibility/**`
+- `scripts/seed-vehicle-compatibility.ts`
+- Prisma migration folders whose name contains `vehicle_compatibility`
+- Compatibility-related edits inside `prisma/schema.prisma` (`VehicleCompatibility` model only)
+- Compatibility tab wiring in `src/app/(staff)/users/page.tsx` and nav links for `/compatibility`
+- Related `package.json` script entries such as `compat:seed`
+
+Also respect `.git/info/exclude` entries for these paths when present.
+
+## Product invariants
+
+- Compatibility records must **never** create, edit, delete, publish, unpublish, or modify guides or guide content.
+- Optional `sourceGuideId` is read-only provenance only — not a control channel for guides.
+- Dealer / public / API compatibility views **omit** rows whose linked source guide is `ARCHIVED`, or whose guide has `hideFromCompatibility` (guide-level checkbox; overrides published). Admin compatibility management may still show them.
+- Prefer testing this feature locally before any release push.

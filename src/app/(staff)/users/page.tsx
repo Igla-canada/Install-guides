@@ -9,6 +9,7 @@ import NotifyTest from "@/components/admin/notify-test";
 import InstallerAccessForm from "@/components/users/installer-access-form";
 import TaxonomyManager from "@/components/admin/taxonomy-manager";
 import IglaConfigManager from "@/components/admin/igla-config-manager";
+import VehicleCompatibilityManager from "@/components/admin/vehicle-compatibility-manager";
 
 async function setMakeLogo(formData: FormData) {
   "use server";
@@ -152,6 +153,7 @@ async function setInstallerGuilds(formData: FormData) {
 const ADMIN_TABS = [
   { id: "users", label: "Users" },
   { id: "products", label: "Products" },
+  { id: "compatibility", label: "Vehicle Compatibility" },
   { id: "taxonomy", label: "Vehicle taxonomy" },
   { id: "igla-settings", label: "Igla settings" },
   { id: "logos", label: "Logos" },
@@ -205,6 +207,30 @@ export default async function UsersPage(props: {
       },
     },
   });
+  const compatibilityRows =
+    tab === "compatibility"
+      ? await prisma.vehicleCompatibility.findMany({
+          orderBy: [{ make: "asc" }, { model: "asc" }, { yearFrom: "asc" }],
+        })
+      : [];
+  const liveGuideStatusById = new Map<string, string>();
+  if (tab === "compatibility" && compatibilityRows.length) {
+    const ids = [
+      ...new Set(
+        compatibilityRows
+          .map((r) => r.sourceGuideId)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+    if (ids.length) {
+      // READ-ONLY status lookup — never writes to guides.
+      const guides = await prisma.guild.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, status: true },
+      });
+      for (const g of guides) liveGuideStatusById.set(g.id, g.status);
+    }
+  }
 
   return (
     <div>
@@ -381,6 +407,18 @@ export default async function UsersPage(props: {
         <NotifyTest />
       </div>
       </>
+      )}
+
+      {tab === "compatibility" && (
+        <VehicleCompatibilityManager
+          initialRows={compatibilityRows.map((r) => ({
+            ...r,
+            updatedAt: r.updatedAt.toISOString(),
+            liveGuideStatus: r.sourceGuideId
+              ? liveGuideStatusById.get(r.sourceGuideId) ?? r.sourceGuideStatus
+              : r.sourceGuideStatus,
+          }))}
+        />
       )}
 
       {/* Product catalog — the only thing that needs pre-managing (a fixed

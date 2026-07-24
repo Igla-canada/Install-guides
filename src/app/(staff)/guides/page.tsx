@@ -1,13 +1,18 @@
-// Guide library — hierarchical browsing, not a flat dump:
-// manufacturers → models → years that model has guides for → the guides.
-// Search (?q=) falls back to a flat filtered table. The browsing UI is shared
-// with the installer home (/my-guides) via GuideBrowser; this page adds the
-// staff-only chrome (status tabs, "+ New guide", editor links + metadata).
+// Guide library — cascade search, icons/list views, status tabs (incl. Archived).
+// Shared UI with installer /my-guides via GuideBrowser; this page adds staff
+// chrome (tabs, archive, floating peek, "+ New guide").
 import { prisma } from "@/lib/db";
 import { GuideBrowser } from "@/components/guides/guide-browser";
 
 export default async function GuildsPage(props: {
-  searchParams: Promise<{ make?: string; year?: string; model?: string; q?: string; status?: string }>;
+  searchParams: Promise<{
+    make?: string;
+    year?: string;
+    model?: string;
+    q?: string;
+    status?: string;
+    view?: string;
+  }>;
 }) {
   const sp = await props.searchParams;
 
@@ -29,7 +34,7 @@ export default async function GuildsPage(props: {
       sp={sp}
       basePath="/guides"
       title="Guides"
-      guideHref={(id) => `/guides/${id}`}
+      guideBasePath="/guides"
       newGuide={{ href: "/guides/new", label: "+ New guide" }}
       statusTabs
       showMeta

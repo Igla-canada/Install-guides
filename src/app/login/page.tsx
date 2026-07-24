@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   login,
@@ -32,11 +33,11 @@ async function loginAction(formData: FormData) {
 }
 
 export default async function LoginPage(props: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; reset?: string }>;
 }) {
   const user = await currentUser();
   if (user) redirect("/");
-  const { error } = await props.searchParams;
+  const { error, reset } = await props.searchParams;
 
   return (
     <main className="flex flex-1 items-center justify-center p-6">
@@ -51,6 +52,11 @@ export default async function LoginPage(props: {
         <p className="mt-1 text-center text-sm text-zinc-500">
           Installation guide system — staff &amp; installer sign in
         </p>
+        {reset && (
+          <p className="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
+            Your password was updated. Sign in with your new password.
+          </p>
+        )}
         {error && (
           <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             Invalid email or password.
@@ -90,6 +96,11 @@ export default async function LoginPage(props: {
             Sign in
           </button>
         </form>
+        <p className="mt-4 text-center text-sm">
+          <Link href="/forgot-password" className="text-zinc-600 hover:text-zinc-900">
+            Forgot password?
+          </Link>
+        </p>
       </div>
     </main>
   );

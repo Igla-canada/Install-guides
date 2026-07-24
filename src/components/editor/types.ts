@@ -21,6 +21,8 @@ export type ClientDoc = {
   id: string;
   title: string;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  /** Overrides publish for dealer/API compatibility list visibility. */
+  hideFromCompatibility?: boolean;
   properties: Record<string, string> | null;
   regionId: string;
   makeId: string;

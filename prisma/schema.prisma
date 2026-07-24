@@ -176,6 +176,9 @@ model Guild {
 
   title            String
   status           GuildStatus @default(DRAFT)
+  /// When true, linked VehicleCompatibility rows stay off dealer/API lists
+  /// even if this guide is PUBLISHED (overrides archive/publish visibility).
+  hideFromCompatibility Boolean @default(false)
   currentVersionId String?
   coverImageId     String?
   coverImage       ImageAsset? @relation("GuildCover", fields: [coverImageId], references: [id])
@@ -363,6 +366,7 @@ model UserAccount {
   createdAt    DateTime   @default(now())
 
   sessions       Session[]
+  passwordResetTokens PasswordResetToken[]
   guildsCreated  Guild[]        @relation("GuildCreatedBy")
   guildsUpdated  Guild[]        @relation("GuildUpdatedBy")
   versions       GuildVersion[]
@@ -382,6 +386,58 @@ model Session {
   createdAt DateTime    @default(now())
   ip        String?
   userAgent String?
+}
+
+// Single-use link emailed when a user requests a password reset.
+model PasswordResetToken {
+  id         String      @id @default(cuid())
+  userId     String
+  user       UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String      @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  @@index([userId])
+}
+
+// Dealer vehicle compatibility list — completely separate from guild/guide
+// management. Records may optionally note sourceGuideId for provenance only;
+// nothing here publishes, edits, or deletes guides. Free-text make/model so
+// this table never depends on taxonomy FK changes.
+model VehicleCompatibility {
+  id                      String   @id @default(cuid())
+  make                    String
+  model                   String
+  yearFrom                Int
+  /// null = open-ended (covered through current year and beyond for dealers)
+  yearTo                  Int?
+  trim                    String?
+  engineType              String?
+  transmissionType        String?
+  analogBlockRequired     Boolean  @default(false)
+  analogBlockType         String?
+  additionalBlockRequired Boolean  @default(false)
+  additionalBlockDetails  String?
+  installationNotes       String?
+  dealerNotes             String?
+  internalAdminNotes      String?
+  isVisibleToDealers      Boolean  @default(true)
+  /// Which IGLA units apply, e.g. ["IGLA 231","IGLA Alarm"]. If 231 is listed,
+  /// Alarm is always included (231 ⇒ Alarm); Alarm alone does not imply 231.
+  iglaProducts            String[] @default([])
+  /// Optional read-only provenance (guide id string). No FK — never controls guides.
+  sourceGuideId           String?
+  /// Snapshot of source guide status (PUBLISHED/DRAFT/…). Display may also
+  /// re-read live status; this never writes back to the guide.
+  sourceGuideStatus       String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([make, model])
+  @@index([yearFrom, yearTo])
+  @@index([isVisibleToDealers])
+  @@index([sourceGuideId])
 }
 
 // Which guilds a persistent-login INSTALLER account may view. Each grant is

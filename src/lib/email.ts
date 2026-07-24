@@ -74,6 +74,32 @@ export async function sendAccessLinkEmail(opts: {
   await emailProvider().send(opts.to, subject, text, html);
 }
 
+/** Compose + send the password reset link for staff/installer accounts. */
+export async function sendPasswordResetEmail(opts: {
+  to: string;
+  name: string;
+  link: string;
+  expiresAt: Date;
+}): Promise<void> {
+  const subject = "Reset your Igla Guides password";
+  const text =
+    `Hi ${opts.name},\n\n` +
+    `We received a request to reset your Igla Guides password.\n` +
+    `Open this link to choose a new password:\n${opts.link}\n\n` +
+    `The link expires ${opts.expiresAt.toLocaleString()} and can only be used once.\n` +
+    `If you didn't request this, you can ignore this email.\n\n` +
+    `Igla Guides`;
+  const html =
+    `<p>Hi ${escapeHtml(opts.name)},</p>` +
+    `<p>We received a request to reset your Igla Guides password.</p>` +
+    `<p><a href="${opts.link}">Choose a new password</a></p>` +
+    `<p style="word-break:break-all"><a href="${opts.link}">${escapeHtml(opts.link)}</a></p>` +
+    `<p>The link expires ${escapeHtml(opts.expiresAt.toLocaleString())} and can only be used once. ` +
+    `If you didn't request this, you can ignore this email.</p>` +
+    `<p>Igla Guides</p>`;
+  await emailProvider().send(opts.to, subject, text, html);
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!

@@ -1,6 +1,6 @@
 // Bearer service-token auth for the Igla portal → Guides app integration calls
-// (GET /api/guild/resolve, POST /api/guild/issue). Accepts the env-configured
-// token or any non-revoked DB-managed ServiceToken.
+// (GET /api/guild/resolve, POST /api/guild/issue, GET /api/compatibility).
+// Accepts the env-configured token or any non-revoked DB-managed ServiceToken.
 import type { NextRequest } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "./db";
