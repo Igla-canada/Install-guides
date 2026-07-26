@@ -14,23 +14,34 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { saveAnnotations, uploadImage } from "@/lib/client/offline";
 
-type Shape = "point" | "arrow" | "box" | "circle";
+type Shape = "point" | "arrow" | "box" | "circle" | "textbox";
 
 // Discrete zoom stops (the −/+ buttons walk these): 25%…200% in 25% steps.
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const MIN_Z = ZOOM_STEPS[0];
 const MAX_Z = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
+/** Default on-image label text size (px in the annotation viewBox). */
+const DEFAULT_FONT = 12.5;
+const FONT_SIZES = [10, 12, 12.5, 14, 16, 18, 22] as const;
+
 export type Anno = {
   shape: Shape;
   // point:{x,y}; arrow:{x1,y1,x2,y2} (1=box, 2=wire);
-  // box/circle:{x,y,w,h, rot?} (rot = degrees, box only)
+  // box/circle:{x,y,w,h, rot?} (rot = degrees, box only);
+  // textbox:{x,y} — plain label box, no leader line.
+  // Optional coords.fontSize (number) overrides DEFAULT_FONT for that label.
   coords: any;
   label: string;
   description?: string;
   color: string;
   order: number;
 };
+
+function annoFontSize(a: { coords?: any }): number {
+  const n = a.coords?.fontSize;
+  return typeof n === "number" && n > 0 ? n : DEFAULT_FONT;
+}
 
 const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7"];
 
@@ -69,13 +80,18 @@ function rotAbout(cx: number, cy: number, rot?: number): React.CSSProperties | u
 }
 
 /** Size of the label box (in px) for a given label, sized to its longest line. */
-function boxGeom(label: string | undefined, fallback: string) {
+function boxGeom(label: string | undefined, fallback: string, fontSize = DEFAULT_FONT) {
   const text = label && label.trim() ? label.trim() : fallback;
   const lines = text.split("\n");
   const maxLen = Math.max(1, ...lines.map((l) => l.length));
-  const boxW = Math.max(34, Math.round(maxLen * 7.4 + 16));
-  const boxH = lines.length * 16 + 10;
-  return { lines, boxW, boxH };
+  const scale = fontSize / DEFAULT_FONT;
+  const charW = 7.4 * scale;
+  const lineH = 16 * scale;
+  const padX = 16 * scale;
+  const padY = 10 * scale;
+  const boxW = Math.max(34 * scale, Math.round(maxLen * charW + padX));
+  const boxH = lines.length * lineH + padY;
+  return { lines, boxW, boxH, fontSize, lineH };
 }
 
 /** The white, slightly-transparent label box with colored border + text. */
@@ -85,14 +101,17 @@ function LabelBox({
   label,
   fallback,
   color,
+  fontSize = DEFAULT_FONT,
 }: {
   cx: number;
   cy: number;
   label: string | undefined;
   fallback: string;
   color: string;
+  fontSize?: number;
 }) {
-  const { lines, boxW, boxH } = boxGeom(label, fallback);
+  const { lines, boxW, boxH, lineH } = boxGeom(label, fallback, fontSize);
+  const firstBaseline = fontSize * 1.05 + 2;
   return (
     <svg x={pct(cx)} y={pct(cy)} overflow="visible" style={{ pointerEvents: "none" }}>
       <g transform={`translate(${-boxW / 2}, ${-boxH / 2})`}>
@@ -108,9 +127,9 @@ function LabelBox({
           <text
             key={i}
             x={boxW / 2}
-            y={15 + i * 16}
+            y={firstBaseline + i * lineH}
             textAnchor="middle"
-            fontSize={12.5}
+            fontSize={fontSize}
             fontWeight={700}
             fill={color}
           >
@@ -297,13 +316,22 @@ export default function Annotator({
       const mapX = (nx: number) => (nx - left) / cw;
       const mapY = (ny: number) => (ny - top) / ch;
       const remapped = annos.map((a, i) => {
-        if (a.shape === "point")
-          return { ...a, order: i, coords: { x: mapX(a.coords.x), y: mapY(a.coords.y) } };
+        if (a.shape === "point" || a.shape === "textbox")
+          return {
+            ...a,
+            order: i,
+            coords: {
+              ...a.coords,
+              x: mapX(a.coords.x),
+              y: mapY(a.coords.y),
+            },
+          };
         if (a.shape === "arrow")
           return {
             ...a,
             order: i,
             coords: {
+              ...a.coords,
               x1: mapX(a.coords.x1),
               y1: mapY(a.coords.y1),
               x2: mapX(a.coords.x2),
@@ -363,9 +391,15 @@ export default function Annotator({
       const a = annos[i];
       if (a.shape === "point") {
         if (near(a.coords.x, a.coords.y, 18)) return { index: i, mode: "point" };
+      } else if (a.shape === "textbox") {
+        const { boxW, boxH } = boxGeom(a.label, `${i + 1}`, annoFontSize(a));
+        const cx = a.coords.x * RW;
+        const cy = a.coords.y * RH;
+        if (Math.abs(PX - cx) <= boxW / 2 + 4 && Math.abs(PY - cy) <= boxH / 2 + 4)
+          return { index: i, mode: "point" };
       } else if (a.shape === "arrow") {
         if (near(a.coords.x2, a.coords.y2, 16)) return { index: i, mode: "tip" };
-        const { boxW, boxH } = boxGeom(a.label, `${i + 1}`);
+        const { boxW, boxH } = boxGeom(a.label, `${i + 1}`, annoFontSize(a));
         const cx = a.coords.x1 * RW;
         const cy = a.coords.y1 * RH;
         if (Math.abs(PX - cx) <= boxW / 2 + 4 && Math.abs(PY - cy) <= boxH / 2 + 4)
@@ -441,10 +475,17 @@ export default function Annotator({
     }
     // Empty space → create with the current tool.
     setSelected(null);
-    if (tool === "point") {
+    if (tool === "point" || tool === "textbox") {
       setAnnos((prev) => [
         ...prev,
-        { shape: "point", coords: p, label: "", description: "", color, order: prev.length },
+        {
+          shape: tool,
+          coords: { ...p },
+          label: tool === "textbox" ? "Text" : "",
+          description: "",
+          color,
+          order: prev.length,
+        },
       ]);
       setSelected(annos.length);
       addedPoint.current = annos.length; // so a 2-finger pinch can undo it
@@ -603,6 +644,7 @@ export default function Annotator({
 
   const toolLabel: Record<Shape, string> = {
     arrow: "↘ Label",
+    textbox: "T Text",
     point: "• Point",
     box: "▭ Box",
     circle: "◯ Circle",
@@ -614,7 +656,7 @@ export default function Annotator({
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2">
           <span className="text-sm font-medium">Annotate</span>
-          {(["arrow", "point", "box", "circle"] as const).map((t) => (
+          {(["arrow", "textbox", "point", "box", "circle"] as const).map((t) => (
             <button
               key={t}
               onClick={() => {
@@ -739,11 +781,10 @@ export default function Annotator({
           <div className="max-h-56 w-full overflow-y-auto border-t border-zinc-200 sm:max-h-none sm:w-72 sm:border-l sm:border-t-0">
             <p className="border-b border-zinc-100 p-3 text-xs text-zinc-400">
               Pick a color, then drag from where you want the label to the wire it
-              points at. Tap any marker to select it, then drag the line to move
-              it, or its box / arrow-tip handle to fine-tune. A selected box also
-              has a grip above it — drag that to rotate it to any angle. Use the
-              ◯ Circle tool to ring something without any text. Pinch with two
-              fingers (or use −/+) to zoom in for precise marking; one finger marks.
+              points at. Use T Text for a plain text box with no arrow. Tap any
+              marker to select it, then drag to move it. Per-label text size is
+              in the list below. Pinch with two fingers (or use −/+) to zoom in
+              for precise marking; one finger marks.
             </p>
             {annos.map((a, i) => (
               <div
@@ -770,7 +811,9 @@ export default function Annotator({
                       placeholder={
                         a.shape === "point"
                           ? "Label (shown in the list below the photo)"
-                          : "Label (box) — press Enter for a new line"
+                          : a.shape === "textbox"
+                            ? "Text — press Enter for a new line"
+                            : "Label (box) — press Enter for a new line"
                       }
                       className="min-w-0 flex-1 resize-none rounded border border-zinc-200 px-2 py-1 text-sm font-medium"
                     />
@@ -786,6 +829,29 @@ export default function Annotator({
                     ✕
                   </button>
                 </div>
+                {(a.shape === "arrow" || a.shape === "box" || a.shape === "textbox") && (
+                  <label
+                    className="mt-1 flex items-center gap-2 text-xs text-zinc-500"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Text size
+                    <select
+                      value={annoFontSize(a)}
+                      onChange={(e) =>
+                        update(i, {
+                          coords: { ...a.coords, fontSize: Number(e.target.value) },
+                        })
+                      }
+                      className="rounded border border-zinc-200 px-1 py-0.5 text-xs text-zinc-800"
+                    >
+                      {FONT_SIZES.map((s) => (
+                        <option key={s} value={s}>
+                          {s === DEFAULT_FONT ? "Default" : String(s)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <textarea
                   value={a.description ?? ""}
                   onChange={(e) => update(i, { description: e.target.value })}
@@ -809,7 +875,7 @@ function applyHandle(
   dims: { RW: number; RH: number }
 ): Anno {
   const { RW, RH } = dims;
-  if (mode === "point") return { ...a, coords: { x: p.x, y: p.y } };
+  if (mode === "point") return { ...a, coords: { ...a.coords, x: p.x, y: p.y } };
   if (mode === "box") return { ...a, coords: { ...a.coords, x1: p.x, y1: p.y } };
   if (mode === "tip") return { ...a, coords: { ...a.coords, x2: p.x, y2: p.y } };
   if (mode === "rotate") {
@@ -842,12 +908,20 @@ function applyHandle(
 }
 
 function translate(a: Anno, dx: number, dy: number): Anno {
-  if (a.shape === "point")
-    return { ...a, coords: { x: clamp01(a.coords.x + dx), y: clamp01(a.coords.y + dy) } };
+  if (a.shape === "point" || a.shape === "textbox")
+    return {
+      ...a,
+      coords: {
+        ...a.coords,
+        x: clamp01(a.coords.x + dx),
+        y: clamp01(a.coords.y + dy),
+      },
+    };
   if (a.shape === "arrow")
     return {
       ...a,
       coords: {
+        ...a.coords,
         x1: clamp01(a.coords.x1 + dx),
         y1: clamp01(a.coords.y1 + dy),
         x2: clamp01(a.coords.x2 + dx),
@@ -904,8 +978,28 @@ function EditorAnno({
     );
   }
 
+  if (anno.shape === "textbox") {
+    const fs = annoFontSize(anno);
+    return (
+      <g>
+        <LabelBox
+          cx={anno.coords.x}
+          cy={anno.coords.y}
+          label={anno.label}
+          fallback={`${index + 1}`}
+          color={color}
+          fontSize={fs}
+        />
+        {selected && (
+          <circle cx={pct(anno.coords.x)} cy={pct(anno.coords.y)} r={6} fill={color} stroke="#fff" strokeWidth={1.5} />
+        )}
+      </g>
+    );
+  }
+
   if (anno.shape === "arrow") {
     const { x1, y1, x2, y2 } = anno.coords;
+    const fs = annoFontSize(anno);
     return (
       <g>
         <defs>
@@ -915,7 +1009,7 @@ function EditorAnno({
         </defs>
         <line x1={pct(x1)} y1={pct(y1)} x2={pct(x2)} y2={pct(y2)} stroke={color} strokeWidth={2.5} markerEnd={`url(#${mid})`} />
         <circle cx={pct(x2)} cy={pct(y2)} r={3.5} fill={color} />
-        <LabelBox cx={x1} cy={y1} label={anno.label} fallback={`${index + 1}`} color={color} />
+        <LabelBox cx={x1} cy={y1} label={anno.label} fallback={`${index + 1}`} color={color} fontSize={fs} />
         {selected && (
           <>
             {/* arrow-tip handle */}
@@ -936,6 +1030,7 @@ function EditorAnno({
   const isCircle = anno.shape === "circle";
   const self = rotSelf(rot); // rotate the shape about its own center
   const about = rotAbout(cx, cy, rot); // rotate handles about the box center
+  const fs = annoFontSize(anno);
   return (
     <g>
       {isCircle ? (
@@ -944,7 +1039,7 @@ function EditorAnno({
         <rect x={pct(x)} y={pct(y)} width={pct(w)} height={pct(h)} fill="none" stroke={color} strokeWidth={2.5} rx={4} style={self} />
       )}
       {!isCircle && (
-        <LabelBox cx={cx} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} />
+        <LabelBox cx={cx} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} fontSize={fs} />
       )}
       {selected && (
         <>
@@ -1033,6 +1128,19 @@ function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: st
     );
   }
 
+  if (anno.shape === "textbox") {
+    return (
+      <LabelBox
+        cx={anno.coords.x}
+        cy={anno.coords.y}
+        label={anno.label}
+        fallback={`${index + 1}`}
+        color={color}
+        fontSize={annoFontSize(anno)}
+      />
+    );
+  }
+
   if (anno.shape === "box") {
     const { x, y, w, h } = anno.coords;
     const rot = anno.coords.rot ?? 0;
@@ -1049,7 +1157,14 @@ function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: st
           rx={4}
           style={rotSelf(rot)}
         />
-        <LabelBox cx={x + w / 2} cy={y} label={anno.label} fallback={`${index + 1}`} color={color} />
+        <LabelBox
+          cx={x + w / 2}
+          cy={y}
+          label={anno.label}
+          fallback={`${index + 1}`}
+          color={color}
+          fontSize={annoFontSize(anno)}
+        />
       </g>
     );
   }
@@ -1074,7 +1189,14 @@ function CalloutShape({ anno, index, uid }: { anno: Anno; index: number; uid: st
         markerEnd={`url(#${mid})`}
       />
       <circle cx={pct(target.x)} cy={pct(target.y)} r={3.5} fill={color} />
-      <LabelBox cx={origin.x} cy={origin.y} label={anno.label} fallback={`${index + 1}`} color={color} />
+      <LabelBox
+        cx={origin.x}
+        cy={origin.y}
+        label={anno.label}
+        fallback={`${index + 1}`}
+        color={color}
+        fontSize={annoFontSize(anno)}
+      />
     </g>
   );
 }
@@ -1112,37 +1234,39 @@ export function AnnoOverlay({
   callout?: boolean;
 }) {
   const ref = useRef<SVGSVGElement>(null);
-  const [vb, setVb] = useState<string | undefined>(
+  // Seed a proportional viewBox immediately. Without this, an async-loaded
+  // editor thumbnail (annos arrive after mount) briefly/forever has no viewBox
+  // and label boxes render at raw CSS pixels — huge on small thumbs. The
+  // published viewer usually passes `aspect` and has annos on first paint.
+  const [vb, setVb] = useState(
     aspect && aspect > 0
       ? `0 0 ${ANNO_VBASE} ${Math.round(ANNO_VBASE / aspect)}`
-      : undefined
+      : `0 0 ${ANNO_VBASE} ${Math.round(ANNO_VBASE * 0.75)}`
   );
+  const hasAnnos = annos.length > 0;
   useEffect(() => {
+    // SVG is not in the DOM while empty — re-run once annos arrive so we can
+    // attach the ResizeObserver (editor AnnotationOverlay loads async).
+    if (!hasAnnos) return;
     const el = ref.current;
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return;
-      // On a WIDE screen, cap the viewBox at the on-screen width so labels keep
-      // a readable size even on small desktop gallery thumbnails. On a NARROW
-      // (phone) viewport the image is the main view, so keep labels PROPORTIONAL
-      // to it (viewBox = full reference width) — otherwise they blow up and
-      // cover the photo. Installers tap to zoom for detail.
-      const wideViewport = typeof window !== "undefined" && window.innerWidth >= 640;
-      const w = wideViewport ? Math.min(r.width, ANNO_VBASE) : ANNO_VBASE;
-      setVb(`0 0 ${Math.round(w)} ${Math.round((w * r.height) / r.width)}`);
+      // Always use the full reference width so labels stay a fixed fraction of
+      // the image. Using display width as the viewBox made ~100px label boxes
+      // fill most of a small thumbnail.
+      const w = ANNO_VBASE;
+      setVb(`0 0 ${w} ${Math.round((w * r.height) / r.width)}`);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    // Re-measure on viewport changes (rotate / cross the phone↔desktop breakpoint).
-    if (typeof window !== "undefined") window.addEventListener("resize", measure);
     return () => {
       ro.disconnect();
-      if (typeof window !== "undefined") window.removeEventListener("resize", measure);
     };
-  }, []);
-  if (annos.length === 0) return null;
+  }, [hasAnnos]);
+  if (!hasAnnos) return null;
   return (
     <svg
       ref={ref}

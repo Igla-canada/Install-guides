@@ -53,6 +53,16 @@ export default function DealerStyleCompatTable({
                       Guide not published — contact us
                       {r.dealerNotes ? ` · ${r.dealerNotes}` : ""}
                     </span>
+                  ) : r.guideStatus === "PUBLISHED" ? (
+                    <span className="text-green-700">
+                      Published
+                      {r.dealerNotes ? (
+                        <span className="text-zinc-600">
+                          {" "}
+                          · {r.dealerNotes}
+                        </span>
+                      ) : null}
+                    </span>
                   ) : (
                     <span
                       className="block truncate"
