@@ -104,12 +104,12 @@ export default function VehicleCascadeSearch({
     return p;
   }
 
-  function apply() {
-    const filter = {
-      make: makeValue,
-      model: modelValue,
-      year: yearValue,
-      q: qValue,
+  function apply(override?: Partial<CascadeFilter>) {
+    const filter: CascadeFilter = {
+      make: override?.make ?? makeValue,
+      model: override?.model ?? modelValue,
+      year: override?.year ?? yearValue,
+      q: override?.q !== undefined ? override.q.trim() : qValue,
     };
     if (onApply) {
       onApply(filter);
@@ -170,8 +170,11 @@ export default function VehicleCascadeSearch({
           <select
             value={makeValue}
             onChange={(e) => {
-              setMake(e.target.value);
+              const nextMake = e.target.value;
+              setMake(nextMake);
               setModel("");
+              // Auto-run search on make pick (model cleared).
+              apply({ make: nextMake, model: "", year: yearValue, q: qValue });
             }}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
@@ -188,7 +191,16 @@ export default function VehicleCascadeSearch({
           <span className="text-xs font-medium text-zinc-500">Model</span>
           <select
             value={modelValue}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={(e) => {
+              const nextModel = e.target.value;
+              setModel(nextModel);
+              apply({
+                make: makeValue,
+                model: nextModel,
+                year: yearValue,
+                q: qValue,
+              });
+            }}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
             <option value="">{modelEmptyLabel}</option>
@@ -206,7 +218,16 @@ export default function VehicleCascadeSearch({
           </span>
           <select
             value={yearValue}
-            onChange={(e) => setYear(e.target.value)}
+            onChange={(e) => {
+              const nextYear = e.target.value;
+              setYear(nextYear);
+              apply({
+                make: makeValue,
+                model: modelValue,
+                year: nextYear,
+                q: qValue,
+              });
+            }}
             className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
             <option value="">Any year</option>
