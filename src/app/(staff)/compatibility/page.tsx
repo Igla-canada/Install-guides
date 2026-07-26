@@ -161,6 +161,8 @@ export default async function StaffCompatibilityPage(props: {
               year: sp.year,
               q: sp.q,
             })}
+            target="_blank"
+            rel="noopener noreferrer"
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-50"
           >
             Open public page
