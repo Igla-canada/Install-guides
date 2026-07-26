@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { setCompatibilityVisibilityBulk } from "@/lib/vehicle-compatibility-actions";
 import {
   baseModelName,
@@ -23,6 +23,7 @@ export type StaffCompatRow = {
   iglaProducts: string[];
   isVisibleToDealers: boolean;
   guideStatus: string | null;
+  updatedAt?: string;
 };
 
 /**
@@ -31,13 +32,21 @@ export type StaffCompatRow = {
  */
 export default function StaffCompatibilityTable({
   initialRows,
+  showUpdated = false,
 }: {
   initialRows: StaffCompatRow[];
+  /** Show last-updated column (useful for “Show all” sorted by recent changes). */
+  showUpdated?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showHidden, setShowHidden] = useState(true);
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setRows(initialRows);
+    setSelected(new Set());
+  }, [initialRows]);
 
   const visibleRows = useMemo(
     () => (showHidden ? rows : rows.filter((r) => r.isVisibleToDealers)),
@@ -158,6 +167,11 @@ export default function StaffCompatibilityTable({
               <th className="px-3 py-2">Guide</th>
               <th className="px-3 py-2">Trim / config</th>
               <th className="px-3 py-2">Analog</th>
+              {showUpdated && (
+                <th className="px-3 py-2" title="Most recently changed first when showing all">
+                  Updated
+                </th>
+              )}
               <th
                 className="px-3 py-2"
                 title="Checked = hidden from the dealer list"
@@ -240,6 +254,11 @@ export default function StaffCompatibilityTable({
                       ? `Required${r.analogBlockType ? ` · ${r.analogBlockType}` : ""}`
                       : "Not required"}
                   </td>
+                  {showUpdated && (
+                    <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-zinc-500">
+                      {r.updatedAt ? r.updatedAt.slice(0, 10) : "—"}
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     <label
                       className="inline-flex cursor-pointer items-center gap-1.5 text-xs"
@@ -264,7 +283,7 @@ export default function StaffCompatibilityTable({
             {visibleRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={showUpdated ? 9 : 8}
                   className="px-3 py-8 text-center text-zinc-500"
                 >
                   No compatibility records match this search.

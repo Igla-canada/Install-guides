@@ -17,24 +17,26 @@ export default async function StaffCompatibilityPage(props: {
     year?: string;
     q?: string;
     view?: string;
+    all?: string;
   }>;
 }) {
   await requireRole("ADMIN", "TECH");
   const sp = await props.searchParams;
   const dealerView = sp.view === "dealer";
+  const showAll = sp.all === "1" && !dealerView;
 
   const taxonomy = await listCompatibilitySearchMeta({
     visibleOnly: false,
     excludeArchivedGuides: false,
   });
 
-  const { rows, truncated, loaded } = await loadCompatibilityList({
+  const { rows, truncated, loaded, showingAll } = await loadCompatibilityList({
     make: sp.make,
     model: sp.model,
     year: sp.year,
     q: sp.q,
-    // Dealer preview only shows what dealers would see.
     dealerFacing: dealerView,
+    showAll,
   });
 
   const staffRows = rows.map((r) => ({
@@ -52,15 +54,46 @@ export default async function StaffCompatibilityPage(props: {
     iglaProducts: r.iglaProducts,
     isVisibleToDealers: r.isVisibleToDealers,
     guideStatus: r.guideStatus,
+    updatedAt: r.updatedAt,
   }));
 
-  const viewToggleHref = (() => {
+  function hrefWith(patch: {
+    make?: string;
+    model?: string;
+    year?: string;
+    q?: string;
+    view?: string;
+    all?: string;
+  }) {
+    const p = new URLSearchParams();
+    const next = {
+      make: sp.make,
+      model: sp.model,
+      year: sp.year,
+      q: sp.q,
+      view: dealerView ? "dealer" : undefined,
+      all: showAll ? "1" : undefined,
+      ...patch,
+    };
+    if (next.make) p.set("make", next.make);
+    if (next.model) p.set("model", next.model);
+    if (next.year) p.set("year", next.year);
+    if (next.q) p.set("q", next.q);
+    if (next.view) p.set("view", next.view);
+    if (next.all === "1") p.set("all", "1");
+    const qs = p.toString();
+    return qs ? `/compatibility?${qs}` : "/compatibility";
+  }
+
+  // Switching to dealer view drops all=1 (full list is staff-only).
+  const viewToggleClean = (() => {
     const p = new URLSearchParams();
     if (sp.make) p.set("make", sp.make);
     if (sp.model) p.set("model", sp.model);
     if (sp.year) p.set("year", sp.year);
     if (sp.q) p.set("q", sp.q);
     if (!dealerView) p.set("view", "dealer");
+    else if (showAll) p.set("all", "1");
     const qs = p.toString();
     return qs ? `/compatibility?${qs}` : "/compatibility";
   })();
@@ -78,8 +111,9 @@ export default async function StaffCompatibilityPage(props: {
               </>
             ) : (
               <>
-                Staff view — hide/show for dealers. Use quick search or pick a
-                make. Full editing:{" "}
+                Staff view — hide/show for dealers. Page stays light until you
+                search or click <strong>Show all vehicles</strong>. Full
+                editing:{" "}
                 <Link href="/users?tab=compatibility" className="underline">
                   Admin → Vehicle Compatibility
                 </Link>
@@ -89,8 +123,29 @@ export default async function StaffCompatibilityPage(props: {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {!dealerView && (
+            <Link
+              href={
+                showingAll
+                  ? hrefWith({ all: undefined, make: undefined, model: undefined, q: undefined, year: undefined })
+                  : "/compatibility?all=1"
+              }
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                showingAll
+                  ? "border border-zinc-300 bg-white hover:bg-zinc-50"
+                  : "border border-zinc-900 bg-white font-medium text-zinc-900 hover:bg-zinc-100"
+              }`}
+              title={
+                showingAll
+                  ? "Clear full list"
+                  : "Load every vehicle once — sorted by last change (not on every visit)"
+              }
+            >
+              {showingAll ? "Clear full list" : "Show all vehicles"}
+            </Link>
+          )}
           <Link
-            href={viewToggleHref}
+            href={viewToggleClean}
             className={`rounded-md px-3 py-1.5 text-sm ${
               dealerView
                 ? "border border-zinc-300 bg-white hover:bg-zinc-50"
@@ -125,15 +180,27 @@ export default async function StaffCompatibilityPage(props: {
             q: sp.q,
           }}
           actionPath="/compatibility"
-          extraParams={dealerView ? { view: "dealer" } : undefined}
+          extraParams={{
+            ...(dealerView ? { view: "dealer" } : {}),
+            // Searching replaces “show all” so filters stay intentional.
+          }}
         />
       </div>
 
       {!loaded ? (
-        <p className="mt-8 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600">
-          Choose a make, or type in <strong>Quick search</strong> (even one
-          letter) and press Search. Results are capped so the page stays fast.
-        </p>
+        <div className="mt-8 space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600">
+          <p>
+            Choose a make, use <strong>Quick search</strong>, or click{" "}
+            <strong>Show all vehicles</strong> when you want the full list
+            (sorted by most recently updated — so your last changes are on top).
+          </p>
+          <Link
+            href="/compatibility?all=1"
+            className="inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+          >
+            Show all vehicles
+          </Link>
+        </div>
       ) : (
         <>
           <p className="mt-3 text-sm text-zinc-600">
@@ -141,11 +208,17 @@ export default async function StaffCompatibilityPage(props: {
               {rows.length}
             </span>{" "}
             vehicle{rows.length === 1 ? "" : "s"}
+            {showingAll ? (
+              <span className="text-zinc-500">
+                {" "}
+                · all vehicles · newest changes first
+              </span>
+            ) : null}
             {truncated ? (
               <span className="text-amber-800">
                 {" "}
-                · showing first {COMPAT_RESULT_LIMIT} — add more letters or pick
-                a make to narrow
+                · showing first {COMPAT_RESULT_LIMIT} — add more letters, pick a
+                make, or use Show all
               </span>
             ) : null}
             {dealerView ? (
@@ -155,7 +228,10 @@ export default async function StaffCompatibilityPage(props: {
           {dealerView ? (
             <DealerStyleCompatTable rows={rows} />
           ) : (
-            <StaffCompatibilityTable initialRows={staffRows} />
+            <StaffCompatibilityTable
+              initialRows={staffRows}
+              showUpdated={showingAll}
+            />
           )}
         </>
       )}
