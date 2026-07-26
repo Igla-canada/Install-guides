@@ -228,10 +228,7 @@ export default async function StaffCompatibilityPage(props: {
           {dealerView ? (
             <DealerStyleCompatTable rows={rows} />
           ) : (
-            <StaffCompatibilityTable
-              initialRows={staffRows}
-              showUpdated={showingAll}
-            />
+            <StaffCompatibilityTable initialRows={staffRows} />
           )}
         </>
       )}

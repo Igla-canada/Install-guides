@@ -26,32 +26,118 @@ export type StaffCompatRow = {
   updatedAt?: string;
 };
 
+type SortKey = "vehicle" | "guide" | "updated" | "hide";
+type SortDir = "asc" | "desc";
+
+function vehicleLabel(r: StaffCompatRow) {
+  return `${r.make} ${baseModelName(r.model)}`.trim();
+}
+
+/** Published first when asc; unpublished/missing last. */
+function guideRank(status: string | null) {
+  if (status === "PUBLISHED") return 0;
+  if (status === "DRAFT") return 1;
+  if (status === "ARCHIVED") return 2;
+  return 3;
+}
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  title,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <th className="px-3 py-2">
+      <button
+        type="button"
+        onClick={onClick}
+        title={title ?? `Sort by ${label}`}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 ${
+          active ? "font-semibold text-zinc-800" : "font-medium text-zinc-500"
+        }`}
+      >
+        {label}
+        <span className="text-[10px] tabular-nums" aria-hidden>
+          {active ? (dir === "asc" ? "▲" : "▼") : "◇"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 /**
  * Staff compatibility list with quick single / multi / select-all
  * hide-from-dealers controls (does not edit guides).
  */
 export default function StaffCompatibilityTable({
   initialRows,
-  showUpdated = false,
 }: {
   initialRows: StaffCompatRow[];
-  /** Show last-updated column (useful for “Show all” sorted by recent changes). */
+  /** @deprecated Always shows Updated now (sortable). Kept for call-site compat. */
   showUpdated?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showHidden, setShowHidden] = useState(true);
   const [pending, startTransition] = useTransition();
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     setRows(initialRows);
     setSelected(new Set());
   }, [initialRows]);
 
-  const visibleRows = useMemo(
-    () => (showHidden ? rows : rows.filter((r) => r.isVisibleToDealers)),
-    [rows, showHidden],
-  );
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      // Sensible first click: A→Z, published first, newest first, hidden first
+      setSortDir(
+        key === "updated" || key === "hide" ? "desc" : "asc",
+      );
+    }
+  }
+
+  const visibleRows = useMemo(() => {
+    const filtered = showHidden
+      ? rows
+      : rows.filter((r) => r.isVisibleToDealers);
+    if (!sortKey) return filtered;
+
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "vehicle") {
+        cmp = vehicleLabel(a).localeCompare(vehicleLabel(b), undefined, {
+          sensitivity: "base",
+        });
+      } else if (sortKey === "guide") {
+        cmp =
+          guideRank(a.guideStatus) - guideRank(b.guideStatus) ||
+          (a.guideStatus ?? "").localeCompare(b.guideStatus ?? "");
+      } else if (sortKey === "updated") {
+        const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+        const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+        cmp = ta - tb;
+      } else if (sortKey === "hide") {
+        // hidden (not visible) vs shown
+        cmp =
+          Number(!a.isVisibleToDealers) - Number(!b.isVisibleToDealers);
+      }
+      if (cmp !== 0) return cmp * dir;
+      return vehicleLabel(a).localeCompare(vehicleLabel(b));
+    });
+  }, [rows, showHidden, sortKey, sortDir]);
 
   const ids = visibleRows.map((r) => r.id);
   const selectedInView = ids.filter((id) => selected.has(id));
@@ -161,23 +247,38 @@ export default function StaffCompatibilityTable({
                   aria-label="Select all"
                 />
               </th>
-              <th className="px-3 py-2">Vehicle</th>
-              <th className="px-3 py-2">Years</th>
-              <th className="px-3 py-2">IGLA</th>
-              <th className="px-3 py-2">Guide</th>
-              <th className="px-3 py-2">Trim / config</th>
-              <th className="px-3 py-2">Analog</th>
-              {showUpdated && (
-                <th className="px-3 py-2" title="Most recently changed first when showing all">
-                  Updated
-                </th>
-              )}
-              <th
-                className="px-3 py-2"
-                title="Checked = hidden from the dealer list"
-              >
-                Hide from dealers
-              </th>
+              <SortHeader
+                label="Vehicle"
+                active={sortKey === "vehicle"}
+                dir={sortDir}
+                onClick={() => toggleSort("vehicle")}
+                title="Sort A–Z / Z–A"
+              />
+              <th className="px-3 py-2 font-medium">Years</th>
+              <th className="px-3 py-2 font-medium">IGLA</th>
+              <SortHeader
+                label="Guide"
+                active={sortKey === "guide"}
+                dir={sortDir}
+                onClick={() => toggleSort("guide")}
+                title="Sort published / draft / archived"
+              />
+              <th className="px-3 py-2 font-medium">Trim / config</th>
+              <th className="px-3 py-2 font-medium">Analog</th>
+              <SortHeader
+                label="Updated"
+                active={sortKey === "updated"}
+                dir={sortDir}
+                onClick={() => toggleSort("updated")}
+                title="Sort by last change"
+              />
+              <SortHeader
+                label="Hide"
+                active={sortKey === "hide"}
+                dir={sortDir}
+                onClick={() => toggleSort("hide")}
+                title="Sort hidden vs visible to dealers"
+              />
             </tr>
           </thead>
           <tbody>
@@ -254,11 +355,9 @@ export default function StaffCompatibilityTable({
                       ? `Required${r.analogBlockType ? ` · ${r.analogBlockType}` : ""}`
                       : "Not required"}
                   </td>
-                  {showUpdated && (
-                    <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-zinc-500">
-                      {r.updatedAt ? r.updatedAt.slice(0, 10) : "—"}
-                    </td>
-                  )}
+                  <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-zinc-500">
+                    {r.updatedAt ? r.updatedAt.slice(0, 10) : "—"}
+                  </td>
                   <td className="px-3 py-2">
                     <label
                       className="inline-flex cursor-pointer items-center gap-1.5 text-xs"
@@ -272,7 +371,11 @@ export default function StaffCompatibilityTable({
                           applyVisibility(hidden, [r.id], false)
                         }
                       />
-                      <span className={hidden ? "font-medium text-zinc-800" : "text-zinc-400"}>
+                      <span
+                        className={
+                          hidden ? "font-medium text-zinc-800" : "text-zinc-400"
+                        }
+                      >
                         {hidden ? "hidden" : "hide"}
                       </span>
                     </label>
@@ -283,7 +386,7 @@ export default function StaffCompatibilityTable({
             {visibleRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={showUpdated ? 9 : 8}
+                  colSpan={9}
                   className="px-3 py-8 text-center text-zinc-500"
                 >
                   No compatibility records match this search.
