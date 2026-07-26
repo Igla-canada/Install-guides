@@ -22,8 +22,10 @@ const MIN_Z = ZOOM_STEPS[0];
 const MAX_Z = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
 /** Default on-image label text size (px in the annotation viewBox). */
-const DEFAULT_FONT = 12.5;
-const FONT_SIZES = [10, 12, 12.5, 14, 16, 18, 22] as const;
+const DEFAULT_FONT = 22;
+/** Design reference used by boxGeom (char widths were tuned at this size). */
+const FONT_GEOM_BASE = 12.5;
+const FONT_SIZES = [10, 12, 14, 16, 18, 22, 26, 30] as const;
 
 export type Anno = {
   shape: Shape;
@@ -84,7 +86,7 @@ function boxGeom(label: string | undefined, fallback: string, fontSize = DEFAULT
   const text = label && label.trim() ? label.trim() : fallback;
   const lines = text.split("\n");
   const maxLen = Math.max(1, ...lines.map((l) => l.length));
-  const scale = fontSize / DEFAULT_FONT;
+  const scale = fontSize / FONT_GEOM_BASE;
   const charW = 7.4 * scale;
   const lineH = 16 * scale;
   const padX = 16 * scale;

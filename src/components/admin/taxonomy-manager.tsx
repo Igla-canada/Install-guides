@@ -5,14 +5,35 @@
 // duplicate like "Highlander (new CAN line)" back under "Highlander"), and
 // delete the empty leftovers. Everything that's referenced by a guide shows its
 // guide count and is protected from deletion.
+//
+// After every save we redirect back with ?make=&model=&gen= so the make panel
+// stays open, the working row scrolls into view, and success/error shows inline
+// — not a collapsed list you have to hunt through again.
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import TaxonomyFocus from "@/components/admin/taxonomy-focus";
 
 function refresh() {
   revalidatePath("/users");
   revalidatePath("/guides");
+}
+
+function taxUrl(opts: {
+  make?: string | null;
+  model?: string | null;
+  gen?: string | null;
+  ok?: string;
+  error?: string;
+}) {
+  const p = new URLSearchParams({ tab: "taxonomy" });
+  if (opts.make) p.set("make", opts.make);
+  if (opts.model) p.set("model", opts.model);
+  if (opts.gen) p.set("gen", opts.gen);
+  if (opts.ok) p.set("taxOk", opts.ok);
+  if (opts.error) p.set("taxError", opts.error);
+  return `/users?${p.toString()}`;
 }
 
 async function renameMake(formData: FormData) {
@@ -20,14 +41,16 @@ async function renameMake(formData: FormData) {
   await requireRole("ADMIN");
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) {
+    redirect(taxUrl({ make: id, error: "Make name can’t be empty" }));
+  }
   try {
     await prisma.make.update({ where: { id }, data: { name } });
   } catch {
-    redirect("/users?tab=taxonomy&taxError=A+make+with+that+name+already+exists");
+    redirect(taxUrl({ make: id, error: "A make with that name already exists" }));
   }
   refresh();
-  redirect("/users?tab=taxonomy");
+  redirect(taxUrl({ make: id, ok: "Make renamed" }));
 }
 
 async function deleteMake(formData: FormData) {
@@ -42,17 +65,22 @@ async function deleteMake(formData: FormData) {
     prisma.guildMake.count({ where: { makeId: id } }),
   ]);
   if (models > 0 || guilds > 0 || bridges > 0) {
-    redirect("/users?tab=taxonomy&taxError=Remove+everything+under+this+make+first+(models+and+bridged+guides)");
+    redirect(
+      taxUrl({
+        make: id,
+        error: "Remove everything under this make first (models and bridged guides)",
+      })
+    );
   }
   const ok = await prisma.make
     .delete({ where: { id } })
     .then(() => true)
     .catch(() => false);
   if (!ok) {
-    redirect("/users?tab=taxonomy&taxError=Could+not+delete+this+make");
+    redirect(taxUrl({ make: id, error: "Could not delete this make" }));
   }
   refresh();
-  redirect("/users?tab=taxonomy");
+  redirect(taxUrl({ ok: "Empty make deleted" }));
 }
 
 async function renameModel(formData: FormData) {
@@ -60,14 +88,27 @@ async function renameModel(formData: FormData) {
   await requireRole("ADMIN");
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  const row = await prisma.model.findUnique({
+    where: { id },
+    select: { makeId: true },
+  });
+  if (!row) redirect(taxUrl({ error: "Model not found" }));
+  if (!name) {
+    redirect(taxUrl({ make: row.makeId, model: id, error: "Model name can’t be empty" }));
+  }
   try {
     await prisma.model.update({ where: { id }, data: { name } });
   } catch {
-    redirect("/users?tab=taxonomy&taxError=That+make+already+has+a+model+with+that+name");
+    redirect(
+      taxUrl({
+        make: row.makeId,
+        model: id,
+        error: "That make already has a model with that name",
+      })
+    );
   }
   refresh();
-  redirect("/users?tab=taxonomy");
+  redirect(taxUrl({ make: row.makeId, model: id, ok: "Model renamed" }));
 }
 
 async function addGeneration(formData: FormData) {
@@ -78,16 +119,47 @@ async function addGeneration(formData: FormData) {
   const yearStart = parseInt(String(formData.get("yearStart") ?? ""), 10);
   const yearEndRaw = String(formData.get("yearEnd") ?? "").trim();
   const yearEnd = yearEndRaw ? parseInt(yearEndRaw, 10) : null;
-  if (!name || Number.isNaN(yearStart)) return;
-  try {
-    await prisma.generation.create({
-      data: { modelId, name, yearStart, yearEnd: Number.isNaN(yearEnd as number) ? null : yearEnd },
-    });
-  } catch {
-    redirect("/users?tab=taxonomy&taxError=That+model+already+has+a+generation+with+that+name");
+  const model = await prisma.model.findUnique({
+    where: { id: modelId },
+    select: { makeId: true },
+  });
+  if (!model) redirect(taxUrl({ error: "Model not found" }));
+  if (!name || Number.isNaN(yearStart)) {
+    redirect(
+      taxUrl({
+        make: model.makeId,
+        model: modelId,
+        error: "New generation needs a label and a start year",
+      })
+    );
   }
-  refresh();
-  redirect("/users?tab=taxonomy");
+  try {
+    const created = await prisma.generation.create({
+      data: {
+        modelId,
+        name,
+        yearStart,
+        yearEnd: Number.isNaN(yearEnd as number) ? null : yearEnd,
+      },
+    });
+    refresh();
+    redirect(
+      taxUrl({
+        make: model.makeId,
+        model: modelId,
+        gen: created.id,
+        ok: "Year frame added",
+      })
+    );
+  } catch {
+    redirect(
+      taxUrl({
+        make: model.makeId,
+        model: modelId,
+        error: "That model already has a generation with that name",
+      })
+    );
+  }
 }
 
 async function updateGeneration(formData: FormData) {
@@ -98,6 +170,12 @@ async function updateGeneration(formData: FormData) {
   const yearStart = parseInt(String(formData.get("yearStart") ?? ""), 10);
   const yearEndRaw = String(formData.get("yearEnd") ?? "").trim();
   const yearEnd = yearEndRaw ? parseInt(yearEndRaw, 10) : null;
+  const row = await prisma.generation.findUnique({
+    where: { id },
+    select: { modelId: true, model: { select: { makeId: true } } },
+  });
+  if (!row) redirect(taxUrl({ error: "Generation not found" }));
+  const ctx = { make: row.model.makeId, model: row.modelId, gen: id };
   const data: { name?: string; yearStart?: number; yearEnd?: number | null } = {};
   if (name) data.name = name;
   if (!Number.isNaN(yearStart)) data.yearStart = yearStart;
@@ -105,10 +183,10 @@ async function updateGeneration(formData: FormData) {
   try {
     await prisma.generation.update({ where: { id }, data });
   } catch {
-    redirect("/users?tab=taxonomy&taxError=That+model+already+has+a+generation+with+that+name");
+    redirect(taxUrl({ ...ctx, error: "That model already has a generation with that name" }));
   }
   refresh();
-  redirect("/users?tab=taxonomy");
+  redirect(taxUrl({ ...ctx, ok: "Saved label / years" }));
 }
 
 // Re-parent a generation onto another model of the same make — and move every
@@ -119,42 +197,101 @@ async function moveGeneration(formData: FormData) {
   await requireRole("ADMIN");
   const id = String(formData.get("id"));
   const targetModelId = String(formData.get("targetModelId") ?? "");
-  if (!targetModelId) return;
+  const row = await prisma.generation.findUnique({
+    where: { id },
+    select: {
+      name: true,
+      modelId: true,
+      model: { select: { makeId: true, name: true } },
+    },
+  });
+  if (!row) redirect(taxUrl({ error: "Generation not found" }));
+  const fromCtx = { make: row.model.makeId, model: row.modelId, gen: id };
+  if (!targetModelId) {
+    redirect(taxUrl({ ...fromCtx, error: "Pick a target model first" }));
+  }
+  const target = await prisma.model.findUnique({
+    where: { id: targetModelId },
+    select: { id: true, name: true, makeId: true },
+  });
+  if (!target || target.makeId !== row.model.makeId) {
+    redirect(taxUrl({ ...fromCtx, error: "Target model must be under the same make" }));
+  }
   try {
     await prisma.$transaction([
       prisma.guild.updateMany({ where: { generationId: id }, data: { modelId: targetModelId } }),
       prisma.generation.update({ where: { id }, data: { modelId: targetModelId } }),
     ]);
   } catch {
-    redirect("/users?tab=taxonomy&taxError=The+target+model+already+has+a+generation+with+that+name+-+rename+first");
+    redirect(
+      taxUrl({
+        ...fromCtx,
+        error: "The target model already has a generation with that name — rename first",
+      })
+    );
   }
   refresh();
-  redirect("/users?tab=taxonomy");
+  // Land on the destination model so you can see the move without hunting.
+  redirect(
+    taxUrl({
+      make: target.makeId,
+      model: target.id,
+      gen: id,
+      ok: `Moved “${row.name}” to ${target.name}`,
+    })
+  );
 }
 
 async function deleteGeneration(formData: FormData) {
   "use server";
   await requireRole("ADMIN");
   const id = String(formData.get("id"));
+  const row = await prisma.generation.findUnique({
+    where: { id },
+    select: { modelId: true, model: { select: { makeId: true } } },
+  });
+  if (!row) redirect(taxUrl({ error: "Generation not found" }));
+  const ctx = { make: row.model.makeId, model: row.modelId };
   const guilds = await prisma.guild.count({ where: { generationId: id } });
-  if (guilds > 0) return; // protected — guides still use it
+  if (guilds > 0) {
+    redirect(
+      taxUrl({
+        ...ctx,
+        gen: id,
+        error: `Can’t delete — ${guilds} guide(s) still use this generation`,
+      })
+    );
+  }
   await prisma.generation.delete({ where: { id } }).catch(() => null);
   refresh();
-  redirect("/users?tab=taxonomy");
+  redirect(taxUrl({ ...ctx, ok: "Generation deleted" }));
 }
 
 async function deleteModel(formData: FormData) {
   "use server";
   await requireRole("ADMIN");
   const id = String(formData.get("id"));
+  const row = await prisma.model.findUnique({
+    where: { id },
+    select: { makeId: true },
+  });
+  if (!row) redirect(taxUrl({ error: "Model not found" }));
   const [gens, guilds] = await Promise.all([
     prisma.generation.count({ where: { modelId: id } }),
     prisma.guild.count({ where: { modelId: id } }),
   ]);
-  if (gens > 0 || guilds > 0) return; // only empty models can be removed
+  if (gens > 0 || guilds > 0) {
+    redirect(
+      taxUrl({
+        make: row.makeId,
+        model: id,
+        error: "Can’t delete — remove generations / move guides off this model first",
+      })
+    );
+  }
   await prisma.model.delete({ where: { id } }).catch(() => null);
   refresh();
-  redirect("/users?tab=taxonomy");
+  redirect(taxUrl({ make: row.makeId, ok: "Empty model deleted" }));
 }
 
 const fieldCls = "rounded-md border border-zinc-300 px-2 py-1 text-sm";
@@ -164,7 +301,37 @@ const GEN_COLORS = ["#2563eb", "#16a34a", "#a855f7", "#ea580c", "#0891b2", "#db2
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-export default async function TaxonomyManager({ error }: { error?: string }) {
+function Flash({ ok, error }: { ok?: string; error?: string }) {
+  if (error) {
+    return (
+      <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {error}
+      </div>
+    );
+  }
+  if (ok) {
+    return (
+      <div className="mt-2 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+        {ok}
+      </div>
+    );
+  }
+  return null;
+}
+
+export default async function TaxonomyManager({
+  error,
+  ok,
+  openMake,
+  openModel,
+  openGen,
+}: {
+  error?: string;
+  ok?: string;
+  openMake?: string;
+  openModel?: string;
+  openGen?: string;
+}) {
   await requireRole("ADMIN");
   const makes = await prisma.make.findMany({
     orderBy: { name: "asc" },
@@ -216,24 +383,36 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
     },
   });
 
+  // If a flash has no make (e.g. deleted make), show it at the top.
+  const topFlash =
+    (ok || error) &&
+    !openMake &&
+    !openModel &&
+    !openGen;
+
   return (
     <div id="taxonomy" className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
+      <TaxonomyFocus modelId={openModel} genId={openGen} />
       <h2 className="text-sm font-semibold">Vehicle taxonomy (dropdown lists)</h2>
       <p className="mt-1 text-xs text-zinc-400">
         The make → model → generation options behind the identity dropdowns.
         Rename a model, edit a generation’s years, add a new year frame, or move
         a generation onto another model to merge a duplicate. Anything a guide
         uses shows its count and can’t be deleted until those guides move off it.
+        After Save / Move, this panel stays open on the row you were editing.
       </p>
-      {error && (
-        <div className="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {topFlash && <Flash ok={ok} error={error} />}
 
       <div className="mt-3 space-y-1">
-        {makes.map((mk) => (
-          <details key={mk.id} className="rounded-lg border border-zinc-200">
+        {makes.map((mk) => {
+          const makeOpen = openMake === mk.id;
+          const makeFlash = makeOpen && !openModel && !openGen;
+          return (
+          <details
+            key={mk.id}
+            className="rounded-lg border border-zinc-200"
+            {...(makeOpen ? { open: true } : {})}
+          >
             <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
               {mk.name}{" "}
               <span className="text-xs font-normal text-zinc-400">
@@ -243,6 +422,7 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
             </summary>
 
             <div className="space-y-3 border-t border-zinc-100 p-3">
+              {makeFlash && <Flash ok={ok} error={error} />}
               <div className="flex flex-wrap items-center gap-2">
                 <form action={renameMake} className="flex flex-wrap items-center gap-2">
                   <input type="hidden" name="id" value={mk.id} />
@@ -314,8 +494,18 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                     altNames: gd.altModelAliases.map((a) => norm(a.name)),
                   }))
                 );
+                const modelFlash =
+                  openModel === md.id && !openGen && (ok || error);
                 return (
-                  <div key={md.id} className="rounded-md border border-zinc-200 p-2">
+                  <div
+                    key={md.id}
+                    id={`tax-model-${md.id}`}
+                    className={`rounded-md border p-2 ${
+                      openModel === md.id
+                        ? "border-amber-400 ring-1 ring-amber-200"
+                        : "border-zinc-200"
+                    }`}
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <form action={renameModel} className="flex flex-wrap items-center gap-2">
                         <input type="hidden" name="id" value={md.id} />
@@ -335,6 +525,7 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                         <span className="ml-auto text-xs text-zinc-400">{md._count.guilds} guide(s)</span>
                       )}
                     </div>
+                    {modelFlash && <Flash ok={ok} error={error} />}
 
                     <div className="mt-2 space-y-2">
                       {md.generations.map((g, gi) => {
@@ -349,10 +540,16 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                         const ghosts = modelGuilds.filter(
                           (gd) => gd.genId !== g.id && gd.altNames.includes(norm(g.name))
                         );
+                        const genFlash = openGen === g.id && (ok || error);
                         return (
                         <div
                           key={g.id}
-                          className="rounded border border-l-4 border-zinc-100 bg-zinc-50 p-2"
+                          id={`tax-gen-${g.id}`}
+                          className={`rounded border border-l-4 bg-zinc-50 p-2 ${
+                            openGen === g.id
+                              ? "border-amber-400 ring-1 ring-amber-200"
+                              : "border-zinc-100"
+                          }`}
                           style={{ borderLeftColor: color }}
                         >
                           <form action={updateGeneration} className="flex flex-wrap items-end gap-2">
@@ -379,6 +576,7 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
                               </span>
                             )}
                           </form>
+                          {genFlash && <Flash ok={ok} error={error} />}
 
                           {g.guilds.length > 0 && (
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -482,7 +680,8 @@ export default async function TaxonomyManager({ error }: { error?: string }) {
               })}
             </div>
           </details>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

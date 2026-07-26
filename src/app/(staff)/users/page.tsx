@@ -180,10 +180,24 @@ function AdminTabs({ active }: { active: string }) {
 }
 
 export default async function UsersPage(props: {
-  searchParams: Promise<{ taxError?: string; tab?: string }>;
+  searchParams: Promise<{
+    taxError?: string;
+    taxOk?: string;
+    tab?: string;
+    make?: string;
+    model?: string;
+    gen?: string;
+  }>;
 }) {
   const admin = await requireRole("ADMIN");
-  const { taxError, tab: tabRaw } = await props.searchParams;
+  const {
+    taxError,
+    taxOk,
+    tab: tabRaw,
+    make: openMake,
+    model: openModel,
+    gen: openGen,
+  } = await props.searchParams;
   const tab = ADMIN_TABS.some((t) => t.id === tabRaw) ? (tabRaw as string) : "users";
   const users = await prisma.userAccount.findMany({
     orderBy: [{ role: "asc" }, { name: "asc" }],
@@ -481,7 +495,15 @@ export default async function UsersPage(props: {
       </div>
       )}
 
-      {tab === "taxonomy" && <TaxonomyManager error={taxError} />}
+      {tab === "taxonomy" && (
+        <TaxonomyManager
+          error={taxError}
+          ok={taxOk}
+          openMake={openMake}
+          openModel={openModel}
+          openGen={openGen}
+        />
+      )}
 
       {/* Igla settings templates — the pre-built unit-config section, one master
           template per product (unit type), mirroring the official Igla software. */}
