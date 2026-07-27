@@ -89,56 +89,6 @@ export default function RichTextEditor({
     save();
   };
 
-  /** Clear bold/italic/size/colour/etc. Native removeFormat alone misses <font size>. */
-  const clearFormatting = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    const sel = window.getSelection();
-    if (!sel) return;
-
-    if (savedRange.current && el.contains(savedRange.current.commonAncestorContainer)) {
-      sel.removeAllRanges();
-      sel.addRange(savedRange.current);
-    }
-
-    // No selection / caret only → clear the whole text box.
-    if (
-      sel.rangeCount === 0 ||
-      !el.contains(sel.anchorNode) ||
-      sel.isCollapsed
-    ) {
-      const all = document.createRange();
-      all.selectNodeContents(el);
-      sel.removeAllRanges();
-      sel.addRange(all);
-    }
-
-    document.execCommand("removeFormat", false);
-    document.execCommand("unlink", false);
-    document.execCommand("justifyLeft", false);
-
-    // Strip wrappers removeFormat leaves behind (font size/colour, styled spans).
-    if (sel.rangeCount > 0 && !sel.isCollapsed) {
-      const range = sel.getRangeAt(0);
-      const frag = range.extractContents();
-      const cleaned = document.createDocumentFragment();
-      for (const node of Array.from(frag.childNodes)) {
-        for (const out of unwrapFormat(node)) cleaned.appendChild(out);
-      }
-      range.insertNode(cleaned);
-      sel.collapseToEnd();
-    } else {
-      const cleaned = document.createDocumentFragment();
-      for (const node of Array.from(el.childNodes)) {
-        for (const out of unwrapFormat(node)) cleaned.appendChild(out);
-      }
-      el.replaceChildren(cleaned);
-    }
-    savedRange.current = null;
-    save();
-  };
-
   return (
     <div className="rounded-lg border border-zinc-200 bg-white focus-within:border-zinc-300">
       <div className="flex flex-wrap items-center gap-1 border-b border-zinc-100 px-1.5 py-1 text-sm">
@@ -229,11 +179,7 @@ export default function RichTextEditor({
 
         <span className="mx-0.5 h-5 w-px bg-zinc-200" />
 
-        <ToolBtn
-          title="Clear formatting"
-          onMouseDown={saveSelection}
-          onClick={clearFormatting}
-        >
+        <ToolBtn title="Clear formatting" onClick={() => cmd("removeFormat")}>
           <span className="text-xs text-zinc-500">clear</span>
         </ToolBtn>
       </div>
@@ -253,12 +199,10 @@ export default function RichTextEditor({
 function ToolBtn({
   title,
   onClick,
-  onMouseDown,
   children,
 }: {
   title: string;
   onClick: () => void;
-  onMouseDown?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -266,47 +210,11 @@ function ToolBtn({
       type="button"
       title={title}
       // Keep the text selection while clicking a toolbar button.
-      onMouseDown={(e) => {
-        e.preventDefault();
-        onMouseDown?.();
-      }}
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className="flex h-7 min-w-[1.75rem] items-center justify-center rounded-md px-1.5 text-zinc-600 hover:bg-zinc-100"
     >
       {children}
     </button>
   );
-}
-
-/** Inline format tags from the toolbar — unwrap, keep text / structure. */
-const INLINE_FORMAT = new Set([
-  "B",
-  "STRONG",
-  "I",
-  "EM",
-  "U",
-  "S",
-  "FONT",
-  "SPAN",
-]);
-
-function unwrapFormat(node: Node): Node[] {
-  if (node.nodeType === Node.TEXT_NODE) return [node.cloneNode(true)];
-  if (node.nodeType !== Node.ELEMENT_NODE) return [];
-  const el = node as HTMLElement;
-  const kids: Node[] = [];
-  for (const child of Array.from(el.childNodes)) {
-    kids.push(...unwrapFormat(child));
-  }
-  if (INLINE_FORMAT.has(el.tagName)) return kids;
-
-  // Keep lists/paragraphs but drop colour / size / align attributes.
-  const clone = el.cloneNode(false) as HTMLElement;
-  clone.removeAttribute("style");
-  clone.removeAttribute("align");
-  clone.removeAttribute("color");
-  clone.removeAttribute("size");
-  clone.removeAttribute("face");
-  for (const k of kids) clone.appendChild(k);
-  return [clone];
 }
