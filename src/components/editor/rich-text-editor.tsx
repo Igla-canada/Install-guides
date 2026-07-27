@@ -92,40 +92,35 @@ export default function RichTextEditor({
   };
 
   /**
-   * Clear formatting on the selection (or the whole box if nothing is selected):
-   * drop paste backgrounds, bold, colours, etc. → plain text with line breaks.
-   * Native removeFormat alone leaves style="background-color:…" from website paste.
+   * Clear paste / highlight backgrounds only — keep bold, lists, colours, size.
+   * Native removeFormat would strip those; pasted white boxes live in style="".
    */
-  const clearFormatting = () => {
+  const clearBackground = () => {
     const el = ref.current;
     if (!el) return;
     el.focus();
-    const sel = window.getSelection();
-    if (!sel) return;
 
-    if (
-      sel.rangeCount === 0 ||
-      !el.contains(sel.anchorNode) ||
-      sel.isCollapsed
-    ) {
-      const all = document.createRange();
-      all.selectNodeContents(el);
-      sel.removeAllRanges();
-      sel.addRange(all);
+    try {
+      document.execCommand("hiliteColor", false, "transparent");
+    } catch {
+      /* ignore */
+    }
+    try {
+      document.execCommand("backColor", false, "transparent");
+    } catch {
+      /* ignore */
     }
 
-    const range = sel.getRangeAt(0);
-    const holder = document.createElement("div");
-    holder.appendChild(range.extractContents());
-    const plain = holder.innerText.replace(/\u00a0/g, " ");
-    const out = document.createDocumentFragment();
-    const lines = plain.split("\n");
-    lines.forEach((line, i) => {
-      if (i > 0) out.appendChild(document.createElement("br"));
-      if (line) out.appendChild(document.createTextNode(line));
+    el.querySelectorAll("[style]").forEach((node) => {
+      const he = node as HTMLElement;
+      he.style.removeProperty("background-color");
+      he.style.removeProperty("background");
+      he.style.removeProperty("background-image");
+      he.style.removeProperty("background-clip");
+      if (!(he.getAttribute("style") ?? "").trim()) {
+        he.removeAttribute("style");
+      }
     });
-    range.insertNode(out);
-    sel.collapseToEnd();
     save();
   };
 
@@ -219,7 +214,7 @@ export default function RichTextEditor({
 
         <span className="mx-0.5 h-5 w-px bg-zinc-200" />
 
-        <ToolBtn title="Clear formatting" onClick={clearFormatting}>
+        <ToolBtn title="Clear background" onClick={clearBackground}>
           <span className="text-xs text-zinc-500">clear</span>
         </ToolBtn>
       </div>
