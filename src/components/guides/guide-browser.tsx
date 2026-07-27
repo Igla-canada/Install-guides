@@ -18,6 +18,7 @@ import GuidePeekPanel, {
   type PeekGuide,
 } from "@/components/guides/guide-peek-panel";
 import { archiveGuide, restoreGuide } from "@/lib/guide-list-actions";
+import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
 import { withFromParam } from "@/lib/guides-nav";
 
 export type BrowserGuild = {
@@ -115,6 +116,9 @@ export function GuideBrowser({
   const [view, setView] = useState<"icons" | "list">(urlView ?? "icons");
   const [viewReady, setViewReady] = useState(Boolean(urlView));
   const [localStatuses, setLocalStatuses] = useState<Record<string, string>>({});
+  const [localHideCompat, setLocalHideCompat] = useState<
+    Record<string, boolean>
+  >({});
   const [peek, setPeek] = useState<PeekGuide | null>(null);
 
   useEffect(() => {
@@ -140,9 +144,14 @@ export function GuideBrowser({
   const statusFilter = statusTabs ? sp.status?.toUpperCase() : undefined;
 
   const guilds = useMemo(() => {
-    const withLocal = allGuilds.map((g) =>
-      localStatuses[g.id] ? { ...g, status: localStatuses[g.id]! } : g,
-    );
+    const withLocal = allGuilds.map((g) => {
+      let next = g;
+      if (localStatuses[g.id]) next = { ...next, status: localStatuses[g.id]! };
+      if (g.id in localHideCompat) {
+        next = { ...next, hideFromCompatibility: localHideCompat[g.id]! };
+      }
+      return next;
+    });
     if (statusFilter === "ARCHIVED") {
       return withLocal.filter((g) => g.status === "ARCHIVED");
     }
@@ -151,7 +160,7 @@ export function GuideBrowser({
     }
     // "All" hides archived backups
     return withLocal.filter((g) => g.status !== "ARCHIVED");
-  }, [allGuilds, localStatuses, statusFilter]);
+  }, [allGuilds, localStatuses, localHideCompat, statusFilter]);
 
   const statusCounts = useMemo(() => {
     let published = 0;
@@ -371,8 +380,11 @@ export function GuideBrowser({
     setPeek({
       id: g.id,
       title: g.title,
-      status: g.status,
-      hideFromCompatibility: Boolean(g.hideFromCompatibility),
+      status: localStatuses[g.id] ?? g.status,
+      hideFromCompatibility:
+        g.id in localHideCompat
+          ? localHideCompat[g.id]!
+          : Boolean(g.hideFromCompatibility),
       subtitle: subtitle(g),
     });
   }
@@ -531,6 +543,9 @@ export function GuideBrowser({
             onStatusChange={(id, status) =>
               setLocalStatuses((s) => ({ ...s, [id]: status }))
             }
+            onHideFromCompatibilityChange={(id, hidden) =>
+              setLocalHideCompat((s) => ({ ...s, [id]: hidden }))
+            }
           />
         ) : view === "icons" && hasDrill ? (
           <GuideCardGrid
@@ -558,6 +573,9 @@ export function GuideBrowser({
             onStatusChange={(id, status) =>
               setLocalStatuses((s) => ({ ...s, [id]: status }))
             }
+            onHideFromCompatibilityChange={(id, hidden) =>
+              setLocalHideCompat((s) => ({ ...s, [id]: hidden }))
+            }
           />
         )}
       </div>
@@ -571,6 +589,7 @@ export function GuideBrowser({
             setPeek((p) => (p && p.id === id ? { ...p, status } : p));
           }}
           onHideFromCompatibilityChange={(id, hidden) => {
+            setLocalHideCompat((s) => ({ ...s, [id]: hidden }));
             setPeek((p) =>
               p && p.id === id ? { ...p, hideFromCompatibility: hidden } : p,
             );
@@ -694,6 +713,7 @@ function GuildTable({
   backTo,
   onOpen,
   onStatusChange,
+  onHideFromCompatibilityChange,
 }: {
   guilds: BrowserGuild[];
   guideBasePath: string;
@@ -704,6 +724,7 @@ function GuildTable({
   backTo?: string;
   onOpen?: (g: BrowserGuild) => void;
   onStatusChange?: (id: string, status: string) => void;
+  onHideFromCompatibilityChange?: (id: string, hidden: boolean) => void;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -768,22 +789,32 @@ function GuildTable({
               )}
               {staffTools && (
                 <td className="px-3 py-3 text-right">
-                  <button
-                    type="button"
-                    disabled={pendingId === g.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleArchive(g, e);
-                    }}
-                    className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
-                    title={
-                      g.status === "ARCHIVED"
-                        ? "Restore to draft"
-                        : "Archive — hide but keep as backup"
-                    }
-                  >
-                    {g.status === "ARCHIVED" ? "Restore" : "Archive"}
-                  </button>
+                  <div className="inline-flex flex-wrap items-center justify-end gap-3">
+                    <HideFromCompatibilityToggle
+                      guildId={g.id}
+                      initialHidden={Boolean(g.hideFromCompatibility)}
+                      compact
+                      onChange={(hidden) =>
+                        onHideFromCompatibilityChange?.(g.id, hidden)
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={pendingId === g.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleArchive(g, e);
+                      }}
+                      className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+                      title={
+                        g.status === "ARCHIVED"
+                          ? "Restore to draft"
+                          : "Archive — hide but keep as backup"
+                      }
+                    >
+                      {g.status === "ARCHIVED" ? "Restore" : "Archive"}
+                    </button>
+                  </div>
                 </td>
               )}
             </tr>

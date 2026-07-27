@@ -12,11 +12,14 @@ export default function HideFromCompatibilityToggle({
   initialHidden,
   onChange,
   variant = "light",
+  compact = false,
 }: {
   guildId: string;
   initialHidden: boolean;
   onChange?: (hidden: boolean) => void;
   variant?: "light" | "dark";
+  /** One-line label for guide list rows (next to Archive). */
+  compact?: boolean;
 }) {
   const [hidden, setHidden] = useState(initialHidden);
   const [pending, startTransition] = useTransition();
@@ -30,14 +33,15 @@ export default function HideFromCompatibilityToggle({
 
   return (
     <label
-      className={`inline-flex cursor-pointer items-start gap-2 text-xs ${
-        dark ? "text-zinc-300" : "text-zinc-600"
-      } ${pending ? "opacity-60" : ""}`}
-      title="Overrides publish status for the compatibility list only — does not archive or unpublish the guide"
+      className={`inline-flex cursor-pointer gap-2 text-xs ${
+        compact ? "items-center" : "items-start"
+      } ${dark ? "text-zinc-300" : "text-zinc-600"} ${pending ? "opacity-60" : ""}`}
+      title="Hide from dealer compatibility list — overrides publish; does not archive the guide"
+      onClick={(e) => e.stopPropagation()}
     >
       <input
         type="checkbox"
-        className="mt-0.5"
+        className={compact ? undefined : "mt-0.5"}
         checked={hidden}
         disabled={pending}
         onChange={(e) => {
@@ -58,13 +62,15 @@ export default function HideFromCompatibilityToggle({
       />
       <span>
         <span className={dark ? "text-zinc-200" : "text-zinc-800"}>
-          Hide from compatibility list
+          {compact ? "Hide from dealer list" : "Hide from compatibility list"}
         </span>
-        <span
-          className={`mt-0.5 block ${dark ? "text-zinc-500" : "text-zinc-400"}`}
-        >
-          Even if published — this wins over the list
-        </span>
+        {!compact && (
+          <span
+            className={`mt-0.5 block ${dark ? "text-zinc-500" : "text-zinc-400"}`}
+          >
+            Even if published — this wins over the list
+          </span>
+        )}
         {error && (
           <span className="mt-0.5 block text-amber-600">{error}</span>
         )}
