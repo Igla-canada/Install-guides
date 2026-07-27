@@ -52,10 +52,12 @@ export default function RichTextEditor({
     if (!el) return;
     // Sanitise here (in the browser) to the strict allowlist, so only safe
     // inline-formatting markup is ever stored or later shown to an installer.
-    const clean = DOMPurify.sanitize(el.innerHTML, {
-      ALLOWED_TAGS: RICH_ALLOWED_TAGS,
-      ALLOWED_ATTR: RICH_ALLOWED_ATTR,
-    });
+    const clean = scrubPasteStyles(
+      DOMPurify.sanitize(el.innerHTML, {
+        ALLOWED_TAGS: RICH_ALLOWED_TAGS,
+        ALLOWED_ATTR: RICH_ALLOWED_ATTR,
+      })
+    );
     const isEmpty = el.textContent?.trim() === "";
     onChange({ html: isEmpty ? "" : clean, text: el.innerText });
   };
@@ -86,6 +88,44 @@ export default function RichTextEditor({
       sel.addRange(savedRange.current);
     }
     document.execCommand("foreColor", false, c);
+    save();
+  };
+
+  /**
+   * Clear formatting on the selection (or the whole box if nothing is selected):
+   * drop paste backgrounds, bold, colours, etc. → plain text with line breaks.
+   * Native removeFormat alone leaves style="background-color:…" from website paste.
+   */
+  const clearFormatting = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    if (!sel) return;
+
+    if (
+      sel.rangeCount === 0 ||
+      !el.contains(sel.anchorNode) ||
+      sel.isCollapsed
+    ) {
+      const all = document.createRange();
+      all.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(all);
+    }
+
+    const range = sel.getRangeAt(0);
+    const holder = document.createElement("div");
+    holder.appendChild(range.extractContents());
+    const plain = holder.innerText.replace(/\u00a0/g, " ");
+    const out = document.createDocumentFragment();
+    const lines = plain.split("\n");
+    lines.forEach((line, i) => {
+      if (i > 0) out.appendChild(document.createElement("br"));
+      if (line) out.appendChild(document.createTextNode(line));
+    });
+    range.insertNode(out);
+    sel.collapseToEnd();
     save();
   };
 
@@ -179,7 +219,7 @@ export default function RichTextEditor({
 
         <span className="mx-0.5 h-5 w-px bg-zinc-200" />
 
-        <ToolBtn title="Clear formatting" onClick={() => cmd("removeFormat")}>
+        <ToolBtn title="Clear formatting" onClick={clearFormatting}>
           <span className="text-xs text-zinc-500">clear</span>
         </ToolBtn>
       </div>
@@ -189,6 +229,15 @@ export default function RichTextEditor({
         contentEditable
         suppressContentEditableWarning
         onBlur={save}
+        onPaste={() => {
+          // After the browser inserts paste HTML, scrub backgrounds on next tick.
+          window.setTimeout(() => {
+            const el = ref.current;
+            if (!el) return;
+            el.innerHTML = scrubPasteStyles(el.innerHTML);
+            save();
+          }, 0);
+        }}
         data-placeholder="Write… (select words and use the toolbar to style them)"
         className="rte-surface min-h-[60px] px-3 py-2 text-sm leading-relaxed focus:outline-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)] [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
       />
@@ -217,4 +266,29 @@ function ToolBtn({
       {children}
     </button>
   );
+}
+
+/** Drop website-paste junk (esp. white backgrounds) from style="" attributes. */
+function scrubPasteStyles(html: string): string {
+  return html.replace(/\sstyle="([^"]*)"/gi, (_full, style: string) => {
+    const kept = style
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => {
+        if (!s) return false;
+        const prop = s.split(":")[0]?.trim().toLowerCase() ?? "";
+        if (!prop) return false;
+        if (prop.startsWith("background")) return false;
+        // Keep only intentional toolbar-ish styles.
+        return (
+          prop === "color" ||
+          prop === "font-size" ||
+          prop === "font-weight" ||
+          prop === "font-style" ||
+          prop === "text-decoration" ||
+          prop === "text-align"
+        );
+      });
+    return kept.length ? ` style="${kept.join("; ")}"` : "";
+  });
 }
