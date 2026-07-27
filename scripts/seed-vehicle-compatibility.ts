@@ -6,7 +6,8 @@
  *   npx tsx --env-file=.env scripts/seed-vehicle-compatibility.ts
  *   npx tsx --env-file=.env scripts/seed-vehicle-compatibility.ts --force
  *   npx tsx --env-file=.env scripts/seed-vehicle-compatibility.ts --refresh
- *     → update iglaProducts + sourceGuideStatus on rows that already have sourceGuideId
+ *     → update make/model/years/trim/iglaProducts/sourceGuideStatus on rows
+ *       that already have sourceGuideId (never writes to Guild)
  */
 import { PrismaClient } from "@prisma/client";
 import { expandIglaProducts } from "../src/lib/vehicle-compatibility";
@@ -58,10 +59,13 @@ async function main() {
       const res = await prisma.vehicleCompatibility.updateMany({
         where: { sourceGuideId: g.id },
         data: {
-          iglaProducts,
-          sourceGuideStatus: g.status,
+          make: g.make.name,
+          model: g.model.name,
           yearFrom,
           yearTo,
+          trim: g.trim?.name ?? null,
+          iglaProducts,
+          sourceGuideStatus: g.status,
         },
       });
       if (res.count) {
@@ -80,7 +84,7 @@ async function main() {
   const existing = await prisma.vehicleCompatibility.count();
   if (existing > 0 && !force) {
     console.log(
-      `Already have ${existing} compatibility record(s). Pass --force to add missing ones, or --refresh to update IGLA products + guide status on existing source-linked rows.`
+      `Already have ${existing} compatibility record(s). Pass --force to add missing ones, or --refresh to sync make/model/years/products/status on existing source-linked rows.`
     );
     return;
   }

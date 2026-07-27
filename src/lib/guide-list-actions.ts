@@ -5,6 +5,7 @@ import { requireRole, requestMeta } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logEvent } from "@/lib/audit";
 import { publishGuild, PublishConflictError } from "@/lib/guild-doc";
+import { syncCompatibilityFromGuide } from "@/lib/vehicle-compatibility";
 
 export type GuideListActionResult =
   | { ok: true; status: string }
@@ -21,6 +22,7 @@ export async function archiveGuide(guildId: string): Promise<GuideListActionResu
     where: { id: guildId },
     data: { status: "ARCHIVED", updatedById: u.id },
   });
+  await syncCompatibilityFromGuide(guildId);
   const meta = await requestMeta();
   await logEvent({
     actor: { userId: u.id },
@@ -30,6 +32,8 @@ export async function archiveGuide(guildId: string): Promise<GuideListActionResu
     userAgent: meta.userAgent,
   });
   revalidatePath("/guides");
+  revalidatePath("/compatibility");
+  revalidatePath("/dealer/compatibility");
   return { ok: true, status: "ARCHIVED" };
 }
 
@@ -44,6 +48,7 @@ export async function restoreGuide(guildId: string): Promise<GuideListActionResu
     where: { id: guildId },
     data: { status: "DRAFT", updatedById: u.id },
   });
+  await syncCompatibilityFromGuide(guildId);
   const meta = await requestMeta();
   await logEvent({
     actor: { userId: u.id },
@@ -53,6 +58,8 @@ export async function restoreGuide(guildId: string): Promise<GuideListActionResu
     userAgent: meta.userAgent,
   });
   revalidatePath("/guides");
+  revalidatePath("/compatibility");
+  revalidatePath("/dealer/compatibility");
   return { ok: true, status: "DRAFT" };
 }
 

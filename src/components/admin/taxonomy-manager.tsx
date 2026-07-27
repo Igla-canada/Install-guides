@@ -15,10 +15,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import TaxonomyFocus from "@/components/admin/taxonomy-focus";
 import TaxonomyGuideChips from "@/components/admin/taxonomy-guide-chips";
+import {
+  syncCompatibilityForGeneration,
+  syncCompatibilityForMake,
+  syncCompatibilityForModel,
+} from "@/lib/vehicle-compatibility";
 
 function refresh() {
   revalidatePath("/users");
   revalidatePath("/guides");
+  revalidatePath("/compatibility");
+  revalidatePath("/dealer/compatibility");
 }
 
 function taxUrl(opts: {
@@ -50,6 +57,7 @@ async function renameMake(formData: FormData) {
   } catch {
     redirect(taxUrl({ make: id, error: "A make with that name already exists" }));
   }
+  await syncCompatibilityForMake(id);
   refresh();
   redirect(taxUrl({ make: id, ok: "Make renamed" }));
 }
@@ -108,6 +116,7 @@ async function renameModel(formData: FormData) {
       })
     );
   }
+  await syncCompatibilityForModel(id);
   refresh();
   redirect(taxUrl({ make: row.makeId, model: id, ok: "Model renamed" }));
 }
@@ -186,6 +195,7 @@ async function updateGeneration(formData: FormData) {
   } catch {
     redirect(taxUrl({ ...ctx, error: "That model already has a generation with that name" }));
   }
+  await syncCompatibilityForGeneration(id);
   refresh();
   redirect(taxUrl({ ...ctx, ok: "Saved label / years" }));
 }
@@ -231,6 +241,7 @@ async function moveGeneration(formData: FormData) {
       })
     );
   }
+  await syncCompatibilityForGeneration(id);
   refresh();
   // Land on the destination model so you can see the move without hunting.
   redirect(

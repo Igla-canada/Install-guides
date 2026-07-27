@@ -416,6 +416,87 @@ export async function loadLiveGuideStatuses(
 }
 
 /**
+ * Push live guide identity (make/model/years/trim/products/status) onto every
+ * VehicleCompatibility row linked via sourceGuideId.
+ *
+ * READ-ONLY on Guild — never creates, edits, publishes, or deletes guides.
+ * Returns how many compatibility rows were updated (0 if none linked).
+ */
+export async function syncCompatibilityFromGuide(guildId: string): Promise<number> {
+  const g = await prisma.guild.findUnique({
+    where: { id: guildId },
+    select: {
+      id: true,
+      status: true,
+      make: { select: { name: true } },
+      model: { select: { name: true } },
+      trim: { select: { name: true } },
+      generation: { select: { yearStart: true, yearEnd: true } },
+      iglaProduct: { select: { name: true } },
+      products: { select: { iglaProduct: { select: { name: true } } } },
+    },
+  });
+  if (!g) return 0;
+
+  const productNames = [
+    g.iglaProduct.name,
+    ...g.products.map((p) => p.iglaProduct.name),
+  ];
+  const iglaProducts = expandIglaProducts(productNames);
+
+  const res = await prisma.vehicleCompatibility.updateMany({
+    where: { sourceGuideId: guildId },
+    data: {
+      make: g.make.name,
+      model: g.model.name,
+      yearFrom: g.generation.yearStart,
+      yearTo: g.generation.yearEnd,
+      trim: g.trim?.name ?? null,
+      iglaProducts,
+      sourceGuideStatus: g.status,
+    },
+  });
+  return res.count;
+}
+
+async function syncCompatibilityForGuildIds(guildIds: string[]): Promise<number> {
+  let n = 0;
+  for (const id of [...new Set(guildIds)]) {
+    n += await syncCompatibilityFromGuide(id);
+  }
+  return n;
+}
+
+/** Sync compat rows for every guide that uses this generation (shared year frame). */
+export async function syncCompatibilityForGeneration(
+  generationId: string,
+): Promise<number> {
+  const guilds = await prisma.guild.findMany({
+    where: { generationId },
+    select: { id: true },
+  });
+  return syncCompatibilityForGuildIds(guilds.map((g) => g.id));
+}
+
+/** Sync compat rows for every guide under this model. */
+export async function syncCompatibilityForModel(modelId: string): Promise<number> {
+  const guilds = await prisma.guild.findMany({
+    where: { modelId },
+    select: { id: true },
+  });
+  return syncCompatibilityForGuildIds(guilds.map((g) => g.id));
+}
+
+/** Sync compat rows for every guide under this make. */
+export async function syncCompatibilityForMake(makeId: string): Promise<number> {
+  const guilds = await prisma.guild.findMany({
+    where: { makeId },
+    select: { id: true },
+  });
+  return syncCompatibilityForGuildIds(guilds.map((g) => g.id));
+}
+
+/**
  * Drop compatibility rows whose linked source guide must not appear on
  * dealer / public / API lists:
  * - guide is ARCHIVED, or

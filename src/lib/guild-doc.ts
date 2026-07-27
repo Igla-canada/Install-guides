@@ -6,8 +6,27 @@
 // document. If you are adding an editing capability, add an operation here and
 // call it from both surfaces; do not mutate guild rows anywhere else.
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { prisma } from "./db";
 import type { Prisma } from "@prisma/client";
+import {
+  syncCompatibilityForGeneration,
+  syncCompatibilityFromGuide,
+} from "./vehicle-compatibility";
+
+/** Ops that change identity fields mirrored on VehicleCompatibility rows. */
+const COMPAT_SYNC_OPS = new Set([
+  "update_identity",
+  "update_generation",
+  "create_model",
+  "create_generation",
+  "set_products",
+]);
+
+function revalidateCompatibilityPaths() {
+  revalidatePath("/compatibility");
+  revalidatePath("/dealer/compatibility");
+}
 
 // ---------------------------------------------------------------------------
 // Operation schemas
@@ -132,6 +151,21 @@ export async function applyOps(
       data: { updatedById: actorUserId },
     });
   });
+
+  // Compatibility is a denormalized mirror — push make/model/years/products
+  // after identity edits so admin + public lists stay in sync with guides.
+  if (ops.some((o) => COMPAT_SYNC_OPS.has(o.op))) {
+    if (ops.some((o) => o.op === "update_generation")) {
+      const guild = await prisma.guild.findUnique({
+        where: { id: guildId },
+        select: { generationId: true },
+      });
+      if (guild) await syncCompatibilityForGeneration(guild.generationId);
+    } else {
+      await syncCompatibilityFromGuide(guildId);
+    }
+    revalidateCompatibilityPaths();
+  }
 }
 
 type Tx = Prisma.TransactionClient;
@@ -583,6 +617,8 @@ export async function publishGuild(
     where: { id: guildId },
     data: { status: "PUBLISHED", currentVersionId: version.id },
   });
+  await syncCompatibilityFromGuide(guildId);
+  revalidateCompatibilityPaths();
   return version;
 }
 
