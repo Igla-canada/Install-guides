@@ -142,6 +142,12 @@ export function GuideBrowser({
   }, [urlView]);
 
   const statusFilter = statusTabs ? sp.status?.toUpperCase() : undefined;
+  // Text / vehicle filters under "All" should still surface archived matches.
+  const searching =
+    Boolean(sp.q?.trim()) ||
+    Boolean(sp.make) ||
+    Boolean(sp.model) ||
+    Boolean(sp.year);
 
   const guilds = useMemo(() => {
     const withLocal = allGuilds.map((g) => {
@@ -158,9 +164,10 @@ export function GuideBrowser({
     if (statusFilter === "PUBLISHED" || statusFilter === "DRAFT") {
       return withLocal.filter((g) => g.status === statusFilter);
     }
-    // "All" hides archived backups
+    // "All" browsing hides archived backups; searching includes them.
+    if (searching) return withLocal;
     return withLocal.filter((g) => g.status !== "ARCHIVED");
-  }, [allGuilds, localStatuses, localHideCompat, statusFilter]);
+  }, [allGuilds, localStatuses, localHideCompat, statusFilter, searching]);
 
   const statusCounts = useMemo(() => {
     let published = 0;
