@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import TaxonomyFocus from "@/components/admin/taxonomy-focus";
+import TaxonomyGuideChips from "@/components/admin/taxonomy-guide-chips";
 
 function refresh() {
   revalidatePath("/users");
@@ -349,11 +350,15 @@ export default async function TaxonomyManager({
               // model names let us ghost a shared guide onto its sibling
               // generations (e.g. one "Range Rover" guide that also answers to
               // "Evoque", "Velar", …).
+              // Live guides only in the UI (archived stay in _count for
+              // delete protection but are hidden here — less noise).
               guilds: {
+                where: { status: { not: "ARCHIVED" } },
                 select: {
                   id: true,
                   title: true,
                   status: true,
+                  hideFromCompatibility: true,
                   altModelAliases: { select: { name: true } },
                 },
                 orderBy: { title: "asc" },
@@ -366,12 +371,14 @@ export default async function TaxonomyManager({
       // (secondary make). Shown as read-only "shadows" so the admin sees the
       // vehicle exists under this make too, without it being a real taxonomy row.
       altGuilds: {
+        where: { guild: { status: { not: "ARCHIVED" } } },
         include: {
           guild: {
             select: {
               id: true,
               title: true,
               status: true,
+              hideFromCompatibility: true,
               make: { select: { name: true } },
               model: { select: { name: true } },
               generation: { select: { name: true } },
@@ -397,9 +404,10 @@ export default async function TaxonomyManager({
       <p className="mt-1 text-xs text-zinc-400">
         The make → model → generation options behind the identity dropdowns.
         Rename a model, edit a generation’s years, add a new year frame, or move
-        a generation onto another model to merge a duplicate. Anything a guide
-        uses shows its count and can’t be deleted until those guides move off it.
-        After Save / Move, this panel stays open on the row you were editing.
+        a generation onto another model to merge a duplicate. Archived guides are
+        hidden here. Tap a guide to preview it on this page (same as Guides list);
+        use Edit only when you need to change it. After Save / Move, this panel
+        stays open on the row you were editing.
       </p>
       {topFlash && <Flash ok={ok} error={error} />}
 
@@ -450,31 +458,22 @@ export default async function TaxonomyManager({
                   <div className="text-[11px] font-medium text-zinc-500">
                     Bridged from other makes — these guides also match “{mk.name}”
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {mk.altGuilds.map((b) => {
+                  <TaxonomyGuideChips
+                    label=""
+                    ghost
+                    guides={mk.altGuilds.map((b) => {
                       const g = b.guild;
                       const label = g.altModelAliases[0]?.name ?? g.model.name;
-                      return (
-                        <a
-                          key={g.id}
-                          href={`/guides/${g.id}/edit`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={`Bridged from ${g.make.name} › ${g.model.name} (${g.generation.name}). Open editor.`}
-                          className="inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100"
-                        >
-                          <span className="opacity-50">⤳</span>
-                          {label}
-                          <span className="text-[10px] text-zinc-400">
-                            (from {g.make.name} › {g.model.name})
-                          </span>
-                          {g.status !== "PUBLISHED" && (
-                            <span className="text-[10px] text-zinc-400">({g.status.toLowerCase()})</span>
-                          )}
-                        </a>
-                      );
+                      return {
+                        id: g.id,
+                        title: label,
+                        status: g.status,
+                        hideFromCompatibility: g.hideFromCompatibility,
+                        subtitle: `${g.make.name} › ${g.model.name} · ${g.generation.name}`,
+                        note: `(from ${g.make.name} › ${g.model.name})`,
+                      };
                     })}
-                  </div>
+                  />
                 </div>
               )}
 
@@ -489,10 +488,15 @@ export default async function TaxonomyManager({
                     id: gd.id,
                     title: gd.title,
                     status: gd.status,
+                    hideFromCompatibility: gd.hideFromCompatibility,
                     genId: gen.id,
                     genName: gen.name,
                     altNames: gd.altModelAliases.map((a) => norm(a.name)),
                   }))
+                );
+                const liveGuideCount = md.generations.reduce(
+                  (n, gen) => n + gen.guilds.length,
+                  0
                 );
                 const modelFlash =
                   openModel === md.id && !openGen && (ok || error);
@@ -522,7 +526,9 @@ export default async function TaxonomyManager({
                           </button>
                         </form>
                       ) : (
-                        <span className="ml-auto text-xs text-zinc-400">{md._count.guilds} guide(s)</span>
+                        <span className="ml-auto text-xs text-zinc-400">
+                          {liveGuideCount} guide{liveGuideCount === 1 ? "" : "s"}
+                        </span>
                       )}
                     </div>
                     {modelFlash && <Flash ok={ok} error={error} />}
@@ -533,7 +539,8 @@ export default async function TaxonomyManager({
                         // grouped; flag generations shared by 2+ guides (editing
                         // their years/label affects every guide on them).
                         const color = GEN_COLORS[gi % GEN_COLORS.length];
-                        const shared = g._count.guilds > 1;
+                        const liveCount = g.guilds.length;
+                        const shared = liveCount > 1;
                         // Guides that live on ANOTHER generation of this model but
                         // also answer to this generation's label via an alt model
                         // name — shown here as read-only ghosts.
@@ -569,59 +576,41 @@ export default async function TaxonomyManager({
                             <button className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">
                               Save
                             </button>
-                            <span className="text-[11px] text-zinc-400">{g._count.guilds} guide(s)</span>
+                            <span className="text-[11px] text-zinc-400">
+                              {liveCount} guide{liveCount === 1 ? "" : "s"}
+                            </span>
                             {shared && (
                               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                                ⚠ {g._count.guilds} guides share this — editing affects both
+                                ⚠ {liveCount} guides share this — editing affects both
                               </span>
                             )}
                           </form>
                           {genFlash && <Flash ok={ok} error={error} />}
 
-                          {g.guilds.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                              <span className="text-[11px] text-zinc-400">Guides:</span>
-                              {g.guilds.map((gd) => (
-                                <a
-                                  key={gd.id}
-                                  href={`/guides/${gd.id}/edit`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  title={`Open "${gd.title}" editor in a new tab`}
-                                  className="inline-flex items-center gap-1 rounded-md border-l-4 border border-zinc-200 bg-white px-2 py-0.5 text-xs hover:bg-zinc-100"
-                                  style={{ borderLeftColor: color }}
-                                >
-                                  ↗ {gd.title}
-                                  {gd.status !== "PUBLISHED" && (
-                                    <span className="text-[10px] text-zinc-400">({gd.status.toLowerCase()})</span>
-                                  )}
-                                </a>
-                              ))}
-                            </div>
-                          )}
+                          <TaxonomyGuideChips
+                            label="Guides:"
+                            accentColor={color}
+                            guides={g.guilds.map((gd) => ({
+                              id: gd.id,
+                              title: gd.title,
+                              status: gd.status,
+                              hideFromCompatibility: gd.hideFromCompatibility,
+                              subtitle: `${mk.name} ${md.name} · ${g.name}`,
+                            }))}
+                          />
 
-                          {ghosts.length > 0 && (
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              <span className="text-[11px] text-zinc-400">Also (ghost):</span>
-                              {ghosts.map((gd) => (
-                                <a
-                                  key={gd.id}
-                                  href={`/guides/${gd.id}/edit`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  title={`"${gd.title}" also answers to "${g.name}" via its alternate model names. Edit it from ${gd.genName}.`}
-                                  className="inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100"
-                                >
-                                  <span className="opacity-50">⤳</span>
-                                  {gd.title}
-                                  <span className="text-[10px] text-zinc-400">(from {gd.genName})</span>
-                                  {gd.status !== "PUBLISHED" && (
-                                    <span className="text-[10px] text-zinc-400">({gd.status.toLowerCase()})</span>
-                                  )}
-                                </a>
-                              ))}
-                            </div>
-                          )}
+                          <TaxonomyGuideChips
+                            label="Also (ghost):"
+                            ghost
+                            guides={ghosts.map((gd) => ({
+                              id: gd.id,
+                              title: gd.title,
+                              status: gd.status,
+                              hideFromCompatibility: gd.hideFromCompatibility,
+                              subtitle: `${mk.name} ${md.name} · ${gd.genName}`,
+                              note: `(from ${gd.genName})`,
+                            }))}
+                          />
 
                           <div className="mt-1.5 flex flex-wrap items-center gap-2">
                             {siblings.length > 0 && (
