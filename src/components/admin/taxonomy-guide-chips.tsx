@@ -84,6 +84,7 @@ export default function TaxonomyGuideChips({
         <GuidePeekPanel
           guide={peek}
           onClose={() => setPeek(null)}
+          canDeletePermanently
           onStatusChange={(id, status) => {
             setPeek((p) => (p && p.id === id ? { ...p, status } : p));
           }}
@@ -92,6 +93,7 @@ export default function TaxonomyGuideChips({
               p && p.id === id ? { ...p, hideFromCompatibility: hidden } : p,
             );
           }}
+          onDeleted={() => setPeek(null)}
           fullHref={withFromParam(`/guides/${peek.id}`, from)}
           editHref={withFromParam(`/guides/${peek.id}/edit`, from)}
         />

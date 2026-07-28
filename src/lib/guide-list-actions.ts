@@ -126,3 +126,34 @@ export async function quickPublishGuide(
   revalidatePath("/guides");
   return { ok: true, status: "PUBLISHED" };
 }
+
+export type DeleteGuideResult =
+  | { ok: true; deleted: true }
+  | { ok: false; error: string };
+
+/**
+ * Hard delete — admin only, irreversible (sections, versions, grant links go
+ * with it; audit events are kept with the guild reference nulled). Prefer
+ * archive when the guide might be needed again.
+ */
+export async function deleteGuidePermanently(
+  guildId: string,
+): Promise<DeleteGuideResult> {
+  const u = await requireRole("ADMIN");
+  const g = await prisma.guild.findUnique({ where: { id: guildId } });
+  if (!g) return { ok: false, error: "not_found" };
+
+  const meta = await requestMeta();
+  await logEvent({
+    actor: { userId: u.id },
+    action: "guild_deleted",
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    meta: { guildId, title: g.title },
+  });
+  await prisma.guild.delete({ where: { id: guildId } });
+  revalidatePath("/guides");
+  revalidatePath("/compatibility");
+  revalidatePath("/dealer/compatibility");
+  return { ok: true, deleted: true };
+}

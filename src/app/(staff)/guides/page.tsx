@@ -2,6 +2,7 @@
 // Shared UI with installer /my-guides via GuideBrowser; this page adds staff
 // chrome (tabs, archive, floating peek, "+ New guide").
 import { prisma } from "@/lib/db";
+import { currentUser } from "@/lib/auth";
 import { GuideBrowser } from "@/components/guides/guide-browser";
 
 export default async function GuildsPage(props: {
@@ -15,6 +16,7 @@ export default async function GuildsPage(props: {
   }>;
 }) {
   const sp = await props.searchParams;
+  const user = await currentUser();
 
   const guilds = await prisma.guild.findMany({
     orderBy: { updatedAt: "desc" },
@@ -39,6 +41,7 @@ export default async function GuildsPage(props: {
       statusTabs
       showMeta
       showStatusBadge
+      canDeletePermanently={user?.role === "ADMIN"}
     />
   );
 }

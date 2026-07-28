@@ -17,7 +17,11 @@ import VehicleCascadeSearch from "@/components/vehicle-cascade-search";
 import GuidePeekPanel, {
   type PeekGuide,
 } from "@/components/guides/guide-peek-panel";
-import { archiveGuide, restoreGuide } from "@/lib/guide-list-actions";
+import {
+  archiveGuide,
+  deleteGuidePermanently,
+  restoreGuide,
+} from "@/lib/guide-list-actions";
 import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
 import { withFromParam } from "@/lib/guides-nav";
 
@@ -94,6 +98,8 @@ export function GuideBrowser({
   statusTabs = false,
   showMeta = false,
   showStatusBadge = false,
+  /** Admin-only hard delete (same gate as the editor ⋯ menu). */
+  canDeletePermanently = false,
 }: {
   guilds: BrowserGuild[];
   sp: GuideBrowserSearch;
@@ -104,6 +110,7 @@ export function GuideBrowser({
   statusTabs?: boolean;
   showMeta?: boolean;
   showStatusBadge?: boolean;
+  canDeletePermanently?: boolean;
 }) {
   const router = useRouter();
   const currentYear = new Date().getFullYear();
@@ -119,6 +126,7 @@ export function GuideBrowser({
   const [localHideCompat, setLocalHideCompat] = useState<
     Record<string, boolean>
   >({});
+  const [removedIds, setRemovedIds] = useState<Record<string, true>>({});
   const [peek, setPeek] = useState<PeekGuide | null>(null);
 
   useEffect(() => {
@@ -150,14 +158,16 @@ export function GuideBrowser({
     Boolean(sp.year);
 
   const guilds = useMemo(() => {
-    const withLocal = allGuilds.map((g) => {
-      let next = g;
-      if (localStatuses[g.id]) next = { ...next, status: localStatuses[g.id]! };
-      if (g.id in localHideCompat) {
-        next = { ...next, hideFromCompatibility: localHideCompat[g.id]! };
-      }
-      return next;
-    });
+    const withLocal = allGuilds
+      .filter((g) => !removedIds[g.id])
+      .map((g) => {
+        let next = g;
+        if (localStatuses[g.id]) next = { ...next, status: localStatuses[g.id]! };
+        if (g.id in localHideCompat) {
+          next = { ...next, hideFromCompatibility: localHideCompat[g.id]! };
+        }
+        return next;
+      });
     if (statusFilter === "ARCHIVED") {
       return withLocal.filter((g) => g.status === "ARCHIVED");
     }
@@ -167,13 +177,21 @@ export function GuideBrowser({
     // "All" browsing hides archived backups; searching includes them.
     if (searching) return withLocal;
     return withLocal.filter((g) => g.status !== "ARCHIVED");
-  }, [allGuilds, localStatuses, localHideCompat, statusFilter, searching]);
+  }, [
+    allGuilds,
+    localStatuses,
+    localHideCompat,
+    removedIds,
+    statusFilter,
+    searching,
+  ]);
 
   const statusCounts = useMemo(() => {
     let published = 0;
     let draft = 0;
     let archived = 0;
     for (const g of allGuilds) {
+      if (removedIds[g.id]) continue;
       const s = localStatuses[g.id] ?? g.status;
       if (s === "PUBLISHED") published++;
       else if (s === "DRAFT") draft++;
@@ -185,7 +203,13 @@ export function GuideBrowser({
       archived,
       all: published + draft, // "All" tab excludes archived
     };
-  }, [allGuilds, localStatuses]);
+  }, [allGuilds, localStatuses, removedIds]);
+
+  function markDeleted(id: string) {
+    setRemovedIds((r) => ({ ...r, [id]: true }));
+    setPeek((p) => (p?.id === id ? null : p));
+    router.refresh();
+  }
 
   const noneMsg = statusFilter
     ? `No ${statusFilter.toLowerCase()} guides for this selection.`
@@ -544,6 +568,7 @@ export function GuideBrowser({
             showMeta={showMeta}
             showStatusBadge={showStatusBadge}
             staffTools={staffTools}
+            canDeletePermanently={canDeletePermanently}
             empty={noneMsg ?? "No guides yet."}
             backTo={backTo}
             onOpen={staffTools ? openPeek : undefined}
@@ -553,6 +578,7 @@ export function GuideBrowser({
             onHideFromCompatibilityChange={(id, hidden) =>
               setLocalHideCompat((s) => ({ ...s, [id]: hidden }))
             }
+            onDeleted={markDeleted}
           />
         ) : view === "icons" && hasDrill ? (
           <GuideCardGrid
@@ -574,6 +600,7 @@ export function GuideBrowser({
             showMeta={showMeta}
             showStatusBadge={showStatusBadge}
             staffTools={staffTools}
+            canDeletePermanently={canDeletePermanently}
             empty={noneMsg ?? "No guides match this search."}
             backTo={backTo}
             onOpen={staffTools ? openPeek : undefined}
@@ -583,6 +610,7 @@ export function GuideBrowser({
             onHideFromCompatibilityChange={(id, hidden) =>
               setLocalHideCompat((s) => ({ ...s, [id]: hidden }))
             }
+            onDeleted={markDeleted}
           />
         )}
       </div>
@@ -591,6 +619,7 @@ export function GuideBrowser({
         <GuidePeekPanel
           guide={peek}
           onClose={() => setPeek(null)}
+          canDeletePermanently={canDeletePermanently}
           onStatusChange={(id, status) => {
             setLocalStatuses((s) => ({ ...s, [id]: status }));
             setPeek((p) => (p && p.id === id ? { ...p, status } : p));
@@ -601,6 +630,7 @@ export function GuideBrowser({
               p && p.id === id ? { ...p, hideFromCompatibility: hidden } : p,
             );
           }}
+          onDeleted={markDeleted}
           fullHref={guideUrl(guideBasePath, peek.id, backTo)}
           editHref={withFromParam(`/guides/${peek.id}/edit`, backTo)}
         />
@@ -716,22 +746,26 @@ function GuildTable({
   showMeta,
   showStatusBadge,
   staffTools,
+  canDeletePermanently = false,
   empty = "No guides here.",
   backTo,
   onOpen,
   onStatusChange,
   onHideFromCompatibilityChange,
+  onDeleted,
 }: {
   guilds: BrowserGuild[];
   guideBasePath: string;
   showMeta: boolean;
   showStatusBadge: boolean;
   staffTools: boolean;
+  canDeletePermanently?: boolean;
   empty?: string;
   backTo?: string;
   onOpen?: (g: BrowserGuild) => void;
   onStatusChange?: (id: string, status: string) => void;
   onHideFromCompatibilityChange?: (id: string, hidden: boolean) => void;
+  onDeleted?: (id: string) => void;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -754,6 +788,24 @@ function GuildTable({
           ? await restoreGuide(g.id)
           : await archiveGuide(g.id);
       if (res.ok && res.status) onStatusChange?.(g.id, res.status);
+      setPendingId(null);
+    });
+  }
+
+  function confirmDelete(g: BrowserGuild, e: MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    if (
+      !confirm(
+        `Permanently delete "${g.title}"?\n\nThis removes the guide, its photos, versions and access links. It cannot be undone — use Archive if you might need it again.`,
+      )
+    ) {
+      return;
+    }
+    setPendingId(g.id);
+    startTransition(async () => {
+      const res = await deleteGuidePermanently(g.id);
+      if (res.ok) onDeleted?.(g.id);
       setPendingId(null);
     });
   }
@@ -821,6 +873,17 @@ function GuildTable({
                     >
                       {g.status === "ARCHIVED" ? "Restore" : "Archive"}
                     </button>
+                    {canDeletePermanently && (
+                      <button
+                        type="button"
+                        disabled={pendingId === g.id}
+                        onClick={(e) => confirmDelete(g, e)}
+                        className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        title="Delete permanently — cannot be undone"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </td>
               )}

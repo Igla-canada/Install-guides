@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   archiveGuide,
+  deleteGuidePermanently,
   quickPublishGuide,
   restoreGuide,
 } from "@/lib/guide-list-actions";
@@ -26,15 +27,19 @@ export type PeekGuide = {
 export default function GuidePeekPanel({
   guide,
   onClose,
+  canDeletePermanently = false,
   onStatusChange,
   onHideFromCompatibilityChange,
+  onDeleted,
   fullHref,
   editHref,
 }: {
   guide: PeekGuide;
   onClose: () => void;
+  canDeletePermanently?: boolean;
   onStatusChange?: (id: string, status: string) => void;
   onHideFromCompatibilityChange?: (id: string, hidden: boolean) => void;
+  onDeleted?: (id: string) => void;
   fullHref: string;
   editHref: string;
 }) {
@@ -155,6 +160,36 @@ export default function GuidePeekPanel({
                 title="Hide from the main list — keeps a backup"
               >
                 Archive
+              </button>
+            )}
+            {canDeletePermanently && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      `Permanently delete "${guide.title}"?\n\nThis removes the guide, its photos, versions and access links. It cannot be undone — use Archive if you might need it again.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  setError(null);
+                  startTransition(async () => {
+                    const res = await deleteGuidePermanently(guide.id);
+                    if (!res.ok) {
+                      setError(res.error ?? "Something went wrong.");
+                      return;
+                    }
+                    onDeleted?.(guide.id);
+                    onClose();
+                    router.refresh();
+                  });
+                }}
+                className="rounded-md border border-red-700/60 px-2.5 py-1 text-xs text-red-300 hover:bg-red-950 disabled:opacity-50"
+                title="Delete permanently — cannot be undone"
+              >
+                Delete
               </button>
             )}
             <Link
