@@ -92,35 +92,40 @@ export default function RichTextEditor({
   };
 
   /**
-   * Clear paste / highlight backgrounds only — keep bold, lists, colours, size.
-   * Native removeFormat would strip those; pasted white boxes live in style="".
+   * Clear visual formatting on the current selection only: colours, backgrounds,
+   * fonts, bold/italic/etc. Structure (lists, paragraphs, alignment, line
+   * breaks) and text content stay. Do NOT paint a theme colour — remove styles
+   * so edit (white) and published (dark) views inherit correctly.
    */
-  const clearBackground = () => {
+  const clearFormatting = () => {
     const el = ref.current;
     if (!el) return;
     el.focus();
 
-    try {
-      document.execCommand("hiliteColor", false, "transparent");
-    } catch {
-      /* ignore */
-    }
-    try {
-      document.execCommand("backColor", false, "transparent");
-    } catch {
-      /* ignore */
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    if (!el.contains(sel.anchorNode) || !el.contains(sel.focusNode)) return;
+
+    const range = sel.getRangeAt(0);
+    const fragment = range.extractContents();
+    stripVisualFormatting(fragment);
+
+    const nodes = Array.from(fragment.childNodes);
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    range.insertNode(fragment);
+
+    // Empty wrappers left at the cut edges after extractContents.
+    pruneEmptyFormatTags(el);
+
+    if (first && last) {
+      const restored = document.createRange();
+      restored.setStartBefore(first);
+      restored.setEndAfter(last);
+      sel.removeAllRanges();
+      sel.addRange(restored);
     }
 
-    el.querySelectorAll("[style]").forEach((node) => {
-      const he = node as HTMLElement;
-      he.style.removeProperty("background-color");
-      he.style.removeProperty("background");
-      he.style.removeProperty("background-image");
-      he.style.removeProperty("background-clip");
-      if (!(he.getAttribute("style") ?? "").trim()) {
-        he.removeAttribute("style");
-      }
-    });
     save();
   };
 
@@ -214,7 +219,7 @@ export default function RichTextEditor({
 
         <span className="mx-0.5 h-5 w-px bg-zinc-200" />
 
-        <ToolBtn title="Clear background" onClick={clearBackground}>
+        <ToolBtn title="Clear Formatting" onClick={clearFormatting}>
           <span className="text-xs text-zinc-500">clear</span>
         </ToolBtn>
       </div>
@@ -261,6 +266,96 @@ function ToolBtn({
       {children}
     </button>
   );
+}
+
+/** Inline / font wrappers that only carry visual formatting — unwrap on clear. */
+const FORMAT_WRAPPER_TAGS = new Set([
+  "B",
+  "STRONG",
+  "I",
+  "EM",
+  "U",
+  "S",
+  "STRIKE",
+  "FONT",
+  "SPAN",
+]);
+
+/** Style props that are structure/layout — keep on clear (not visual chrome). */
+const KEEP_STYLE_PROPS = new Set([
+  "text-align",
+  "text-indent",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "list-style",
+  "list-style-type",
+  "list-style-position",
+]);
+
+/** Strip colours, fonts, weight, etc. Keep structure + alignment / indent. */
+function stripElementVisualStyles(el: HTMLElement) {
+  el.removeAttribute("color");
+  el.removeAttribute("size");
+  el.removeAttribute("face");
+  el.removeAttribute("bgcolor");
+
+  if (!el.hasAttribute("style")) return;
+  const kept: string[] = [];
+  for (const prop of Array.from(el.style)) {
+    const name = prop.toLowerCase();
+    if (KEEP_STYLE_PROPS.has(name)) {
+      const val = el.style.getPropertyValue(prop);
+      if (val) kept.push(`${name}: ${val}`);
+    }
+  }
+  if (kept.length) el.setAttribute("style", kept.join("; "));
+  else el.removeAttribute("style");
+}
+
+function unwrapElement(el: HTMLElement) {
+  const parent = el.parentNode;
+  if (!parent) return;
+  while (el.firstChild) parent.insertBefore(el.firstChild, el);
+  parent.removeChild(el);
+}
+
+/**
+ * Walk a DOM subtree (usually a selection fragment): remove visual formatting
+ * tags/styles; leave lists, paragraphs, breaks, and alignment alone.
+ */
+function stripVisualFormatting(root: Node) {
+  const kids = Array.from(root.childNodes);
+  for (const child of kids) {
+    if (child.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = child as HTMLElement;
+    stripVisualFormatting(el);
+    stripElementVisualStyles(el);
+    if (FORMAT_WRAPPER_TAGS.has(el.tagName)) {
+      unwrapElement(el);
+    }
+  }
+}
+
+/** Remove empty bold/span/font shells left after a mid-tag selection clear. */
+function pruneEmptyFormatTags(root: HTMLElement) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const el of Array.from(root.querySelectorAll("*"))) {
+      if (!FORMAT_WRAPPER_TAGS.has(el.tagName)) continue;
+      if (el.childNodes.length > 0) continue;
+      el.remove();
+      changed = true;
+    }
+  }
 }
 
 /** Drop website-paste junk (esp. white backgrounds) from style="" attributes. */
