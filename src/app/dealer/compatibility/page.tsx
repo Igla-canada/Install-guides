@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { currentUser } from "@/lib/auth";
+import { currentUser, requestMeta } from "@/lib/auth";
+import { logEvent } from "@/lib/audit";
 import {
   baseModelName,
   listCompatibilitySearchMeta,
@@ -37,13 +38,36 @@ export default async function DealerCompatibilityPage(props: {
   const user = await currentUser();
   const isStaff = user?.role === "ADMIN" || user?.role === "TECH";
 
-  const taxonomy = await listCompatibilitySearchMeta({ visibleOnly: true });
+  // Only the picked make's models ship to the browser, so one anonymous request
+  // can't lift the whole make→model catalog.
+  const taxonomy = await listCompatibilitySearchMeta({
+    visibleOnly: true,
+    onlyMake: sp.make ?? "",
+  });
   const { rows, truncated, loaded } = await loadCompatibilityList({
     make: sp.make,
     model: sp.model,
     year: sp.year,
     q: sp.q,
     dealerFacing: true,
+  });
+
+  // This page is public and unauthenticated — record every hit so scraping is
+  // visible in the audit log (actor is null for anonymous visitors).
+  const meta = await requestMeta();
+  await logEvent({
+    actor: user ? { userId: user.id } : null,
+    action: "compat_public_view",
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    meta: {
+      make: sp.make ?? null,
+      model: sp.model ?? null,
+      year: sp.year ?? null,
+      q: sp.q ?? null,
+      results: rows.length,
+      truncated,
+    },
   });
 
   const backToStaffHref = compatibilityQueryHref("/compatibility", {

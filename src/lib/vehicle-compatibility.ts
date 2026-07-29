@@ -535,6 +535,12 @@ export async function listCompatibilitySearchMeta(opts?: {
   visibleOnly?: boolean;
   /** Default true — hide models that only exist via archived/hidden guides. */
   excludeArchivedGuides?: boolean;
+  /**
+   * Public pages: only ship the model list for THIS make (the cascade needs no
+   * more than that). Keeps one anonymous request from handing over the entire
+   * make→model catalog. Makes are still listed so the first dropdown works.
+   */
+  onlyMake?: string;
 }): Promise<{
   makes: string[];
   modelsByMake: Record<string, string[]>;
@@ -579,8 +585,18 @@ export async function listCompatibilitySearchMeta(opts?: {
   for (const [make, map] of byMake) {
     modelsByMake[make] = [...map.values()].sort((a, b) => a.localeCompare(b));
   }
+  const makes = Object.keys(modelsByMake).sort((a, b) => a.localeCompare(b));
+
+  // Public cascade: hand back only the selected make's models.
+  if (opts?.onlyMake !== undefined) {
+    const want = opts.onlyMake.trim();
+    const scoped: Record<string, string[]> = {};
+    if (want && modelsByMake[want]) scoped[want] = modelsByMake[want];
+    return { makes, modelsByMake: scoped, yearOptions: buildYearOptions(rows) };
+  }
+
   return {
-    makes: Object.keys(modelsByMake).sort((a, b) => a.localeCompare(b)),
+    makes,
     modelsByMake,
     yearOptions: buildYearOptions(rows),
   };

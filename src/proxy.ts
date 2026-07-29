@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { isBlockedBotUserAgent } from "@/lib/bot-ua";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
+
+/** Public, unauthenticated pages that anyone can scrape — throttle per IP. */
+const PUBLIC_THROTTLED = ["/dealer/"];
+const PUBLIC_LIMIT = 30; // requests…
+const PUBLIC_WINDOW_MS = 60_000; // …per minute per IP
 
 /**
  * Network gate before routes run:
  * - Drop NVIDIA / stray /socket.io probes instantly (they were wedging localhost)
  * - Refuse known crawler / scraper user-agents
+ * - Rate-limit the public (unauthenticated) pages so the compatibility list
+ *   can't be bulk-harvested — the UA filter alone is trivially bypassed
  * - Attach X-Robots-Tag so nothing is indexed
  * - Service APIs with Bearer tokens still work
  */
@@ -33,6 +41,26 @@ export function proxy(req: NextRequest) {
         "Cache-Control": "no-store",
       },
     });
+  }
+
+  // Throttle the public pages. Service-token callers are exempt (the portal
+  // integration is trusted and has its own auth).
+  if (!hasServiceBearer && PUBLIC_THROTTLED.some((p) => path.startsWith(p))) {
+    const { ok, retryAfter } = rateLimit(
+      `pub:${clientIp(req.headers)}`,
+      PUBLIC_LIMIT,
+      PUBLIC_WINDOW_MS,
+    );
+    if (!ok) {
+      return new NextResponse("Too many requests", {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter),
+          "X-Robots-Tag": "noindex, nofollow",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
   }
 
   const res = NextResponse.next();
