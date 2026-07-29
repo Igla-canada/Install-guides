@@ -409,7 +409,7 @@ export async function loadLiveGuideCompatInfo(
  * The extra model names each source guide is served under (GuildModelAlias), so a
  * compatibility lookup answers to the same names the guide resolver does — a
  * "Land Cruiser" row also being found as "Land Cruiser 250".
- * Keyed by guide id; names are normalised for exact comparison.
+ * Keyed by guide id, holding the names as typed (they're shown in dropdowns).
  */
 export async function loadGuideModelAliases(
   sourceGuideIds: Array<string | null | undefined>,
@@ -422,9 +422,9 @@ export async function loadGuideModelAliases(
     select: { guildId: true, name: true },
   });
   for (const r of rows) {
-    const key = aliasKey(r.name);
-    if (!key) continue;
-    map.set(r.guildId, [...(map.get(r.guildId) ?? []), key]);
+    const name = r.name.trim();
+    if (!name) continue;
+    map.set(r.guildId, [...(map.get(r.guildId) ?? []), name]);
   }
   return map;
 }
@@ -446,7 +446,10 @@ export function rowMatchesModel(
   if (modelMatchesBase(row.model, requestedModel)) return true;
   if (!row.sourceGuideId) return false;
   const want = aliasKey(requestedModel);
-  return Boolean(want) && (aliasesByGuide.get(row.sourceGuideId) ?? []).includes(want);
+  if (!want) return false;
+  return (aliasesByGuide.get(row.sourceGuideId) ?? []).some(
+    (name) => aliasKey(name) === want,
+  );
 }
 
 /** Status-only map (notes / badges). Prefer loadLiveGuideCompatInfo for filtering. */
@@ -605,24 +608,33 @@ export async function listCompatibilitySearchMeta(opts?: {
     const live = await loadLiveGuideCompatInfo(rows.map((r) => r.sourceGuideId));
     rows = excludeHiddenCompatibilityRows(rows, live);
   }
+  // The extra model names each row's guide is served under — offered as their own
+  // options so a vehicle is findable by every name it answers to, not just the
+  // one its guide happens to be filed under.
+  const aliasesByGuide = await loadGuideModelAliases(rows.map((r) => r.sourceGuideId));
+
   // make → compact key → preferred display label
   const byMake = new Map<string, Map<string, string>>();
-  for (const r of rows) {
-    const base = baseModelName(r.model);
-    if (!base) continue;
-    const key = modelBaseKey(r.model);
-    let map = byMake.get(r.make);
+  const addOption = (make: string, label: string, key: string) => {
+    if (!label || !key) return;
+    let map = byMake.get(make);
     if (!map) {
       map = new Map();
-      byMake.set(r.make, map);
+      byMake.set(make, map);
     }
     const existing = map.get(key);
     if (
       !existing ||
-      base.length < existing.length ||
-      (!base.includes("-") && existing.includes("-"))
+      label.length < existing.length ||
+      (!label.includes("-") && existing.includes("-"))
     ) {
-      map.set(key, base);
+      map.set(key, label);
+    }
+  };
+  for (const r of rows) {
+    addOption(r.make, baseModelName(r.model), modelBaseKey(r.model));
+    for (const alias of r.sourceGuideId ? aliasesByGuide.get(r.sourceGuideId) ?? [] : []) {
+      addOption(r.make, baseModelName(alias), modelBaseKey(alias));
     }
   }
   const modelsByMake: Record<string, string[]> = {};

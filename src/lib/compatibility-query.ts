@@ -2,8 +2,9 @@ import { prisma } from "@/lib/db";
 import {
   buildCompatibilityWhere,
   excludeHiddenCompatibilityRows,
+  loadGuideModelAliases,
   loadLiveGuideCompatInfo,
-  modelMatchesBase,
+  rowMatchesModel,
   type LiveGuideCompatInfo,
 } from "@/lib/vehicle-compatibility";
 
@@ -119,8 +120,14 @@ export async function loadCompatibilityList(opts: {
     },
   });
 
+  // Match by the row's own model name OR by an extra model name its source guide
+  // is served under, so a vehicle is found by every name it answers to (the same
+  // rule the guide resolver and the compatibility API use).
+  const aliasesByGuide = model
+    ? await loadGuideModelAliases(rawRows.map((r) => r.sourceGuideId))
+    : new Map<string, string[]>();
   let matched = model
-    ? rawRows.filter((r) => modelMatchesBase(r.model, model))
+    ? rawRows.filter((r) => rowMatchesModel(r, model, aliasesByGuide))
     : rawRows;
 
   const liveCompat = await loadLiveGuideCompatInfo(
