@@ -405,6 +405,50 @@ export async function loadLiveGuideCompatInfo(
   return map;
 }
 
+/**
+ * The extra model names each source guide is served under (GuildModelAlias), so a
+ * compatibility lookup answers to the same names the guide resolver does — a
+ * "Land Cruiser" row also being found as "Land Cruiser 250".
+ * Keyed by guide id; names are normalised for exact comparison.
+ */
+export async function loadGuideModelAliases(
+  sourceGuideIds: Array<string | null | undefined>,
+): Promise<Map<string, string[]>> {
+  const ids = [...new Set(sourceGuideIds.filter((id): id is string => Boolean(id)))];
+  const map = new Map<string, string[]>();
+  if (!ids.length) return map;
+  const rows = await prisma.guildModelAlias.findMany({
+    where: { guildId: { in: ids } },
+    select: { guildId: true, name: true },
+  });
+  for (const r of rows) {
+    const key = aliasKey(r.name);
+    if (!key) continue;
+    map.set(r.guildId, [...(map.get(r.guildId) ?? []), key]);
+  }
+  return map;
+}
+
+/** Normalise a model name for exact alias comparison (case/punctuation only). */
+export function aliasKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Does this row answer to the requested model name — either by its own model
+ * (base-name match) or because its source guide declares that exact extra name?
+ */
+export function rowMatchesModel(
+  row: { model: string; sourceGuideId?: string | null },
+  requestedModel: string,
+  aliasesByGuide: Map<string, string[]>,
+): boolean {
+  if (modelMatchesBase(row.model, requestedModel)) return true;
+  if (!row.sourceGuideId) return false;
+  const want = aliasKey(requestedModel);
+  return Boolean(want) && (aliasesByGuide.get(row.sourceGuideId) ?? []).includes(want);
+}
+
 /** Status-only map (notes / badges). Prefer loadLiveGuideCompatInfo for filtering. */
 export async function loadLiveGuideStatuses(
   sourceGuideIds: Array<string | null | undefined>,

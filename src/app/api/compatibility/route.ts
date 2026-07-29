@@ -15,8 +15,9 @@ import { checkServiceToken } from "@/lib/service-auth";
 import {
   buildCompatibilityWhere,
   excludeHiddenCompatibilityRows,
+  loadGuideModelAliases,
   loadLiveGuideCompatInfo,
-  modelMatchesBase,
+  rowMatchesModel,
   toPublicCompatibilityItem,
 } from "@/lib/vehicle-compatibility";
 
@@ -66,8 +67,14 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  // Match a row by its own model name OR by an extra model name its source guide
+  // is served under, so this answers to the same names the guide resolver does
+  // (a "Land Cruiser" row is also found as "Land Cruiser 250").
+  const aliasesByGuide = model
+    ? await loadGuideModelAliases(rawRows.map((r) => r.sourceGuideId))
+    : new Map<string, string[]>();
   let rows = model
-    ? rawRows.filter((r) => modelMatchesBase(r.model, model))
+    ? rawRows.filter((r) => rowMatchesModel(r, model, aliasesByGuide))
     : rawRows;
 
   if (product) {
