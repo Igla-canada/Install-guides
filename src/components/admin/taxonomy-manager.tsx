@@ -610,6 +610,29 @@ export default async function TaxonomyManager({
                             }))}
                           />
 
+                          {/* The extra model names each guide here was given, so
+                              the coverage of a guide is visible from the taxonomy
+                              without opening it. These are the names the resolver
+                              serves the guide under, on top of its own model. */}
+                          {g.guilds
+                            .filter((gd) => gd.altModelAliases.length > 0)
+                            .map((gd) => (
+                              <p key={`alias-${gd.id}`} className="mt-1 text-[11px] text-zinc-500">
+                                <span className="text-zinc-400">
+                                  {g.guilds.length > 1 ? `${gd.title.trim()} — ` : ""}
+                                  also serves under:
+                                </span>{" "}
+                                {gd.altModelAliases.map((a) => (
+                                  <span
+                                    key={a.name}
+                                    className="mr-1 inline-block rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-zinc-700"
+                                  >
+                                    {a.name}
+                                  </span>
+                                ))}
+                              </p>
+                            ))}
+
                           <TaxonomyGuideChips
                             label="Also (ghost):"
                             ghost
