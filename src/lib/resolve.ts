@@ -198,31 +198,16 @@ export async function resolveGuild(input: ResolveInput): Promise<ResolveResult> 
         })
       : [];
 
-  // Alias rescue (same make): a guide under this make answers to the requested
-  // model name via a per-guide alternate name (a "Land Cruiser" guide that also
-  // lists "Land Cruiser 250", a "1500" guide that lists "Ram 1500").
-  //
-  // Runs whenever a model name was given — NOT only when it failed to resolve.
-  // The requested text usually DOES resolve, just to a sibling Model row that
-  // owns no published guide ("Land Cruiser [J250]"), and skipping the rescue then
-  // is what made alt model names useless. This mirrors the bridge path below,
-  // which likewise runs regardless of how the model resolved.
-  //
-  // Scoped to guides that actually declare aliases: canonical-name matches are
-  // already covered by model resolution + the primary query, and the narrow set
-  // means the row cap can't crowd out the guide we're looking for.
+  // Alias rescue (same make): the requested model name didn't resolve to a Model
+  // row, but a guide under this make may answer to it via a per-guide alternate
+  // model name (e.g. a "1500" guide that also lists "Ram 1500").
   const aliasGuilds =
-    make && target
+    make && modelUnresolved && target
       ? (
           await prisma.guild.findMany({
-            where: {
-              status: "PUBLISHED",
-              makeId: make.id,
-              altModelAliases: { some: {} },
-              ...productWhere,
-            },
+            where: { status: "PUBLISHED", makeId: make.id, ...productWhere },
             include,
-            take: 50,
+            take: 10,
           })
         ).filter((g) => modelNameMatches(allNames(g), target))
       : [];

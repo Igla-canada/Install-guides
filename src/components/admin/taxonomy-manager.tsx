@@ -313,18 +313,6 @@ const GEN_COLORS = ["#2563eb", "#16a34a", "#a855f7", "#ea580c", "#0891b2", "#db2
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Same tolerant rule the resolver uses (src/lib/resolve.ts modelNameMatches), so
-// what the admin sees ghosted is exactly what will be served: a guide answers to
-// a model name when either string contains the other once normalised.
-const nameMatches = (names: string[], modelName: string) => {
-  const target = norm(modelName);
-  if (!target) return false;
-  return names.some((nm) => {
-    const n = norm(nm);
-    return Boolean(n) && (n === target || n.includes(target) || target.includes(n));
-  });
-};
-
 function Flash({ ok, error }: { ok?: string; error?: string }) {
   if (error) {
     return (
@@ -502,25 +490,6 @@ export default async function TaxonomyManager({
 
               {mk.models.map((md) => {
                 const siblings = mk.models.filter((x) => x.id !== md.id);
-                const makeGuides = mk.models.flatMap((m) =>
-                  m.generations.flatMap((gen) =>
-                    gen.guilds.map((gd) => ({
-                      id: gd.id,
-                      title: gd.title,
-                      status: gd.status,
-                      hideFromCompatibility: gd.hideFromCompatibility,
-                      modelId: m.id,
-                      modelName: m.name,
-                      genName: gen.name,
-                      names: [m.name, ...gd.altModelAliases.map((a) => a.name)],
-                    }))
-                  )
-                );
-                // Guides living under a DIFFERENT model of this make that also
-                // answer to this model's name (canonical or an alt model name).
-                const crossModelGhosts = makeGuides.filter(
-                  (gd) => gd.modelId !== md.id && nameMatches(gd.names, md.name)
-                );
                 const modelEmpty = md.generations.length === 0 && md._count.guilds === 0;
                 // Every guide under this model with its home generation + the
                 // model names it also answers to — used to ghost a shared guide
@@ -574,30 +543,6 @@ export default async function TaxonomyManager({
                       )}
                     </div>
                     {modelFlash && <Flash ok={ok} error={error} />}
-
-                    {/* Guides that live under another model of this make but also
-                        answer to this model's name — the model-level twin of the
-                        bridged-make shadows. Read-only; edit them at their home
-                        model. */}
-                    {crossModelGhosts.length > 0 && (
-                      <div className="mt-2 rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-2">
-                        <div className="text-[11px] font-medium text-zinc-500">
-                          Also answers here — guides from another model that match “{md.name.trim()}”
-                        </div>
-                        <TaxonomyGuideChips
-                          label=""
-                          ghost
-                          guides={crossModelGhosts.map((gd) => ({
-                            id: gd.id,
-                            title: gd.title,
-                            status: gd.status,
-                            hideFromCompatibility: gd.hideFromCompatibility,
-                            subtitle: `${mk.name} › ${gd.modelName} · ${gd.genName}`,
-                            note: `(from ${gd.modelName.trim()})`,
-                          }))}
-                        />
-                      </div>
-                    )}
 
                     <div className="mt-2 space-y-2">
                       {md.generations.map((g, gi) => {
