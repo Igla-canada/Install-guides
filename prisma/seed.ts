@@ -27,6 +27,9 @@ async function main() {
   for (const [lineId, name, modelCode] of [
     [igla.id, "IGLA Alarm", "IGLA-ALARM"],
     [igla.id, "IGLA 251", "IGLA-251"],
+    // Older flashers — separate settings templates from current 231 / Alarm.
+    [igla.id, "IGLA OLD", "IGLA-OLD"],
+    [igla.id, "IGLA Alarm OLD", "IGLA-ALARM-OLD"],
     [compass.id, "Compass GPS", "COMPASS-GPS"],
   ] as const) {
     await prisma.iglaProduct.upsert({

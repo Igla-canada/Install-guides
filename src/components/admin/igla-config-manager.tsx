@@ -5,11 +5,16 @@
 // a guide's settings section can be copied exactly. Frozen-snapshot semantics:
 // editing here never touches guides that already embedded the template.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import {
   CONTROL_TYPES,
   blankControl,
+  cloneDoc,
+  cloneRow,
+  cloneSection,
   emptyDoc,
+  isCarConfigurationRow,
+  reorder,
   type IglaConfigDoc,
   type IglaControlType,
   type IglaOption,
@@ -17,6 +22,10 @@ import {
   type IglaSection,
 } from "@/lib/igla-config";
 import { IGLA_FD_DEFAULT } from "@/lib/igla-fd-default";
+import { IGLA_ALARM_DEFAULT } from "@/lib/igla-alarm-default";
+import { IGLA_231_DEFAULT } from "@/lib/igla-231-default";
+import { IGLA_OLD_DEFAULT } from "@/lib/igla-old-default";
+import { IGLA_ALARM_OLD_DEFAULT } from "@/lib/igla-alarm-old-default";
 
 type ProductLite = {
   id: string;
@@ -48,6 +57,34 @@ export default function IglaConfigManager() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [copyToId, setCopyToId] = useState("");
+
+  const sectionDrag = useRef<number | null>(null);
+  const [sectionOver, setSectionOver] = useState<number | null>(null);
+  /** Index of section currently being dragged (for outline highlight). */
+  const [sectionDragging, setSectionDragging] = useState<number | null>(null);
+  const rowDrag = useRef<{ si: number; ri: number } | null>(null);
+  const [rowOver, setRowOver] = useState<{ si: number; ri: number } | null>(null);
+  const [rowDragging, setRowDragging] = useState<{ si: number; ri: number } | null>(
+    null,
+  );
+
+  const clearSectionDrag = () => {
+    sectionDrag.current = null;
+    setSectionOver(null);
+    setSectionDragging(null);
+  };
+  const clearRowDrag = () => {
+    rowDrag.current = null;
+    setRowOver(null);
+    setRowDragging(null);
+  };
+
+  const scrollToSection = (sectionId: string) => {
+    document
+      .getElementById(`igla-section-${sectionId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const loadProducts = async () => {
     const r = await fetch("/api/igla-config/products");
@@ -61,6 +98,7 @@ export default function IglaConfigManager() {
     setSelected(id);
     setDoc(null);
     setMsg(null);
+    setCopyToId("");
     const r = await fetch(`/api/igla-config/${id}`);
     if (r.ok) {
       const data = await r.json();
@@ -109,6 +147,55 @@ export default function IglaConfigManager() {
       rows: [...s.rows, { id: uid(), label: "New setting", control: blankControl("toggle") }],
     }));
 
+  const duplicateSection = (si: number) =>
+    editSections((secs) => {
+      const copy = cloneSection(secs[si]);
+      const next = [...secs];
+      next.splice(si + 1, 0, copy);
+      return next;
+    });
+
+  const duplicateRow = (si: number, ri: number) =>
+    editSection(si, (s) => {
+      const copy = cloneRow(s.rows[ri]);
+      const rows = [...s.rows];
+      rows.splice(ri + 1, 0, copy);
+      return { ...s, rows };
+    });
+
+  /** Copy this whole template onto another unit type (fresh ids). */
+  const copyTemplateTo = async () => {
+    if (!doc || !copyToId || copyToId === selected) return;
+    const target = products.find((p) => p.id === copyToId);
+    if (!target) return;
+    if (
+      target.hasTemplate &&
+      !confirm(
+        `Replace the settings template on “${target.name}” with a copy of “${productName}”?\n\nGuides already built keep their own frozen copy.`,
+      )
+    ) {
+      return;
+    }
+    const next = cloneDoc(doc);
+    delete next.productId;
+    delete next.productName;
+    setSaving(true);
+    setMsg(null);
+    const r = await fetch(`/api/igla-config/${copyToId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc: next }),
+    });
+    setSaving(false);
+    if (r.ok) {
+      setMsg(`Copied template to ${target.name}.`);
+      setCopyToId("");
+      void loadProducts();
+    } else {
+      setMsg("Copy failed.");
+    }
+  };
+
   const deleteTemplate = async (p: ProductLite) => {
     if (
       !confirm(
@@ -138,6 +225,64 @@ export default function IglaConfigManager() {
     setDirty(true);
     setMsg("Loaded IGLA FD defaults — review and Save.");
   };
+
+  const loadAlarmDefaults = () => {
+    if (
+      doc &&
+      doc.sections.length > 0 &&
+      !confirm(
+        "Replace the current template with the IGLA Alarm defaults? This overwrites what's here (guides already built are untouched).",
+      )
+    )
+      return;
+    setDoc(structuredClone(IGLA_ALARM_DEFAULT));
+    setDirty(true);
+    setMsg("Loaded IGLA Alarm defaults — review and Save.");
+  };
+
+  const load231Defaults = () => {
+    if (
+      doc &&
+      doc.sections.length > 0 &&
+      !confirm(
+        "Replace the current template with the IGLA 231 defaults? This overwrites what's here (guides already built are untouched).",
+      )
+    )
+      return;
+    setDoc(structuredClone(IGLA_231_DEFAULT));
+    setDirty(true);
+    setMsg("Loaded IGLA 231 defaults — review and Save.");
+  };
+
+  const loadOldDefaults = () => {
+    if (
+      doc &&
+      doc.sections.length > 0 &&
+      !confirm(
+        "Replace the current template with the IGLA OLD defaults? This overwrites what's here (guides already built are untouched).",
+      )
+    )
+      return;
+    setDoc(structuredClone(IGLA_OLD_DEFAULT));
+    setDirty(true);
+    setMsg("Loaded IGLA OLD defaults — review and Save.");
+  };
+
+  const loadAlarmOldDefaults = () => {
+    if (
+      doc &&
+      doc.sections.length > 0 &&
+      !confirm(
+        "Replace the current template with the IGLA Alarm OLD defaults? This overwrites what's here (guides already built are untouched).",
+      )
+    )
+      return;
+    setDoc(structuredClone(IGLA_ALARM_OLD_DEFAULT));
+    setDirty(true);
+    setMsg("Loaded IGLA Alarm OLD defaults — review and Save.");
+  };
+
+  const otherProducts = products.filter((p) => p.id !== selected);
 
   return (
     <div className="mt-6 flex flex-col gap-4 lg:flex-row">
@@ -210,18 +355,73 @@ export default function IglaConfigManager() {
         ) : !doc ? (
           <p className="text-sm text-zinc-400">Loading…</p>
         ) : (
-          <>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+            <div className="min-w-0 flex-1">
             <div className="sticky top-12 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-2 bg-zinc-50/95 px-1 py-2 backdrop-blur">
               <h2 className="text-sm font-semibold">{productName} — settings template</h2>
               {dirty && <span className="text-xs text-amber-600">● unsaved</span>}
               {msg && <span className="text-xs text-zinc-500">{msg}</span>}
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {otherProducts.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={copyToId}
+                      onChange={(e) => setCopyToId(e.target.value)}
+                      className="max-w-[10rem] rounded-md border border-zinc-300 px-1.5 py-1 text-xs"
+                      title="Copy this full template onto another unit type"
+                    >
+                      <option value="">Clone full template to…</option>
+                      {otherProducts.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.hasTemplate ? " (replace)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!copyToId || saving}
+                      onClick={() => void copyTemplateTo()}
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-40"
+                    >
+                      Clone
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={loadFdDefaults}
                   className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
                   title="Fill this template with the transcribed IGLA FD screenshots"
                 >
                   Load IGLA FD defaults
+                </button>
+                <button
+                  onClick={loadAlarmDefaults}
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                  title="Fill this template with the transcribed IGLA Alarm settings"
+                >
+                  Load IGLA Alarm defaults
+                </button>
+                <button
+                  onClick={load231Defaults}
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                  title="Fill this template with the transcribed IGLA 231 settings"
+                >
+                  Load IGLA 231 defaults
+                </button>
+                <button
+                  onClick={loadOldDefaults}
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                  title="Fill this template with the transcribed IGLA OLD (231 old) settings"
+                >
+                  Load IGLA OLD defaults
+                </button>
+                <button
+                  onClick={loadAlarmOldDefaults}
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                  title="Fill this template with the transcribed IGLA Alarm OLD settings"
+                >
+                  Load IGLA Alarm OLD defaults
                 </button>
                 <button
                   onClick={() => void save()}
@@ -233,10 +433,52 @@ export default function IglaConfigManager() {
               </div>
             </div>
 
+            <p className="mb-2 text-xs text-zinc-400">
+              Drag ⠿ on the left to reorder sections and settings. Use Clone to
+              duplicate a section, a setting (e.g. another wire colour), or the
+              whole template onto another unit type. The outline on the right
+              shows the full structure while you drag.
+            </p>
+
             <div className="space-y-3">
               {doc.sections.map((section, si) => (
-                <div key={section.id} className="rounded-xl border border-zinc-200 bg-white">
+                <div
+                  key={section.id}
+                  id={`igla-section-${section.id}`}
+                  className={`scroll-mt-28 rounded-xl border border-zinc-200 bg-white ${
+                    sectionOver === si || sectionDragging === si
+                      ? "ring-2 ring-zinc-400"
+                      : ""
+                  }`}
+                  onDragOver={(e) => {
+                    if (sectionDrag.current === null) return;
+                    e.preventDefault();
+                    if (sectionOver !== si) setSectionOver(si);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (sectionDrag.current !== null) {
+                      const from = sectionDrag.current;
+                      editSections((secs) => reorder(secs, from, si));
+                    }
+                    clearSectionDrag();
+                  }}
+                >
                   <div className="flex items-center gap-2 rounded-t-xl border-b border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <span
+                      draggable
+                      onDragStart={(e) => {
+                        sectionDrag.current = si;
+                        setSectionDragging(si);
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", `section:${si}`);
+                      }}
+                      onDragEnd={clearSectionDrag}
+                      title="Drag to reorder section"
+                      className="shrink-0 cursor-grab select-none px-0.5 text-zinc-300 hover:text-zinc-600 active:cursor-grabbing"
+                    >
+                      ⠿
+                    </span>
                     <input
                       value={section.title}
                       onChange={(e) =>
@@ -244,6 +486,14 @@ export default function IglaConfigManager() {
                       }
                       className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm font-medium"
                     />
+                    <button
+                      type="button"
+                      onClick={() => duplicateSection(si)}
+                      className="rounded px-1.5 text-xs text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800"
+                      title="Clone this section (and all its settings)"
+                    >
+                      Clone
+                    </button>
                     <button onClick={() => editSections((s) => move(s, si, -1))} className="px-1 text-zinc-400 hover:text-zinc-700" title="Move up">↑</button>
                     <button onClick={() => editSections((s) => move(s, si, 1))} className="px-1 text-zinc-400 hover:text-zinc-700" title="Move down">↓</button>
                     <button
@@ -262,11 +512,42 @@ export default function IglaConfigManager() {
                       <RowEditor
                         key={row.id}
                         row={row}
+                        highlight={
+                          (rowOver?.si === si && rowOver?.ri === ri) ||
+                          (rowDragging?.si === si && rowDragging?.ri === ri)
+                        }
                         onChange={(fn) => editRow(si, ri, fn)}
                         onMove={(dir) => editSection(si, (s) => ({ ...s, rows: move(s.rows, ri, dir) }))}
+                        onClone={() => duplicateRow(si, ri)}
                         onDelete={() =>
                           editSection(si, (s) => ({ ...s, rows: s.rows.filter((_, i) => i !== ri) }))
                         }
+                        onDragHandleStart={(e) => {
+                          rowDrag.current = { si, ri };
+                          setRowDragging({ si, ri });
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", `row:${si}:${ri}`);
+                        }}
+                        onDragHandleEnd={clearRowDrag}
+                        onDragOverRow={(e) => {
+                          if (!rowDrag.current || rowDrag.current.si !== si) return;
+                          e.preventDefault();
+                          if (rowOver?.si !== si || rowOver?.ri !== ri) {
+                            setRowOver({ si, ri });
+                          }
+                        }}
+                        onDropRow={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation(); // don't also drop as section reorder
+                          const drag = rowDrag.current;
+                          if (drag && drag.si === si) {
+                            editSection(si, (s) => ({
+                              ...s,
+                              rows: reorder(s.rows, drag.ri, ri),
+                            }));
+                          }
+                          clearRowDrag();
+                        }}
                       />
                     ))}
                   </div>
@@ -288,10 +569,227 @@ export default function IglaConfigManager() {
             >
               + Add section
             </button>
-          </>
+            </div>
+
+            {/* Compact structure map — stays visible while scrolling/dragging */}
+            <TemplateOutline
+              sections={doc.sections}
+              sectionDragging={sectionDragging}
+              sectionOver={sectionOver}
+              rowDragging={rowDragging}
+              rowOver={rowOver}
+              onScrollToSection={scrollToSection}
+              onSectionDragStart={(si, e) => {
+                sectionDrag.current = si;
+                setSectionDragging(si);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", `section:${si}`);
+              }}
+              onSectionDragEnd={clearSectionDrag}
+              onSectionDragOver={(si) => {
+                if (sectionDrag.current === null) return;
+                if (sectionOver !== si) setSectionOver(si);
+              }}
+              onSectionDrop={(si) => {
+                if (sectionDrag.current !== null) {
+                  editSections((secs) => reorder(secs, sectionDrag.current!, si));
+                }
+                clearSectionDrag();
+              }}
+              onRowDragStart={(si, ri, e) => {
+                rowDrag.current = { si, ri };
+                setRowDragging({ si, ri });
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", `row:${si}:${ri}`);
+              }}
+              onRowDragEnd={clearRowDrag}
+              onRowDragOver={(si, ri) => {
+                if (!rowDrag.current || rowDrag.current.si !== si) return;
+                if (rowOver?.si !== si || rowOver?.ri !== ri) setRowOver({ si, ri });
+              }}
+              onRowDrop={(si, ri) => {
+                const drag = rowDrag.current;
+                if (drag && drag.si === si) {
+                  editSection(si, (s) => ({
+                    ...s,
+                    rows: reorder(s.rows, drag.ri, ri),
+                  }));
+                }
+                clearRowDrag();
+              }}
+            />
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+function shortLabel(s: string, max = 26): string {
+  const t = s.replace(/\s+/g, " ").trim() || "Untitled";
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+function rowSnippet(row: IglaRow): string {
+  if (row.control.type === "io" && row.control.wire.trim()) {
+    const base = row.label.trim() || "Wire";
+    return shortLabel(`${base} · ${row.control.wire}`);
+  }
+  return shortLabel(row.label || "Setting");
+}
+
+/** Sticky mini map of the template — section + setting names only. */
+function TemplateOutline({
+  sections,
+  sectionDragging,
+  sectionOver,
+  rowDragging,
+  rowOver,
+  onScrollToSection,
+  onSectionDragStart,
+  onSectionDragEnd,
+  onSectionDragOver,
+  onSectionDrop,
+  onRowDragStart,
+  onRowDragEnd,
+  onRowDragOver,
+  onRowDrop,
+}: {
+  sections: IglaSection[];
+  sectionDragging: number | null;
+  sectionOver: number | null;
+  rowDragging: { si: number; ri: number } | null;
+  rowOver: { si: number; ri: number } | null;
+  onScrollToSection: (sectionId: string) => void;
+  onSectionDragStart: (si: number, e: DragEvent) => void;
+  onSectionDragEnd: () => void;
+  onSectionDragOver: (si: number) => void;
+  onSectionDrop: (si: number) => void;
+  onRowDragStart: (si: number, ri: number, e: DragEvent) => void;
+  onRowDragEnd: () => void;
+  onRowDragOver: (si: number, ri: number) => void;
+  onRowDrop: (si: number, ri: number) => void;
+}) {
+  return (
+    <aside className="xl:sticky xl:top-28 xl:w-56 xl:shrink-0">
+      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <div className="border-b border-zinc-100 px-3 py-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Template outline
+          </h3>
+          <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+            Drag here or in the editor. Click a section to jump to it.
+          </p>
+        </div>
+        <div className="max-h-[min(70vh,36rem)] space-y-1.5 overflow-y-auto p-2">
+          {sections.length === 0 && (
+            <p className="px-1 py-3 text-center text-[11px] text-zinc-400">
+              No sections yet
+            </p>
+          )}
+          {sections.map((section, si) => {
+            const secActive =
+              sectionDragging === si || sectionOver === si;
+            return (
+              <div
+                key={section.id}
+                className={`rounded-lg border ${
+                  secActive
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-zinc-200 bg-zinc-50/80"
+                }`}
+                onDragOver={(e) => {
+                  if (sectionDragging === null && !rowDragging) return;
+                  // Prefer section reorder when a section is being dragged
+                  if (sectionDragging !== null) {
+                    e.preventDefault();
+                    onSectionDragOver(si);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (sectionDragging !== null) onSectionDrop(si);
+                }}
+              >
+                <div className="flex items-center gap-1 px-1.5 py-1">
+                  <span
+                    draggable
+                    onDragStart={(e) => onSectionDragStart(si, e)}
+                    onDragEnd={onSectionDragEnd}
+                    title="Drag to reorder section"
+                    className="cursor-grab select-none text-xs text-zinc-300 hover:text-zinc-600 active:cursor-grabbing"
+                  >
+                    ⠿
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onScrollToSection(section.id)}
+                    className="min-w-0 flex-1 truncate text-left text-xs font-medium text-zinc-800 hover:underline"
+                    title={section.title || "Untitled section"}
+                  >
+                    {shortLabel(section.title || "Untitled section", 22)}
+                  </button>
+                  <span className="shrink-0 text-[10px] text-zinc-400">
+                    {section.rows.length}
+                  </span>
+                </div>
+                {section.rows.length > 0 && (
+                  <ul className="space-y-0.5 border-t border-zinc-200/80 px-1 py-1">
+                    {section.rows.map((row, ri) => {
+                      const rowActive =
+                        (rowDragging?.si === si && rowDragging.ri === ri) ||
+                        (rowOver?.si === si && rowOver.ri === ri);
+                      return (
+                        <li
+                          key={row.id}
+                          className={`flex items-center gap-1 rounded px-1 py-0.5 ${
+                            rowActive ? "bg-amber-100 ring-1 ring-amber-300" : ""
+                          }`}
+                          onDragOver={(e) => {
+                            if (!rowDragging || rowDragging.si !== si) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRowDragOver(si, ri);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRowDrop(si, ri);
+                          }}
+                        >
+                          <span
+                            draggable
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              onRowDragStart(si, ri, e);
+                            }}
+                            onDragEnd={onRowDragEnd}
+                            title="Drag to reorder setting"
+                            className="cursor-grab select-none text-[10px] text-zinc-300 hover:text-zinc-500 active:cursor-grabbing"
+                          >
+                            ⠿
+                          </span>
+                          <span
+                            className="min-w-0 flex-1 truncate text-[11px] text-zinc-500"
+                            title={
+                              row.control.type === "io" && row.control.wire
+                                ? `${row.label} (${row.control.wire})`
+                                : row.label
+                            }
+                          >
+                            {rowSnippet(row)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -301,21 +799,46 @@ export default function IglaConfigManager() {
 
 function RowEditor({
   row,
+  highlight,
   onChange,
   onMove,
+  onClone,
   onDelete,
+  onDragHandleStart,
+  onDragHandleEnd,
+  onDragOverRow,
+  onDropRow,
 }: {
   row: IglaRow;
+  highlight?: boolean;
   onChange: (fn: (r: IglaRow) => IglaRow) => void;
   onMove: (dir: number) => void;
+  onClone: () => void;
   onDelete: () => void;
+  onDragHandleStart: (e: DragEvent) => void;
+  onDragHandleEnd: () => void;
+  onDragOverRow: (e: DragEvent) => void;
+  onDropRow: (e: DragEvent) => void;
 }) {
   const setControlType = (type: IglaControlType) =>
     onChange((r) => ({ ...r, control: blankControl(type) }));
 
   return (
-    <div className="px-3 py-2">
+    <div
+      className={`px-3 py-2 ${highlight ? "bg-zinc-100 ring-2 ring-inset ring-zinc-400" : ""}`}
+      onDragOver={onDragOverRow}
+      onDrop={onDropRow}
+    >
       <div className="flex items-start gap-2">
+        <span
+          draggable
+          onDragStart={onDragHandleStart}
+          onDragEnd={onDragHandleEnd}
+          title="Drag to reorder setting"
+          className="mt-1 shrink-0 cursor-grab select-none px-0.5 text-zinc-300 hover:text-zinc-600 active:cursor-grabbing"
+        >
+          ⠿
+        </span>
         <div className="min-w-0 flex-1 space-y-1">
           <input
             value={row.label}
@@ -342,6 +865,14 @@ function RowEditor({
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={onClone}
+          className="rounded px-1.5 text-xs text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800"
+          title="Clone this setting (e.g. same options, different wire)"
+        >
+          Clone
+        </button>
         <button onClick={() => onMove(-1)} className="px-1 text-zinc-400 hover:text-zinc-700" title="Move up">↑</button>
         <button onClick={() => onMove(1)} className="px-1 text-zinc-400 hover:text-zinc-700" title="Move down">↓</button>
         <button onClick={onDelete} className="px-1 text-red-400 hover:text-red-600" title="Delete setting">✕</button>
@@ -464,13 +995,24 @@ function ControlEditor({
   }
 
   if (c.type === "select") {
+    const carConfig = isCarConfigurationRow(row);
     return (
-      <OptionList
-        options={c.options}
-        value={c.value}
-        onOptions={(options, value) => setC({ options, value })}
-        onValue={(value) => setC({ value })}
-      />
+      <div className="space-y-1.5">
+        {carConfig && (
+          <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-900">
+            Car configuration names are typed in while editing a guide. New names
+            appear here automatically. You can reorder or remove them; add new
+            ones from the guide editor.
+          </p>
+        )}
+        <OptionList
+          options={c.options}
+          value={c.value}
+          allowAdd={!carConfig}
+          onOptions={(options, value) => setC({ options, value })}
+          onValue={(value) => setC({ value })}
+        />
+      </div>
     );
   }
 
@@ -532,11 +1074,14 @@ function OptionList({
   value,
   onOptions,
   onValue,
+  allowAdd = true,
 }: {
   options: IglaOption[];
   value: string | null;
   onOptions: (options: IglaOption[], value: string | null) => void;
   onValue: (value: string | null) => void;
+  /** False for Car configuration — names come from guide editors. */
+  allowAdd?: boolean;
 }) {
   const setLabel = (i: number, label: string) =>
     onOptions(
@@ -556,6 +1101,9 @@ function OptionList({
 
   return (
     <div className="mt-1 space-y-1">
+      {options.length === 0 && !allowAdd && (
+        <p className="text-[11px] text-zinc-400">No configurations yet — add one in a guide.</p>
+      )}
       {options.map((o, i) => (
         <div key={o.id} className="flex items-center gap-1">
           <button
@@ -577,12 +1125,14 @@ function OptionList({
           <button onClick={() => removeAt(i)} className="px-1 text-red-400 hover:text-red-600">✕</button>
         </div>
       ))}
-      <button
-        onClick={add}
-        className="rounded border border-dashed border-zinc-300 px-1.5 py-0.5 text-zinc-500 hover:text-zinc-700"
-      >
-        + option
-      </button>
+      {allowAdd && (
+        <button
+          onClick={add}
+          className="rounded border border-dashed border-zinc-300 px-1.5 py-0.5 text-zinc-500 hover:text-zinc-700"
+        >
+          + option
+        </button>
+      )}
     </div>
   );
 }

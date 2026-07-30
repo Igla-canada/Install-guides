@@ -3,12 +3,18 @@
 //  GET    — the template doc, or an empty doc if none yet (ADMIN + TECH: tech
 //           reads it to snapshot into a guide's igla_settings block).
 //  PUT    — replace the template doc (ADMIN only).
+//  PATCH  — append a Car configuration option from a guide editor (ADMIN).
 //  DELETE — clear the template (ADMIN only). The product stays in the catalog;
 //           guides that already embedded a snapshot keep their frozen copy.
 import { NextResponse } from "next/server";
 import { requireRole, AuthError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { asConfigDoc, emptyDoc, isIglaConfigDoc } from "@/lib/igla-config";
+import {
+  appendCarConfigurationToDoc,
+  asConfigDoc,
+  emptyDoc,
+  isIglaConfigDoc,
+} from "@/lib/igla-config";
 import type { Prisma } from "@prisma/client";
 
 async function guard(...roles: ("ADMIN" | "TECH")[]) {
@@ -63,6 +69,52 @@ export async function PUT(
     update: { doc },
   });
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Append one Car configuration label from a guide editor onto the product
+ * template list (so future guides / the admin dropdown see it). Idempotent.
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ productId: string }> }
+) {
+  const denied = await guard("ADMIN");
+  if (denied) return denied;
+  const { productId } = await params;
+  const body = await req.json().catch(() => null);
+  const label = typeof body?.label === "string" ? body.label.trim() : "";
+  if (!label)
+    return NextResponse.json({ error: "label_required" }, { status: 400 });
+
+  const product = await prisma.iglaProduct.findUnique({
+    where: { id: productId },
+    include: { configTemplate: true },
+  });
+  if (!product)
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const current = product.configTemplate
+    ? asConfigDoc(product.configTemplate.doc)
+    : emptyDoc();
+  const { doc, option, added } = appendCarConfigurationToDoc(current, label);
+  if (!option) {
+    return NextResponse.json(
+      { error: "car_configuration_missing" },
+      { status: 400 },
+    );
+  }
+
+  if (added) {
+    const json = doc as Prisma.InputJsonValue;
+    await prisma.iglaConfigTemplate.upsert({
+      where: { iglaProductId: productId },
+      create: { iglaProductId: productId, doc: json },
+      update: { doc: json },
+    });
+  }
+
+  return NextResponse.json({ ok: true, added, option });
 }
 
 export async function DELETE(

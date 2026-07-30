@@ -124,3 +124,231 @@ export function controlValueLabel(c: IglaControl): string {
       return c.func.options.find((o) => o.id === c.func.value)?.label ?? "";
   }
 }
+
+function newId(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `id${Math.round(performance.now() * 1000)}`;
+}
+
+/** Remint option ids; keep the selected value pointing at the same label. */
+function remapOptions(
+  options: IglaOption[],
+  value: string | null,
+): { options: IglaOption[]; value: string | null } {
+  let nextValue: string | null = null;
+  const next = options.map((o) => {
+    const id = newId();
+    if (o.id === value) nextValue = id;
+    return { ...o, id };
+  });
+  if (nextValue == null && next[0]) nextValue = next[0].id;
+  return { options: next, value: nextValue };
+}
+
+/** Deep-clone a control with fresh nested ids (options / segments). */
+export function cloneControl(control: IglaControl): IglaControl {
+  const c = structuredClone(control);
+  switch (c.type) {
+    case "select": {
+      const remapped = remapOptions(c.options, c.value);
+      return { ...c, ...remapped };
+    }
+    case "number":
+      return {
+        ...c,
+        segments: c.segments.map((s) => ({ ...s, id: newId() })),
+      };
+    case "io": {
+      const direction = remapOptions(c.direction.options, c.direction.value);
+      const func = remapOptions(c.func.options, c.func.value);
+      return {
+        ...c,
+        direction: { ...c.direction, ...direction },
+        func: { ...c.func, ...func },
+      };
+    }
+    default:
+      return c;
+  }
+}
+
+/** Duplicate a setting row with a new id (for wire-colour twins, etc.). */
+export function cloneRow(row: IglaRow, labelSuffix = " (copy)"): IglaRow {
+  const label =
+    !labelSuffix || row.label.endsWith(labelSuffix)
+      ? row.label
+      : `${row.label}${labelSuffix}`;
+  return {
+    ...structuredClone(row),
+    id: newId(),
+    label,
+    control: cloneControl(row.control),
+  };
+}
+
+/** Duplicate a section and every setting inside it, all with fresh ids. */
+export function cloneSection(section: IglaSection, titleSuffix = " (copy)"): IglaSection {
+  const title =
+    !titleSuffix || section.title.endsWith(titleSuffix)
+      ? section.title
+      : `${section.title}${titleSuffix}`;
+  return {
+    id: newId(),
+    title,
+    // Keep setting labels; only remint ids (user renames wires after clone).
+    rows: section.rows.map((r) => cloneRow(r, "")),
+  };
+}
+
+/** Full template clone — new ids on every section/row/option. */
+export function cloneDoc(doc: IglaConfigDoc): IglaConfigDoc {
+  return {
+    ...structuredClone(doc),
+    sections: doc.sections.map((s) => cloneSection(s, "")),
+  };
+}
+
+/** Move `from` → `to` in a new array (no-op if out of range / same index). */
+export function reorder<T>(arr: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) {
+    return arr;
+  }
+  const next = [...arr];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+/** Stable row id used in FD defaults / templates for the vehicle config file. */
+export const CAR_CONFIGURATION_ROW_ID = "car_configuration";
+
+export function isCarConfigurationRow(row: {
+  id?: string;
+  label?: string;
+}): boolean {
+  if (row.id === CAR_CONFIGURATION_ROW_ID) return true;
+  return (row.label ?? "").trim().toLowerCase() === "car configuration";
+}
+
+function newOptionId(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `id${Math.round(performance.now() * 1000)}`;
+}
+
+/** Find the Car configuration select row in a doc (if present). */
+export function findCarConfigurationRow(
+  doc: IglaConfigDoc,
+): { sectionIndex: number; rowIndex: number; row: IglaRow } | null {
+  for (let si = 0; si < doc.sections.length; si++) {
+    const section = doc.sections[si];
+    for (let ri = 0; ri < section.rows.length; ri++) {
+      const row = section.rows[ri];
+      if (isCarConfigurationRow(row) && row.control.type === "select") {
+        return { sectionIndex: si, rowIndex: ri, row };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Append a car-configuration label to a select control if not already present
+ * (case-insensitive). Returns the option to select and whether it was newly added.
+ */
+export function ensureCarConfigurationOption(
+  control: Extract<IglaControl, { type: "select" }>,
+  rawLabel: string,
+): {
+  control: Extract<IglaControl, { type: "select" }>;
+  option: IglaOption;
+  added: boolean;
+} {
+  const label = rawLabel.trim();
+  if (!label) {
+    return {
+      control,
+      option: { id: control.value ?? "", label: "" },
+      added: false,
+    };
+  }
+  const existing = control.options.find(
+    (o) => o.label.trim().toLowerCase() === label.toLowerCase(),
+  );
+  if (existing) {
+    return {
+      control: { ...control, value: existing.id },
+      option: existing,
+      added: false,
+    };
+  }
+  const option: IglaOption = { id: newOptionId(), label };
+  return {
+    control: {
+      ...control,
+      options: [...control.options, option],
+      value: option.id,
+    },
+    option,
+    added: true,
+  };
+}
+
+/** Merge template car-config options into a guide snapshot (by label). */
+export function mergeCarConfigurationOptions(
+  sections: IglaSection[],
+  templateOptions: IglaOption[],
+): { sections: IglaSection[]; changed: boolean } {
+  if (!templateOptions.length) return { sections, changed: false };
+  let changed = false;
+  const next = sections.map((section) => ({
+    ...section,
+    rows: section.rows.map((row) => {
+      if (!isCarConfigurationRow(row) || row.control.type !== "select") return row;
+      const have = new Set(
+        row.control.options.map((o) => o.label.trim().toLowerCase()),
+      );
+      const extras = templateOptions.filter(
+        (o) => o.label.trim() && !have.has(o.label.trim().toLowerCase()),
+      );
+      if (!extras.length) return row;
+      changed = true;
+      // Fresh ids in the guide snapshot so we don't share template option ids.
+      const mapped = extras.map((o) => ({ id: newOptionId(), label: o.label }));
+      return {
+        ...row,
+        control: {
+          ...row.control,
+          options: [...row.control.options, ...mapped],
+        },
+      };
+    }),
+  }));
+  return { sections: changed ? next : sections, changed };
+}
+
+/**
+ * Append label onto the template doc's Car configuration list.
+ * No-op if the row is missing or the label already exists.
+ */
+export function appendCarConfigurationToDoc(
+  doc: IglaConfigDoc,
+  rawLabel: string,
+): { doc: IglaConfigDoc; option: IglaOption | null; added: boolean } {
+  const found = findCarConfigurationRow(doc);
+  if (!found || found.row.control.type !== "select") {
+    return { doc, option: null, added: false };
+  }
+  const { control, option, added } = ensureCarConfigurationOption(
+    found.row.control,
+    rawLabel,
+  );
+  if (!added) return { doc, option, added: false };
+  const next = structuredClone(doc);
+  next.sections[found.sectionIndex].rows[found.rowIndex] = {
+    ...next.sections[found.sectionIndex].rows[found.rowIndex],
+    control,
+  };
+  return { doc: next, option, added: true };
+}

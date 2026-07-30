@@ -37,11 +37,12 @@ export const IGLA_FD_DEFAULT: IglaConfigDoc = {
         {
           id: "car_configuration",
           label: "Car configuration",
-          help: "The vehicle configuration file flashed to the unit.",
+          help: "Vehicle configuration file name. Enter new names while editing a guide — they are added to this list automatically.",
           control: {
             type: "select",
-            options: opts("toyota_rav4_6r0e2p2"),
-            value: "toyota_rav4_6r0e2p2",
+            // Options are filled from guide editors (not pre-seeded here).
+            options: [],
+            value: null,
           },
         },
         {
