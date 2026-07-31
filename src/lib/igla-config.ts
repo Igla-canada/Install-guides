@@ -454,6 +454,110 @@ export function mergeCarConfigurationOptions(
   return { sections: changed ? next : sections, changed };
 }
 
+function mergeOptionListsByLabel(
+  existing: IglaOption[],
+  fromDefaults: IglaOption[],
+): { options: IglaOption[]; added: number } {
+  const have = new Set(
+    existing.map((o) => o.label.trim().toLowerCase()).filter(Boolean),
+  );
+  const usedIds = new Set(existing.map((o) => o.id));
+  const extras: IglaOption[] = [];
+  for (const o of fromDefaults) {
+    const label = o.label.trim();
+    if (!label || have.has(label.toLowerCase())) continue;
+    have.add(label.toLowerCase());
+    if (!usedIds.has(o.id)) {
+      usedIds.add(o.id);
+      extras.push({ id: o.id, label: o.label });
+    } else {
+      const id = newOptionId();
+      usedIds.add(id);
+      extras.push({ id, label: o.label });
+    }
+  }
+  if (!extras.length) return { options: existing, added: 0 };
+  return { options: [...existing, ...extras], added: extras.length };
+}
+
+/**
+ * Keep the current template (presets, values, car configs, structure) and only
+ * append missing dropdown / I/O function options from a defaults pack.
+ * If the template is empty, returns a full clone of defaults.
+ */
+export function mergeDefaultsOptionLists(
+  existing: IglaConfigDoc | null | undefined,
+  defaults: IglaConfigDoc,
+): { doc: IglaConfigDoc; added: number } {
+  if (!existing || existing.sections.length === 0) {
+    return { doc: structuredClone(defaults), added: 0 };
+  }
+
+  const byId = new Map<string, IglaRow>();
+  const byLabel = new Map<string, IglaRow>();
+  for (const section of defaults.sections) {
+    for (const row of section.rows) {
+      byId.set(row.id, row);
+      byLabel.set(row.label.trim().toLowerCase(), row);
+    }
+  }
+
+  let added = 0;
+  const next = structuredClone(existing);
+  for (const section of next.sections) {
+    for (let i = 0; i < section.rows.length; i++) {
+      const row = section.rows[i];
+      const def =
+        byId.get(row.id) ?? byLabel.get(row.label.trim().toLowerCase());
+      if (!def) continue;
+
+      const c = row.control;
+      const d = def.control;
+
+      if (c.type === "select" && d.type === "select") {
+        // Never pull car-config names from defaults (defaults list is empty).
+        if (isCarConfigurationRow(row)) continue;
+        const m = mergeOptionListsByLabel(c.options, d.options);
+        if (m.added) {
+          section.rows[i] = {
+            ...row,
+            control: { ...c, options: m.options },
+          };
+          added += m.added;
+        }
+      } else if (c.type === "flags" && d.type === "flags") {
+        const m = mergeOptionListsByLabel(c.options, d.options);
+        if (m.added) {
+          section.rows[i] = {
+            ...row,
+            control: { ...c, options: m.options },
+          };
+          added += m.added;
+        }
+      } else if (c.type === "io" && d.type === "io") {
+        const dir = mergeOptionListsByLabel(
+          c.direction.options,
+          d.direction.options,
+        );
+        const func = mergeOptionListsByLabel(c.func.options, d.func.options);
+        if (dir.added || func.added) {
+          section.rows[i] = {
+            ...row,
+            control: {
+              ...c,
+              direction: { ...c.direction, options: dir.options },
+              func: { ...c.func, options: func.options },
+            },
+          };
+          added += dir.added + func.added;
+        }
+      }
+    }
+  }
+
+  return { doc: next, added };
+}
+
 /**
  * Append label onto the template doc's Car configuration list.
  * No-op if the row is missing or the label already exists.

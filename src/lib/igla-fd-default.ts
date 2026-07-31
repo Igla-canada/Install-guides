@@ -19,12 +19,23 @@ const DIRECTIONS: IglaOption[] = [
   { id: "in_plus", label: "Input '+'" },
   { id: "in_minus", label: "Input '-'" },
 ];
+// Function list for White-blue / White-orange / White-violet (from FD flasher UI).
 const OUTPUT_FUNCS = opts(
-  "Not used",
-  "Feature 5",
+  "Not available",
+  "Output to additional blocking in the Engine Shut-off mode (NC)",
+  "Indication of active engine blocking",
   "Analog service indication",
+  "Hazard warning lights (or some other external indication)",
+  "Alternate hazard warning light control",
+  "Analog lock",
+  "Analog unlock",
+  "Alternate central lock control (pulse, along one wire)",
   "Siren output",
-  "Analog ignition indication"
+  "Feature 1",
+  "Feature 2",
+  "Feature 3",
+  "Feature 4",
+  "Feature 5",
 );
 const INPUT_FUNCS = opts("Not used", "Analog ignition", "Alarm input", "Hood pin switch", "Brake pedal");
 

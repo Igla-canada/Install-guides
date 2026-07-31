@@ -19,6 +19,7 @@ import {
   isCarConfigurationRow,
   isExtraOptionsRow,
   reorder,
+  mergeDefaultsOptionLists,
   type IglaConfigDoc,
   type IglaControlType,
   type IglaOption,
@@ -245,72 +246,73 @@ export default function IglaConfigManager() {
     await loadProducts();
   };
 
-  const loadFdDefaults = () => {
-    if (
-      doc &&
-      doc.sections.length > 0 &&
-      !confirm("Replace the current template with the IGLA FD defaults? This overwrites what's here (guides already built are untouched).")
-    )
+  const applyDefaultsPack = (
+    pack: IglaConfigDoc,
+    emptyConfirm: string,
+    mergeConfirm: string,
+    emptyMsg: string,
+  ) => {
+    const hasContent = Boolean(doc && doc.sections.length > 0);
+    if (!confirm(hasContent ? mergeConfirm : emptyConfirm)) return;
+    const { doc: next, added } = mergeDefaultsOptionLists(doc, pack);
+    if (hasContent && added === 0) {
+      setMsg(
+        "No new options to add — your template already has them. Nothing changed.",
+      );
       return;
-    setDoc(structuredClone(IGLA_FD_DEFAULT));
+    }
+    setDoc(next);
     setDirty(true);
-    setMsg("Loaded IGLA FD defaults — review and Save.");
+    setMsg(
+      hasContent
+        ? `Added ${added} option(s) from defaults — presets kept. Review and Save.`
+        : emptyMsg,
+    );
+  };
+
+  const loadFdDefaults = () => {
+    applyDefaultsPack(
+      IGLA_FD_DEFAULT,
+      "Load the full IGLA FD defaults into this empty template?",
+      "Add missing dropdown / wire options from the IGLA FD defaults?\n\nYour presets, values, and car configurations stay as they are. Only new list items are added.",
+      "Loaded IGLA FD defaults — review and Save.",
+    );
   };
 
   const loadAlarmDefaults = () => {
-    if (
-      doc &&
-      doc.sections.length > 0 &&
-      !confirm(
-        "Replace the current template with the IGLA Alarm defaults? This overwrites what's here (guides already built are untouched).",
-      )
-    )
-      return;
-    setDoc(structuredClone(IGLA_ALARM_DEFAULT));
-    setDirty(true);
-    setMsg("Loaded IGLA Alarm defaults — review and Save.");
+    applyDefaultsPack(
+      IGLA_ALARM_DEFAULT,
+      "Load the full IGLA Alarm defaults into this empty template?",
+      "Add missing dropdown / wire options from the IGLA Alarm defaults?\n\nYour presets, values, and car configurations stay as they are. Only new list items are added.",
+      "Loaded IGLA Alarm defaults — review and Save.",
+    );
   };
 
   const load231Defaults = () => {
-    if (
-      doc &&
-      doc.sections.length > 0 &&
-      !confirm(
-        "Replace the current template with the IGLA 231 defaults? This overwrites what's here (guides already built are untouched).",
-      )
-    )
-      return;
-    setDoc(structuredClone(IGLA_231_DEFAULT));
-    setDirty(true);
-    setMsg("Loaded IGLA 231 defaults — review and Save.");
+    applyDefaultsPack(
+      IGLA_231_DEFAULT,
+      "Load the full IGLA 231 defaults into this empty template?",
+      "Add missing dropdown / wire options from the IGLA 231 defaults?\n\nYour presets, values, and car configurations stay as they are. Only new list items are added.",
+      "Loaded IGLA 231 defaults — review and Save.",
+    );
   };
 
   const loadOldDefaults = () => {
-    if (
-      doc &&
-      doc.sections.length > 0 &&
-      !confirm(
-        "Replace this template with the older 231 flasher pack? (Not a separate product — intended for the IGLA 231 unit type. Guides already built are untouched.)",
-      )
-    )
-      return;
-    setDoc(structuredClone(IGLA_OLD_DEFAULT));
-    setDirty(true);
-    setMsg("Loaded old 231 flasher pack — review and Save.");
+    applyDefaultsPack(
+      IGLA_OLD_DEFAULT,
+      "Load the older 231 flasher pack into this empty template?",
+      "Add missing dropdown / wire options from the older 231 flasher pack?\n\nYour presets, values, and car configurations stay as they are. Only new list items are added.",
+      "Loaded old 231 flasher pack — review and Save.",
+    );
   };
 
   const loadAlarmOldDefaults = () => {
-    if (
-      doc &&
-      doc.sections.length > 0 &&
-      !confirm(
-        "Replace this template with the older Alarm flasher pack? (Not a separate product — intended for the IGLA Alarm unit type. Guides already built are untouched.)",
-      )
-    )
-      return;
-    setDoc(structuredClone(IGLA_ALARM_OLD_DEFAULT));
-    setDirty(true);
-    setMsg("Loaded old Alarm flasher pack — review and Save.");
+    applyDefaultsPack(
+      IGLA_ALARM_OLD_DEFAULT,
+      "Load the older Alarm flasher pack into this empty template?",
+      "Add missing dropdown / wire options from the older Alarm flasher pack?\n\nYour presets, values, and car configurations stay as they are. Only new list items are added.",
+      "Loaded old Alarm flasher pack — review and Save.",
+    );
   };
 
   const otherProducts = products.filter((p) => p.id !== selected);
@@ -481,45 +483,45 @@ export default function IglaConfigManager() {
                     <button
                       onClick={loadFdDefaults}
                       className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                      title="Fill with the transcribed IGLA FD screenshots"
+                      title="Add missing options from the transcribed IGLA FD list (keeps your presets)"
                     >
-                      Load transcribed defaults
+                      Add missing defaults
                     </button>
                   )}
                 {isAlarmProduct(productName) && variant === "current" && (
                   <button
                     onClick={loadAlarmDefaults}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                    title="Fill with the transcribed current Alarm flasher settings"
+                    title="Add missing options from the transcribed Alarm list (keeps your presets)"
                   >
-                    Load transcribed defaults
+                    Add missing defaults
                   </button>
                 )}
                 {is231Product(productName) && variant === "current" && (
                   <button
                     onClick={load231Defaults}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                    title="Fill with the transcribed current 231 flasher settings"
+                    title="Add missing options from the transcribed 231 list (keeps your presets)"
                   >
-                    Load transcribed defaults
+                    Add missing defaults
                   </button>
                 )}
                 {is231Product(productName) && variant === "old" && (
                   <button
                     onClick={loadOldDefaults}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                    title="Reset to the transcribed older 231 flasher pack"
+                    title="Add missing options from the older 231 flasher pack (keeps your presets)"
                   >
-                    Reload transcribed defaults
+                    Add missing defaults
                   </button>
                 )}
                 {isAlarmProduct(productName) && variant === "old" && (
                   <button
                     onClick={loadAlarmOldDefaults}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                    title="Reset to the transcribed older Alarm flasher pack"
+                    title="Add missing options from the older Alarm flasher pack (keeps your presets)"
                   >
-                    Reload transcribed defaults
+                    Add missing defaults
                   </button>
                 )}
                 <button
