@@ -9,6 +9,7 @@ import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
 import GrantPanel from "@/components/guides/grant-panel";
 import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
+import AnalogBlockingToggle from "@/components/guides/analog-blocking-toggle";
 import { guidesBackHref, withFromParam } from "@/lib/guides-nav";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +110,10 @@ export default async function GuildPreviewPage(props: {
         <HideFromCompatibilityToggle
           guildId={doc.id}
           initialHidden={Boolean(doc.hideFromCompatibility)}
+        />
+        <AnalogBlockingToggle
+          guildId={doc.id}
+          initialRequired={Boolean(doc.analogBlockingRequired)}
         />
         <span className="text-sm text-zinc-400">
           Preview — what the installer sees

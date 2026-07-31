@@ -124,6 +124,7 @@ async function main() {
         engineType,
         transmissionType,
         analogBlockRequired: false,
+        blockKind: null,
         additionalBlockRequired: false,
         dealerNotes: null,
         installationNotes: `Seeded from guide “${g.title}” (${g.status}). Blocking fields need admin review.`,

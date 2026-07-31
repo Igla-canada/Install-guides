@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { setCompatibilityVisibilityBulk } from "@/lib/vehicle-compatibility-actions";
+import {
+  setCompatibilityVisibilityBulk,
+  updateCompatibilityBlockingFields,
+} from "@/lib/vehicle-compatibility-actions";
 import {
   baseModelName,
   formatIglaProducts,
@@ -19,6 +22,7 @@ export type StaffCompatRow = {
   transmissionType: string | null;
   analogBlockRequired: boolean;
   analogBlockType: string | null;
+  blockKind: string | null;
   dealerNotes: string | null;
   iglaProducts: string[];
   isVisibleToDealers: boolean;
@@ -175,6 +179,32 @@ export default function StaffCompatibilityTable({
     });
   }
 
+  function patchBlocking(
+    id: string,
+    patch: {
+      analogBlockRequired?: boolean;
+      analogBlockType?: string | null;
+      blockKind?: "analog" | "digital" | null;
+    },
+  ) {
+    startTransition(async () => {
+      const res = await updateCompatibilityBlockingFields(id, patch);
+      if (!res.ok) return;
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                analogBlockRequired: res.analogBlockRequired,
+                analogBlockType: res.analogBlockType,
+                blockKind: res.blockKind,
+              }
+            : r,
+        ),
+      );
+    });
+  }
+
   const dealerVisibleCount = rows.filter((r) => r.isVisibleToDealers).length;
 
   return (
@@ -264,6 +294,7 @@ export default function StaffCompatibilityTable({
                 title="Sort published / draft / archived"
               />
               <th className="px-3 py-2 font-medium">Trim / config</th>
+              <th className="px-3 py-2 font-medium">Type of block</th>
               <th className="px-3 py-2 font-medium">Analog</th>
               <SortHeader
                 label="Updated"
@@ -350,10 +381,69 @@ export default function StaffCompatibilityTable({
                       .filter(Boolean)
                       .join(" · ") || "—"}
                   </td>
-                  <td className="px-3 py-2 text-xs">
-                    {r.analogBlockRequired
-                      ? `Required${r.analogBlockType ? ` · ${r.analogBlockType}` : ""}`
-                      : "Not required"}
+                  <td className="px-3 py-2">
+                    <select
+                      value={
+                        r.blockKind === "analog" || r.blockKind === "digital"
+                          ? r.blockKind
+                          : r.analogBlockRequired
+                            ? "analog"
+                            : ""
+                      }
+                      disabled={pending}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        patchBlocking(r.id, {
+                          blockKind:
+                            v === "analog" || v === "digital" ? v : null,
+                          ...(v === "analog"
+                            ? { analogBlockRequired: true }
+                            : v === "digital"
+                              ? { analogBlockRequired: false }
+                              : {}),
+                        });
+                      }}
+                      className="max-w-[7.5rem] rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs"
+                      title="Type of block: digital or analog"
+                    >
+                      <option value="">—</option>
+                      <option value="analog">Analog</option>
+                      <option value="digital">Digital</option>
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex min-w-[10rem] flex-col gap-1">
+                      <select
+                        value={r.analogBlockRequired ? "yes" : "no"}
+                        disabled={pending}
+                        onChange={(e) =>
+                          patchBlocking(r.id, {
+                            analogBlockRequired: e.target.value === "yes",
+                          })
+                        }
+                        className="rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs"
+                        title="Analog blocking required?"
+                      >
+                        <option value="no">Not required</option>
+                        <option value="yes">Required</option>
+                      </select>
+                      {r.analogBlockRequired && (
+                        <input
+                          type="text"
+                          defaultValue={r.analogBlockType ?? ""}
+                          key={`${r.id}-${r.analogBlockType ?? ""}`}
+                          disabled={pending}
+                          placeholder="Type / notes…"
+                          onBlur={(e) => {
+                            const next = e.target.value.trim() || null;
+                            if (next === (r.analogBlockType ?? null)) return;
+                            patchBlocking(r.id, { analogBlockType: next });
+                          }}
+                          className="rounded border border-zinc-200 px-1.5 py-1 text-xs"
+                          title="Optional analog blocking detail"
+                        />
+                      )}
+                    </div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-zinc-500">
                     {r.updatedAt ? r.updatedAt.slice(0, 10) : "—"}
@@ -386,7 +476,7 @@ export default function StaffCompatibilityTable({
             {visibleRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-3 py-8 text-center text-zinc-500"
                 >
                   No compatibility records match this search.

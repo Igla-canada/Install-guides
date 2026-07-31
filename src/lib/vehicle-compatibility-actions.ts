@@ -117,3 +117,42 @@ export async function setCompatibilityVisibilityBulk(
   revalidateCompat();
   return { ok: true as const, count: unique.length, visible };
 }
+
+/** Quick edit Analog / block kind on a compatibility row (staff list). Never touches guides. */
+export async function updateCompatibilityBlockingFields(
+  id: string,
+  patch: {
+    analogBlockRequired?: boolean;
+    analogBlockType?: string | null;
+    blockKind?: "analog" | "digital" | null;
+  },
+) {
+  await requireRole("ADMIN", "TECH");
+  const row = await prisma.vehicleCompatibility.findUnique({ where: { id } });
+  if (!row) return { ok: false as const, error: "Not found." };
+
+  const analogBlockRequired =
+    patch.analogBlockRequired ?? row.analogBlockRequired;
+  let analogBlockType =
+    patch.analogBlockType !== undefined
+      ? patch.analogBlockType?.trim() || null
+      : row.analogBlockType;
+  if (!analogBlockRequired) analogBlockType = null;
+
+  let blockKind =
+    patch.blockKind !== undefined ? patch.blockKind : row.blockKind;
+  if (analogBlockRequired) blockKind = "analog";
+  else if (blockKind !== "digital" && blockKind !== "analog") blockKind = null;
+
+  const updated = await prisma.vehicleCompatibility.update({
+    where: { id },
+    data: { analogBlockRequired, analogBlockType, blockKind },
+  });
+  revalidateCompat();
+  return {
+    ok: true as const,
+    analogBlockRequired: updated.analogBlockRequired,
+    analogBlockType: updated.analogBlockType,
+    blockKind: updated.blockKind,
+  };
+}

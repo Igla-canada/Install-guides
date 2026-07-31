@@ -97,6 +97,48 @@ export async function setHideFromCompatibility(
   return { ok: true, hideFromCompatibility: hide };
 }
 
+/** Guide checkbox → linked compatibility Analog column (never creates/deletes guides). */
+export async function setAnalogBlockingRequired(
+  guildId: string,
+  required: boolean,
+): Promise<
+  | { ok: true; analogBlockingRequired: boolean; syncedRows: number }
+  | { ok: false; error: string }
+> {
+  const u = await requireRole("ADMIN", "TECH");
+  const g = await prisma.guild.findUnique({ where: { id: guildId } });
+  if (!g) return { ok: false, error: "not_found" };
+
+  await prisma.guild.update({
+    where: { id: guildId },
+    data: { analogBlockingRequired: required, updatedById: u.id },
+  });
+
+  const { syncCompatibilityFromGuide } = await import(
+    "@/lib/vehicle-compatibility"
+  );
+  const syncedRows = await syncCompatibilityFromGuide(guildId);
+
+  const meta = await requestMeta();
+  await logEvent({
+    actor: { userId: u.id },
+    guildId,
+    action: required
+      ? "guild_analog_blocking_on"
+      : "guild_analog_blocking_off",
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    meta: { syncedRows },
+  });
+  revalidatePath("/guides");
+  revalidatePath(`/guides/${guildId}`);
+  revalidatePath(`/guides/${guildId}/edit`);
+  revalidatePath("/dealer/compatibility");
+  revalidatePath("/compatibility");
+  revalidatePath("/users");
+  return { ok: true, analogBlockingRequired: required, syncedRows };
+}
+
 /** Publish from the floating preview / list without opening the full editor. */
 export async function quickPublishGuide(
   guildId: string,

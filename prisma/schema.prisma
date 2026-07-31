@@ -185,6 +185,9 @@ model Guild {
   /// When true, linked VehicleCompatibility rows stay off dealer/API lists
   /// even if this guide is PUBLISHED (overrides archive/publish visibility).
   hideFromCompatibility Boolean @default(false)
+  /// Guide-level flag: this install needs analog blocking. Synced onto linked
+  /// VehicleCompatibility.analogBlockRequired (admin can still edit the row).
+  analogBlockingRequired Boolean @default(false)
   currentVersionId String?
   coverImageId     String?
   coverImage       ImageAsset? @relation("GuildCover", fields: [coverImageId], references: [id])
@@ -435,6 +438,8 @@ model VehicleCompatibility {
   transmissionType        String?
   analogBlockRequired     Boolean  @default(false)
   analogBlockType         String?
+  /// Overall block kind shown on dealer/staff lists: "analog" | "digital" | null.
+  blockKind               String?
   additionalBlockRequired Boolean  @default(false)
   additionalBlockDetails  String?
   installationNotes       String?

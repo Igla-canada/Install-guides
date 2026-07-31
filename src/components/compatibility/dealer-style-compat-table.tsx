@@ -1,5 +1,6 @@
 import {
   baseModelName,
+  formatBlockKind,
   formatIglaProducts,
   yearsLabel,
 } from "@/lib/vehicle-compatibility";
@@ -13,12 +14,13 @@ export default function DealerStyleCompatTable({
 }) {
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table className="w-full min-w-[820px] text-left text-sm">
         <thead className="border-b border-zinc-200 bg-zinc-50 text-xs font-medium uppercase tracking-wide text-zinc-500">
           <tr>
             <th className="whitespace-nowrap px-3 py-2">Make / model</th>
             <th className="whitespace-nowrap px-3 py-2">Years</th>
             <th className="whitespace-nowrap px-3 py-2">IGLA</th>
+            <th className="whitespace-nowrap px-3 py-2">Type of block</th>
             <th className="whitespace-nowrap px-3 py-2">Analog</th>
             <th className="whitespace-nowrap px-3 py-2">Notes</th>
           </tr>
@@ -28,6 +30,8 @@ export default function DealerStyleCompatTable({
             const guideNotPublished =
               Boolean(r.guideStatus) && r.guideStatus !== "PUBLISHED";
             const base = baseModelName(r.model);
+            const kind =
+              r.blockKind ?? (r.analogBlockRequired ? "analog" : null);
             return (
               <tr
                 key={r.id}
@@ -41,6 +45,9 @@ export default function DealerStyleCompatTable({
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-800">
                   {formatIglaProducts(r.iglaProducts)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 text-zinc-600">
+                  {formatBlockKind(kind)}
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-600">
                   {r.analogBlockRequired
@@ -78,7 +85,7 @@ export default function DealerStyleCompatTable({
           {rows.length === 0 && (
             <tr>
               <td
-                colSpan={5}
+                colSpan={6}
                 className="px-3 py-10 text-center text-zinc-500"
               >
                 No matching vehicles.

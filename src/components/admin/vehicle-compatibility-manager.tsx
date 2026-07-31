@@ -11,6 +11,7 @@ import {
   baseModelName,
   buildYearOptions,
   expandIglaProducts,
+  formatBlockKind,
   formatIglaProducts,
   IGLA_PRODUCT_OPTIONS,
   modelBaseKey,
@@ -30,6 +31,7 @@ export type CompatRow = {
   transmissionType: string | null;
   analogBlockRequired: boolean;
   analogBlockType: string | null;
+  blockKind: string | null;
   additionalBlockRequired: boolean;
   additionalBlockDetails: string | null;
   installationNotes: string | null;
@@ -62,6 +64,7 @@ type FormState = {
   transmissionType: string;
   analogBlockRequired: string;
   analogBlockType: string;
+  blockKind: string;
   additionalBlockRequired: string;
   additionalBlockDetails: string;
   installationNotes: string;
@@ -85,6 +88,7 @@ const emptyForm: FormState = {
   transmissionType: "",
   analogBlockRequired: "no",
   analogBlockType: "",
+  blockKind: "",
   additionalBlockRequired: "no",
   additionalBlockDetails: "",
   installationNotes: "",
@@ -121,6 +125,12 @@ function formFromRow(row: CompatRow): FormState {
     transmissionType: row.transmissionType ?? "",
     analogBlockRequired: row.analogBlockRequired ? "yes" : "no",
     analogBlockType: row.analogBlockType ?? "",
+    blockKind:
+      row.blockKind === "analog" || row.blockKind === "digital"
+        ? row.blockKind
+        : row.analogBlockRequired
+          ? "analog"
+          : "",
     additionalBlockRequired: row.additionalBlockRequired ? "yes" : "no",
     additionalBlockDetails: row.additionalBlockDetails ?? "",
     installationNotes: row.installationNotes ?? "",
@@ -301,6 +311,12 @@ export default function VehicleCompatibilityManager({
       analogBlockRequired: form.analogBlockRequired === "yes",
       analogBlockType:
         form.analogBlockRequired === "yes" ? form.analogBlockType.trim() || null : null,
+      blockKind:
+        form.analogBlockRequired === "yes"
+          ? "analog"
+          : form.blockKind === "digital" || form.blockKind === "analog"
+            ? form.blockKind
+            : null,
       additionalBlockRequired: form.additionalBlockRequired === "yes",
       additionalBlockDetails:
         form.additionalBlockRequired === "yes"
@@ -389,11 +405,46 @@ export default function VehicleCompatibilityManager({
           ))}
 
           <label className="block text-sm">
+            <span className="text-zinc-600">Type of block</span>
+            <select
+              value={
+                form.analogBlockRequired === "yes" ? "analog" : form.blockKind
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  blockKind: v,
+                  analogBlockRequired:
+                    v === "analog" ? "yes" : f.analogBlockRequired === "yes" && v !== "digital"
+                      ? f.analogBlockRequired
+                      : v === "digital"
+                        ? "no"
+                        : f.analogBlockRequired,
+                }));
+              }}
+              className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5"
+            >
+              <option value="">—</option>
+              <option value="analog">Analog</option>
+              <option value="digital">Digital</option>
+            </select>
+          </label>
+          <label className="block text-sm">
             <span className="text-zinc-600">Analog Blocking Required</span>
             <select
               value={form.analogBlockRequired}
               onChange={(e) =>
-                setForm((f) => ({ ...f, analogBlockRequired: e.target.value }))
+                setForm((f) => ({
+                  ...f,
+                  analogBlockRequired: e.target.value,
+                  blockKind:
+                    e.target.value === "yes"
+                      ? "analog"
+                      : f.blockKind === "analog"
+                        ? ""
+                        : f.blockKind,
+                }))
               }
               className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5"
             >
@@ -402,15 +453,14 @@ export default function VehicleCompatibilityManager({
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-zinc-600">
-              Analog Blocking Type{form.analogBlockRequired === "yes" ? " *" : ""}
-            </span>
+            <span className="text-zinc-600">Analog detail (optional)</span>
             <input
               value={form.analogBlockType}
               disabled={form.analogBlockRequired !== "yes"}
               onChange={(e) =>
                 setForm((f) => ({ ...f, analogBlockType: e.target.value }))
               }
+              placeholder="e.g. relay type, notes…"
               className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 disabled:bg-zinc-100"
             />
           </label>
@@ -771,7 +821,8 @@ export default function VehicleCompatibilityManager({
                     <th className="px-3 py-2">IGLA</th>
                     <th className="px-3 py-2">Guide</th>
                     <th className="px-3 py-2">Config</th>
-                    <th className="px-3 py-2">Analog block</th>
+                    <th className="px-3 py-2">Type of block</th>
+                    <th className="px-3 py-2">Analog</th>
                     <th className="px-3 py-2" title="Checked = hidden from dealer list">
                       Hide
                     </th>
@@ -851,16 +902,22 @@ export default function VehicleCompatibilityManager({
                               .filter(Boolean)
                               .join(" · ") || "—"}
                           </td>
+                          <td className="px-3 py-2 text-xs text-zinc-700">
+                            {formatBlockKind(
+                              r.blockKind ??
+                                (r.analogBlockRequired ? "analog" : null),
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-xs">
                             {r.analogBlockRequired ? (
                               <span className="text-amber-800">
-                                Yes
+                                Required
                                 {r.analogBlockType
                                   ? `: ${r.analogBlockType}`
                                   : ""}
                               </span>
                             ) : (
-                              <span className="text-zinc-400">No</span>
+                              <span className="text-zinc-400">—</span>
                             )}
                           </td>
                           <td className="px-3 py-2">
@@ -928,7 +985,7 @@ export default function VehicleCompatibilityManager({
                         </tr>
                         {isOpen && editing && (
                           <tr className="border-b border-amber-200 bg-amber-50/40">
-                            <td colSpan={10} className="px-3 py-3">
+                            <td colSpan={11} className="px-3 py-3">
                               {formPanel(
                                 `Edit · ${editing.make} ${editing.model} ${yearsLabel(
                                   editing.yearFrom,
@@ -945,7 +1002,7 @@ export default function VehicleCompatibilityManager({
                   {filtered.length === 0 && (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={11}
                         className="px-3 py-8 text-center text-sm text-zinc-500"
                       >
                         No compatibility records match this search.

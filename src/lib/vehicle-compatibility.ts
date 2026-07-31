@@ -20,6 +20,8 @@ export type CompatibilityInput = {
   transmissionType?: string | null;
   analogBlockRequired: boolean;
   analogBlockType?: string | null;
+  /** "analog" | "digital" | null — type of block column on dealer/staff lists */
+  blockKind?: string | null;
   additionalBlockRequired: boolean;
   additionalBlockDetails?: string | null;
   installationNotes?: string | null;
@@ -210,6 +212,13 @@ export function parseCompatibilityForm(formData: FormData): CompatibilityInput {
   const yearTo = yearToRaw === "" ? null : Number(yearToRaw);
   const analogBlockRequired = formData.get("analogBlockRequired") === "yes";
   const additionalBlockRequired = formData.get("additionalBlockRequired") === "yes";
+  const blockKindRaw = String(formData.get("blockKind") ?? "")
+    .trim()
+    .toLowerCase();
+  const blockKind =
+    blockKindRaw === "analog" || blockKindRaw === "digital"
+      ? blockKindRaw
+      : null;
   const selected = formData.getAll("iglaProducts").map(String);
   return {
     make: String(formData.get("make") ?? "").trim(),
@@ -221,6 +230,7 @@ export function parseCompatibilityForm(formData: FormData): CompatibilityInput {
     transmissionType: clean(formData.get("transmissionType")),
     analogBlockRequired,
     analogBlockType: analogBlockRequired ? clean(formData.get("analogBlockType")) : null,
+    blockKind: analogBlockRequired ? "analog" : blockKind,
     additionalBlockRequired,
     additionalBlockDetails: additionalBlockRequired
       ? clean(formData.get("additionalBlockDetails"))
@@ -252,12 +262,8 @@ export function validateCompatibility(
       return { ok: false, error: "Year From cannot be greater than Year To." };
     }
   }
-  if (input.analogBlockRequired && !input.analogBlockType) {
-    return {
-      ok: false,
-      error: "Analog Blocking Type is required when Analog Blocking is Yes.",
-    };
-  }
+  // analogBlockType is optional — guide checkbox / quick list can mark Required
+  // without a free-text type; dealers then see "Required".
   if (input.additionalBlockRequired && !input.additionalBlockDetails) {
     return {
       ok: false,
@@ -272,11 +278,30 @@ export function validateCompatibility(
       model: input.model.trim(),
       iglaProducts: expandIglaProducts(input.iglaProducts ?? []),
       analogBlockType: input.analogBlockRequired ? input.analogBlockType : null,
+      blockKind: input.analogBlockRequired
+        ? "analog"
+        : input.blockKind === "digital"
+          ? "digital"
+          : input.blockKind === "analog"
+            ? "analog"
+            : null,
       additionalBlockDetails: input.additionalBlockRequired
         ? input.additionalBlockDetails
         : null,
     },
   };
+}
+
+export const BLOCK_KIND_OPTIONS = [
+  { value: "", label: "—" },
+  { value: "analog", label: "Analog" },
+  { value: "digital", label: "Digital" },
+] as const;
+
+export function formatBlockKind(kind: string | null | undefined): string {
+  if (kind === "analog") return "Analog";
+  if (kind === "digital") return "Digital";
+  return "—";
 }
 
 /** Overlapping year range + same make/model (and matching optional config fields). */
@@ -475,6 +500,7 @@ export async function syncCompatibilityFromGuide(guildId: string): Promise<numbe
     select: {
       id: true,
       status: true,
+      analogBlockingRequired: true,
       make: { select: { name: true } },
       model: { select: { name: true } },
       trim: { select: { name: true } },
@@ -501,6 +527,9 @@ export async function syncCompatibilityFromGuide(guildId: string): Promise<numbe
       trim: g.trim?.name ?? null,
       iglaProducts,
       sourceGuideStatus: g.status,
+      // Guide checkbox drives Analog column; does not invent analogBlockType text.
+      analogBlockRequired: g.analogBlockingRequired,
+      ...(g.analogBlockingRequired ? { blockKind: "analog" } : {}),
     },
   });
   return res.count;
@@ -690,6 +719,7 @@ export type PublicCompatibilityItem = {
   iglaProducts: string[];
   analogBlockRequired: boolean;
   analogBlockType: string | null;
+  blockKind: string | null;
   dealerNotes: string | null;
   /** Live guide status when linked; otherwise stored snapshot. */
   guideStatus: string | null;
@@ -706,6 +736,7 @@ export function toPublicCompatibilityItem(
     iglaProducts: string[];
     analogBlockRequired: boolean;
     analogBlockType: string | null;
+    blockKind?: string | null;
     dealerNotes: string | null;
     sourceGuideStatus?: string | null;
   },
@@ -724,6 +755,7 @@ export function toPublicCompatibilityItem(
     iglaProducts: r.iglaProducts,
     analogBlockRequired: r.analogBlockRequired,
     analogBlockType: r.analogBlockType,
+    blockKind: r.blockKind ?? (r.analogBlockRequired ? "analog" : null),
     dealerNotes: r.dealerNotes,
     guideStatus,
     guidePublished: guideStatus === "PUBLISHED",

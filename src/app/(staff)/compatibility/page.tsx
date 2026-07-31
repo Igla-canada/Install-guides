@@ -50,6 +50,7 @@ export default async function StaffCompatibilityPage(props: {
     transmissionType: r.transmissionType,
     analogBlockRequired: r.analogBlockRequired,
     analogBlockType: r.analogBlockType,
+    blockKind: r.blockKind,
     dealerNotes: r.dealerNotes,
     iglaProducts: r.iglaProducts,
     isVisibleToDealers: r.isVisibleToDealers,

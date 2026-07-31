@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
       iglaProducts: true,
       analogBlockRequired: true,
       analogBlockType: true,
+      blockKind: true,
       dealerNotes: true,
       sourceGuideId: true,
       sourceGuideStatus: true,

@@ -23,6 +23,7 @@ import CoverEditor from "./cover-editor";
 import PropertiesEditor from "./properties-editor";
 import { SECTION_TYPES } from "@/lib/blocks";
 import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
+import AnalogBlockingToggle from "@/components/guides/analog-blocking-toggle";
 
 // The undo payload: the content that restore_content rewrites (identity FKs are
 // not touched — they have their own staged Save/Discard).
@@ -169,6 +170,13 @@ export default function GuildEditor({
           initialHidden={Boolean(doc.hideFromCompatibility)}
           onChange={(hidden) =>
             setDoc((d) => ({ ...d, hideFromCompatibility: hidden }))
+          }
+        />
+        <AnalogBlockingToggle
+          guildId={doc.id}
+          initialRequired={Boolean(doc.analogBlockingRequired)}
+          onChange={(required) =>
+            setDoc((d) => ({ ...d, analogBlockingRequired: required }))
           }
         />
         {pending > 0 && (

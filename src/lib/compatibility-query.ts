@@ -22,6 +22,7 @@ export type CompatListRow = {
   transmissionType: string | null;
   analogBlockRequired: boolean;
   analogBlockType: string | null;
+  blockKind: string | null;
   dealerNotes: string | null;
   iglaProducts: string[];
   isVisibleToDealers: boolean;
@@ -111,6 +112,7 @@ export async function loadCompatibilityList(opts: {
       transmissionType: true,
       analogBlockRequired: true,
       analogBlockType: true,
+      blockKind: true,
       dealerNotes: true,
       iglaProducts: true,
       isVisibleToDealers: true,
@@ -152,6 +154,7 @@ export async function loadCompatibilityList(opts: {
     transmissionType: r.transmissionType,
     analogBlockRequired: r.analogBlockRequired,
     analogBlockType: r.analogBlockType,
+    blockKind: r.blockKind ?? (r.analogBlockRequired ? "analog" : null),
     dealerNotes: r.dealerNotes,
     iglaProducts: r.iglaProducts,
     isVisibleToDealers: r.isVisibleToDealers,
