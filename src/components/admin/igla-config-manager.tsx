@@ -26,13 +26,22 @@ import { IGLA_ALARM_DEFAULT } from "@/lib/igla-alarm-default";
 import { IGLA_231_DEFAULT } from "@/lib/igla-231-default";
 import { IGLA_OLD_DEFAULT } from "@/lib/igla-old-default";
 import { IGLA_ALARM_OLD_DEFAULT } from "@/lib/igla-alarm-old-default";
+import {
+  is231Product,
+  isAlarmProduct,
+  type FlasherVariant,
+} from "@/lib/igla-flasher-packs";
+import { templateVariantLabel } from "@/lib/igla-template-variant";
 
 type ProductLite = {
   id: string;
   name: string;
   line: string;
+  supportsOldFlasher: boolean;
   hasTemplate: boolean;
   sectionCount: number;
+  hasOldTemplate: boolean;
+  oldSectionCount: number;
 };
 
 const uid = () =>
@@ -52,6 +61,7 @@ function move<T>(arr: T[], i: number, dir: number): T[] {
 export default function IglaConfigManager() {
   const [products, setProducts] = useState<ProductLite[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [variant, setVariant] = useState<FlasherVariant>("current");
   const [productName, setProductName] = useState("");
   const [doc, setDoc] = useState<IglaConfigDoc | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -94,17 +104,25 @@ export default function IglaConfigManager() {
     void loadProducts();
   }, []);
 
-  const selectProduct = async (id: string) => {
+  const selectProduct = async (
+    id: string,
+    nextVariant: FlasherVariant = "current",
+  ) => {
     setSelected(id);
+    setVariant(nextVariant);
     setDoc(null);
     setMsg(null);
     setCopyToId("");
-    const r = await fetch(`/api/igla-config/${id}`);
+    const r = await fetch(
+      `/api/igla-config/${id}?variant=${encodeURIComponent(nextVariant)}`,
+    );
     if (r.ok) {
       const data = await r.json();
       setProductName(data.productName);
+      setVariant(data.variant === "old" ? "old" : "current");
       setDoc(data.doc);
       setDirty(false);
+      void loadProducts();
     }
   };
 
@@ -112,11 +130,14 @@ export default function IglaConfigManager() {
     if (!selected || !doc) return;
     setSaving(true);
     setMsg(null);
-    const r = await fetch(`/api/igla-config/${selected}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ doc }),
-    });
+    const r = await fetch(
+      `/api/igla-config/${selected}?variant=${encodeURIComponent(variant)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc }),
+      },
+    );
     setSaving(false);
     if (r.ok) {
       setDirty(false);
@@ -163,7 +184,7 @@ export default function IglaConfigManager() {
       return { ...s, rows };
     });
 
-  /** Copy this whole template onto another unit type (fresh ids). */
+  /** Copy this whole template onto another unit type's current flasher (fresh ids). */
   const copyTemplateTo = async () => {
     if (!doc || !copyToId || copyToId === selected) return;
     const target = products.find((p) => p.id === copyToId);
@@ -171,7 +192,7 @@ export default function IglaConfigManager() {
     if (
       target.hasTemplate &&
       !confirm(
-        `Replace the settings template on “${target.name}” with a copy of “${productName}”?\n\nGuides already built keep their own frozen copy.`,
+        `Replace the current-flasher template on “${target.name}” with a copy of “${productName}” (${templateVariantLabel(variant)})?\n\nGuides already built keep their own frozen copy.`,
       )
     ) {
       return;
@@ -181,14 +202,14 @@ export default function IglaConfigManager() {
     delete next.productName;
     setSaving(true);
     setMsg(null);
-    const r = await fetch(`/api/igla-config/${copyToId}`, {
+    const r = await fetch(`/api/igla-config/${copyToId}?variant=current`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ doc: next }),
     });
     setSaving(false);
     if (r.ok) {
-      setMsg(`Copied template to ${target.name}.`);
+      setMsg(`Copied template to ${target.name} (current flasher).`);
       setCopyToId("");
       void loadProducts();
     } else {
@@ -196,20 +217,26 @@ export default function IglaConfigManager() {
     }
   };
 
-  const deleteTemplate = async (p: ProductLite) => {
+  const deleteTemplate = async (
+    p: ProductLite,
+    clearVariant: FlasherVariant = "current",
+  ) => {
+    const label = templateVariantLabel(clearVariant);
     if (
       !confirm(
-        `Clear the settings template for "${p.name}"?\n\nThis removes the template — the unit type goes back to empty. Guides already built keep their own frozen copy. This cannot be undone.`
+        `Clear the ${label.toLowerCase()} settings template for "${p.name}"?\n\nGuides already built keep their own frozen copy. This cannot be undone.`,
       )
     )
       return;
-    const r = await fetch(`/api/igla-config/${p.id}`, { method: "DELETE" });
+    const r = await fetch(
+      `/api/igla-config/${p.id}?variant=${encodeURIComponent(clearVariant)}`,
+      { method: "DELETE" },
+    );
     if (!r.ok) return;
-    // If we were editing this one, drop back to an empty editor.
-    if (selected === p.id) {
+    if (selected === p.id && variant === clearVariant) {
       setDoc(emptyDoc());
       setDirty(false);
-      setMsg("Template cleared.");
+      setMsg(`${label} template cleared.`);
     }
     await loadProducts();
   };
@@ -286,58 +313,111 @@ export default function IglaConfigManager() {
 
   return (
     <div className="mt-6 flex flex-col gap-4 lg:flex-row">
-      {/* Product (unit type) list */}
-      <div className="lg:w-64 lg:shrink-0">
+      {/* Product (unit type) list — 231/Alarm also expose Old flasher under the same product */}
+      <div className="lg:w-72 lg:shrink-0">
         <h2 className="text-sm font-semibold">Unit type</h2>
         <p className="mt-1 text-xs text-zinc-400">
-          One settings template per product. Pick one to edit its sections and
-          dropdowns.
+          Edit the settings template for each product. IGLA 231 and Alarm also
+          have an Old flasher layout (same product, older software).
         </p>
-        <ul className="mt-3 space-y-1">
-          {products.map((p) => (
-            <li key={p.id} className="relative">
-              <button
-                onClick={() => void selectProduct(p.id)}
-                className={`flex w-full items-center rounded-md border px-3 py-2 pr-20 text-left text-sm ${
-                  selected === p.id
-                    ? "border-zinc-900 bg-zinc-900 text-white"
-                    : "border-zinc-200 hover:bg-zinc-50"
-                }`}
-              >
-                <span className="min-w-0">
-                  {p.name}
-                  <span
-                    className={`block text-xs ${
-                      selected === p.id ? "text-zinc-300" : "text-zinc-400"
+        <ul className="mt-3 space-y-2">
+          {products.map((p) => {
+            const currentSelected =
+              selected === p.id && variant === "current";
+            const oldSelected = selected === p.id && variant === "old";
+            return (
+              <li key={p.id} className="space-y-1">
+                <div className="relative">
+                  <button
+                    onClick={() => void selectProduct(p.id, "current")}
+                    className={`flex w-full items-center rounded-md border px-3 py-2 pr-20 text-left text-sm ${
+                      currentSelected
+                        ? "border-zinc-900 bg-zinc-900 text-white"
+                        : "border-zinc-200 hover:bg-zinc-50"
                     }`}
                   >
-                    {p.line}
-                  </span>
-                </span>
-              </button>
-              {/* Status pill + clear-template button. The cluster ignores
-                  pointer events so clicking anywhere else still selects the row;
-                  only the trash button re-enables them. */}
-              <div className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] ${
-                    p.hasTemplate ? "bg-green-100 text-green-800" : "bg-zinc-100 text-zinc-500"
-                  }`}
-                >
-                  {p.hasTemplate ? `${p.sectionCount} sect.` : "empty"}
-                </span>
-                {p.hasTemplate && (
-                  <button
-                    onClick={() => void deleteTemplate(p)}
-                    className="pointer-events-auto rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
-                    title={`Clear the ${p.name} template`}
-                  >
-                    🗑
+                    <span className="min-w-0">
+                      {p.name}
+                      <span
+                        className={`block text-xs ${
+                          currentSelected ? "text-zinc-300" : "text-zinc-400"
+                        }`}
+                      >
+                        {p.supportsOldFlasher
+                          ? `${p.line} · Current flasher`
+                          : p.line}
+                      </span>
+                    </span>
                   </button>
+                  <div className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] ${
+                        p.hasTemplate
+                          ? "bg-green-100 text-green-800"
+                          : "bg-zinc-100 text-zinc-500"
+                      }`}
+                    >
+                      {p.hasTemplate ? `${p.sectionCount} sect.` : "empty"}
+                    </span>
+                    {p.hasTemplate && (
+                      <button
+                        onClick={() => void deleteTemplate(p, "current")}
+                        className="pointer-events-auto rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                        title={`Clear current-flasher template for ${p.name}`}
+                      >
+                        🗑
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {p.supportsOldFlasher && (
+                  <div className="relative pl-3">
+                    <button
+                      onClick={() => void selectProduct(p.id, "old")}
+                      className={`flex w-full items-center rounded-md border px-3 py-2 pr-20 text-left text-sm ${
+                        oldSelected
+                          ? "border-amber-800 bg-amber-900 text-white"
+                          : "border-amber-200 bg-amber-50/50 hover:bg-amber-50"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        Old flasher
+                        <span
+                          className={`block text-xs ${
+                            oldSelected ? "text-amber-100" : "text-amber-700/70"
+                          }`}
+                        >
+                          Same product · older software layout
+                        </span>
+                      </span>
+                    </button>
+                    <div className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] ${
+                          p.hasOldTemplate
+                            ? "bg-amber-100 text-amber-900"
+                            : "bg-zinc-100 text-zinc-500"
+                        }`}
+                      >
+                        {p.hasOldTemplate
+                          ? `${p.oldSectionCount} sect.`
+                          : "empty"}
+                      </span>
+                      {p.hasOldTemplate && (
+                        <button
+                          onClick={() => void deleteTemplate(p, "old")}
+                          className="pointer-events-auto rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                          title={`Clear old-flasher template for ${p.name}`}
+                        >
+                          🗑
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
           {products.length === 0 && (
             <li className="text-xs text-zinc-400">
               No products yet — add them in the Products tab.
@@ -358,11 +438,14 @@ export default function IglaConfigManager() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
             <div className="min-w-0 flex-1">
             <div className="sticky top-12 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-2 bg-zinc-50/95 px-1 py-2 backdrop-blur">
-              <h2 className="text-sm font-semibold">{productName} — settings template</h2>
+              <h2 className="text-sm font-semibold">
+                {productName}
+                {variant === "old" ? " · Old flasher" : ""} — settings template
+              </h2>
               {dirty && <span className="text-xs text-amber-600">● unsaved</span>}
               {msg && <span className="text-xs text-zinc-500">{msg}</span>}
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                {otherProducts.length > 0 && (
+                {otherProducts.length > 0 && variant === "current" && (
                   <div className="flex items-center gap-1">
                     <select
                       value={copyToId}
@@ -388,41 +471,53 @@ export default function IglaConfigManager() {
                     </button>
                   </div>
                 )}
-                <button
-                  onClick={loadFdDefaults}
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Fill this template with the transcribed IGLA FD screenshots"
-                >
-                  Load IGLA FD defaults
-                </button>
-                <button
-                  onClick={loadAlarmDefaults}
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Fill this template with the transcribed IGLA Alarm settings"
-                >
-                  Load IGLA Alarm defaults
-                </button>
-                <button
-                  onClick={load231Defaults}
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Fill this template with the transcribed IGLA 231 settings"
-                >
-                  Load IGLA 231 defaults
-                </button>
-                <button
-                  onClick={loadOldDefaults}
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Older 231 flasher settings pack (not a separate product — use on IGLA 231)"
-                >
-                  Load old 231 flasher pack
-                </button>
-                <button
-                  onClick={loadAlarmOldDefaults}
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Older Alarm flasher settings pack (not a separate product — use on IGLA Alarm)"
-                >
-                  Load old Alarm flasher pack
-                </button>
+                {/* Context load: only the pack that matches this product + flasher */}
+                {productName.toLowerCase().includes("fd") &&
+                  variant === "current" && (
+                    <button
+                      onClick={loadFdDefaults}
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                      title="Fill with the transcribed IGLA FD screenshots"
+                    >
+                      Load transcribed defaults
+                    </button>
+                  )}
+                {isAlarmProduct(productName) && variant === "current" && (
+                  <button
+                    onClick={loadAlarmDefaults}
+                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                    title="Fill with the transcribed current Alarm flasher settings"
+                  >
+                    Load transcribed defaults
+                  </button>
+                )}
+                {is231Product(productName) && variant === "current" && (
+                  <button
+                    onClick={load231Defaults}
+                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                    title="Fill with the transcribed current 231 flasher settings"
+                  >
+                    Load transcribed defaults
+                  </button>
+                )}
+                {is231Product(productName) && variant === "old" && (
+                  <button
+                    onClick={loadOldDefaults}
+                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                    title="Reset to the transcribed older 231 flasher pack"
+                  >
+                    Reload transcribed defaults
+                  </button>
+                )}
+                {isAlarmProduct(productName) && variant === "old" && (
+                  <button
+                    onClick={loadAlarmOldDefaults}
+                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                    title="Reset to the transcribed older Alarm flasher pack"
+                  >
+                    Reload transcribed defaults
+                  </button>
+                )}
                 <button
                   onClick={() => void save()}
                   disabled={saving || !dirty}

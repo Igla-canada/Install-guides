@@ -12,12 +12,18 @@ import {
   sectionColors,
 } from "@/lib/blocks";
 import {
-  flasherPackDoc,
   productHasOldFlasherPack,
   type FlasherVariant,
 } from "@/lib/igla-flasher-packs";
 
-type IglaProductLite = { id: string; name: string; line: string; hasTemplate: boolean };
+type IglaProductLite = {
+  id: string;
+  name: string;
+  line: string;
+  hasTemplate: boolean;
+  hasOldTemplate?: boolean;
+  supportsOldFlasher?: boolean;
+};
 
 export default function SectionCard({
   section,
@@ -57,7 +63,7 @@ export default function SectionCard({
   };
 
   const pickIglaProduct = (p: IglaProductLite) => {
-    if (productHasOldFlasherPack(p.name)) {
+    if (p.supportsOldFlasher || productHasOldFlasherPack(p.name)) {
       setIglaPicker(null);
       setIglaFlasherPick(p);
       return;
@@ -71,16 +77,15 @@ export default function SectionCard({
   ) => {
     setIglaPicker(null);
     setIglaFlasherPick(null);
-    const r = await fetch(`/api/igla-config/${productId}`);
+    // Snapshot the editable admin template for this flasher variant (GET
+    // ?variant=old seeds the transcribed pack on first read for 231/Alarm).
+    const r = await fetch(
+      `/api/igla-config/${productId}?variant=${encodeURIComponent(variant)}`,
+    );
     if (!r.ok) return;
     const data = await r.json();
     const productName: string = data.productName ?? "";
-    // Current → saved product template. Old → transcribed older-flasher pack
-    // for the same unit type (not a separate product).
-    const sections =
-      variant === "old"
-        ? (flasherPackDoc(productName, "old")?.sections ?? data.doc.sections ?? [])
-        : (data.doc.sections ?? []);
+    const sections = data.doc?.sections ?? [];
     void dispatch([
       {
         op: "add_block",
@@ -346,7 +351,7 @@ export default function SectionCard({
                     >
                       <span>{p.name}</span>
                       <span className="text-xs text-zinc-400">
-                        {productHasOldFlasherPack(p.name)
+                        {p.supportsOldFlasher || productHasOldFlasherPack(p.name)
                           ? "choose flasher →"
                           : p.line}
                       </span>

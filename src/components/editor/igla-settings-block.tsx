@@ -47,7 +47,10 @@ export default function IglaSettingsBlockEditor({
     let cancelled = false;
     void (async () => {
       try {
-        const r = await fetch(`/api/igla-config/${c.productId}`);
+        const variant = c.flasherVariant === "old" ? "old" : "current";
+        const r = await fetch(
+          `/api/igla-config/${c.productId}?variant=${encodeURIComponent(variant)}`,
+        );
         if (!r.ok || cancelled) return;
         const data = await r.json();
         const found = findCarConfigurationRow(data.doc ?? { sections: [] });
@@ -68,7 +71,7 @@ export default function IglaSettingsBlockEditor({
     };
     // Intentionally once per mount / product — not on every content keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c.productId, isAdmin]);
+  }, [c.productId, c.flasherVariant, isAdmin]);
 
   // Replace the control of one row (by section+row id) and push the new content.
   const setControl = (sid: string, rid: string, control: IglaControl) => {
