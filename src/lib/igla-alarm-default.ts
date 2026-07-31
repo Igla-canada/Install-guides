@@ -114,6 +114,8 @@ const SIREN_DELAY = opts(
 
 const SIREN_OPERATING = opts("1 min", "2 min", "3 min", "5 min", "10 min");
 
+const EXTRA_OPTION_BITS = opts("1", "2", "3", "4", "5", "6", "7", "8");
+
 export const IGLA_ALARM_DEFAULT: IglaConfigDoc = {
   sections: [
     {
@@ -348,6 +350,15 @@ export const IGLA_ALARM_DEFAULT: IglaConfigDoc = {
             value: false,
             onLabel: "Enabled",
             offLabel: "Disabled",
+          },
+        },
+        {
+          id: "extra_options",
+          label: "Extra options",
+          control: {
+            type: "flags",
+            options: EXTRA_OPTION_BITS,
+            values: [],
           },
         },
         {

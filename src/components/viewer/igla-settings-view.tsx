@@ -2,7 +2,14 @@
 // the official Igla configuration software so an installer flashes the unit
 // exactly. Pure/presentational (no hooks) so it renders in the server viewer and
 // the PDF export alike; `dark` themes it for the watermarked installer view.
-import type { IglaControl, IglaSection } from "@/lib/igla-config";
+import {
+  coerceToFlagsControl,
+  IGLA_FLAG_ON_BG,
+  isExtraOptionsRow,
+  type IglaControl,
+  type IglaRow,
+  type IglaSection,
+} from "@/lib/igla-config";
 
 type Content = {
   productName?: string;
@@ -62,7 +69,13 @@ export default function IglaSettingsView({
                   )}
                 </div>
                 <div className="w-[56%] shrink-0">
-                  <ReadControl control={row.control} dark={dark} boxCls={boxCls} muted={dark ? "text-zinc-400" : "text-zinc-500"} />
+                  <ReadControl
+                    row={row}
+                    control={row.control}
+                    dark={dark}
+                    boxCls={boxCls}
+                    muted={dark ? "text-zinc-400" : "text-zinc-500"}
+                  />
                 </div>
               </div>
             ))}
@@ -74,17 +87,49 @@ export default function IglaSettingsView({
 }
 
 function ReadControl({
+  row,
   control: c,
   dark,
   boxCls,
   muted,
 }: {
+  row: IglaRow;
   control: IglaControl;
   dark: boolean;
   boxCls: string;
   muted: string;
 }) {
   const track = dark ? "bg-zinc-700" : "bg-zinc-300";
+
+  if (
+    c.type === "flags" ||
+    (isExtraOptionsRow(row) && c.type !== "toggle")
+  ) {
+    const flags = coerceToFlagsControl(c);
+    const on = new Set(flags.values);
+    return (
+      <div className="flex flex-wrap gap-1">
+        {flags.options.map((o) => {
+          const active = on.has(o.id);
+          return (
+            <span
+              key={o.id}
+              className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-medium ${
+                active
+                  ? "border-orange-300 text-zinc-900"
+                  : dark
+                    ? "border-zinc-600 bg-zinc-800 text-zinc-300"
+                    : "border-zinc-300 bg-zinc-100 text-zinc-700"
+              }`}
+              style={active ? { backgroundColor: IGLA_FLAG_ON_BG } : undefined}
+            >
+              {o.label}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
 
   if (c.type === "toggle") {
     const on = c.value;

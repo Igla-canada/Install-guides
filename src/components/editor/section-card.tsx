@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState } from "react";
-import type { ClientQuickPick, ClientSection } from "./types";
+import type { ClientSection } from "./types";
 import BlockCard from "./block-card";
 import {
   BLOCK_TYPES,
@@ -15,6 +15,10 @@ import {
   productHasOldFlasherPack,
   type FlasherVariant,
 } from "@/lib/igla-flasher-packs";
+import {
+  textContentFromPreset,
+  type TextBlockPresetClient,
+} from "@/lib/text-block-presets";
 
 type IglaProductLite = {
   id: string;
@@ -31,7 +35,7 @@ export default function SectionCard({
   total,
   guildId,
   dispatch,
-  quickPicks,
+  textPresets,
   isAdmin,
 }: {
   section: ClientSection;
@@ -39,7 +43,7 @@ export default function SectionCard({
   total: number;
   guildId: string;
   dispatch: (ops: any[]) => Promise<void>;
-  quickPicks: ClientQuickPick[];
+  textPresets: TextBlockPresetClient[];
   isAdmin: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -103,10 +107,6 @@ export default function SectionCard({
   };
   const [addOpen, setAddOpen] = useState(false);
 
-  const sectionPicks = quickPicks.filter(
-    (p) => p.kind === "block_template" || p.kind === "text_value"
-  );
-
   const addBlock = (type: string) => {
     setAddOpen(false);
     void dispatch([
@@ -120,53 +120,17 @@ export default function SectionCard({
     ]);
   };
 
-  const insertPick = (pick: ClientQuickPick) => {
+  const addTextPreset = (preset: TextBlockPresetClient) => {
     setAddOpen(false);
-    const ops =
-      pick.kind === "text_value"
-        ? [
-            {
-              op: "add_block",
-              blockId: crypto.randomUUID(),
-              sectionId: section.id,
-              type: "text",
-              content: { text: String(pick.payload?.text ?? "") },
-            },
-          ]
-        : [
-            {
-              op: "add_block",
-              blockId: crypto.randomUUID(),
-              sectionId: section.id,
-              type: String(pick.payload?.type ?? "text"),
-              content: pick.payload?.content ?? {},
-            },
-          ];
-    void dispatch(ops);
-    void fetch(`/api/quick-picks/${pick.id}/use`, { method: "POST" });
-  };
-
-  const saveAsQuickPick = async () => {
-    const label = window.prompt(
-      "Save this whole section as a quick pick. Label:",
-      section.title
-    );
-    if (!label) return;
-    await fetch("/api/quick-picks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: "org",
-        kind: "section_template",
-        label,
-        payload: {
-          title: section.title,
-          type: section.type,
-          blocks: section.blocks.map((b) => ({ type: b.type, content: b.content })),
-        },
-      }),
-    });
-    alert("Saved. It will appear in quick picks next time the editor loads.");
+    void dispatch([
+      {
+        op: "add_block",
+        blockId: crypto.randomUUID(),
+        sectionId: section.id,
+        type: "text",
+        content: textContentFromPreset(preset),
+      },
+    ]);
   };
 
   return (
@@ -237,9 +201,6 @@ export default function SectionCard({
           >
             ↓
           </IconBtn>
-          <IconBtn label="Save section as quick pick" onClick={() => void saveAsQuickPick()}>
-            ☆
-          </IconBtn>
           <IconBtn
             label="Delete section"
             onClick={() => {
@@ -288,6 +249,25 @@ export default function SectionCard({
                     </button>
                   ))}
                 </div>
+                {textPresets.length > 0 && (
+                  <>
+                    <div className="mt-2 border-t border-zinc-100 px-2 pt-2 text-xs font-medium uppercase text-zinc-400">
+                      Preset text
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                      {textPresets.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => addTextPreset(p)}
+                          className="rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100"
+                          title="Insert a text block filled with this preset (still editable)"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {isAdmin && (
                   <div className="mt-2 border-t border-zinc-100 pt-2">
                     <button
@@ -298,24 +278,6 @@ export default function SectionCard({
                       ⚙ Igla settings (unit config)
                     </button>
                   </div>
-                )}
-                {sectionPicks.length > 0 && (
-                  <>
-                    <div className="mt-2 border-t border-zinc-100 px-2 pt-2 text-xs font-medium uppercase text-zinc-400">
-                      Quick picks
-                    </div>
-                    <div className="max-h-40 overflow-y-auto">
-                      {sectionPicks.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => insertPick(p)}
-                          className="block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-zinc-100"
-                        >
-                          ☆ {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
                 )}
               </div>
             )}

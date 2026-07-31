@@ -1,8 +1,7 @@
 "use client";
-// The preview editing surface + chat surface over ONE canonical document.
-// All edits — from either surface — flow through dispatch() below, which posts
-// operations to /api/guilds/[id]/ops (or queues them offline). Chat never
-// holds its own copy of the document (AGENTS.md #2).
+// The preview editing surface over ONE canonical document. All edits flow
+// through dispatch() below, which posts operations to /api/guilds/[id]/ops
+// (or queues them offline).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,14 +13,14 @@ import {
   queuedCount,
 } from "@/lib/client/offline";
 import { applyOpsLocal } from "./local-apply";
-import type { ClientDoc, ClientQuickPick, ClientVersion } from "./types";
+import type { ClientDoc, ClientVersion } from "./types";
 import type { Taxonomy } from "@/lib/taxonomy";
+import type { TextBlockPresetClient } from "@/lib/text-block-presets";
 import SectionCard from "./section-card";
 import IdentityPanel from "./identity-panel";
 import OutlinePanel from "./outline-panel";
 import CoverEditor from "./cover-editor";
 import PropertiesEditor from "./properties-editor";
-import ChatPanel from "./chat-panel";
 import { SECTION_TYPES } from "@/lib/blocks";
 import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
 
@@ -45,7 +44,7 @@ export default function GuildEditor({
   initialDoc,
   taxonomy,
   versions,
-  quickPicks,
+  textPresets,
   publishAction,
   rollbackAction,
   unpublishAction,
@@ -58,7 +57,7 @@ export default function GuildEditor({
   initialDoc: ClientDoc;
   taxonomy: Taxonomy;
   versions: ClientVersion[];
-  quickPicks: ClientQuickPick[];
+  textPresets: TextBlockPresetClient[];
   publishAction: () => Promise<void>;
   rollbackAction: (formData: FormData) => Promise<void>;
   unpublishAction: () => Promise<void>;
@@ -72,7 +71,7 @@ export default function GuildEditor({
 }) {
   const [doc, setDoc] = useState<ClientDoc>(initialDoc);
   const [pending, setPending] = useState(0);
-  const [tab, setTab] = useState<"edit" | "preview" | "chat">("edit");
+  const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [previewNonce, setPreviewNonce] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   const [showIdentity, setShowIdentity] = useState(false);
@@ -337,7 +336,7 @@ export default function GuildEditor({
 
       {/* Mobile tab switch */}
       <div className="mt-4 flex gap-1 rounded-lg bg-zinc-200 p-1 lg:hidden">
-        {(["edit", "preview", "chat"] as const).map((t) => (
+        {(["edit", "preview"] as const).map((t) => (
           <button
             key={t}
             onClick={() => {
@@ -348,7 +347,7 @@ export default function GuildEditor({
               tab === t ? "bg-white shadow-sm" : "text-zinc-600"
             }`}
           >
-            {t === "edit" ? "Edit" : t === "preview" ? "Preview" : "Chat"}
+            {t === "edit" ? "Edit" : "Preview"}
           </button>
         ))}
       </div>
@@ -372,7 +371,7 @@ export default function GuildEditor({
         </div>
 
         {/* Document (preview editor) — middle */}
-        <div className={`min-w-0 flex-1 ${tab === "chat" ? "hidden lg:block" : ""}`}>
+        <div className="min-w-0 flex-1">
           <CoverEditor doc={doc} dispatch={dispatch} />
           <IdentityPanel
             doc={doc}
@@ -392,7 +391,7 @@ export default function GuildEditor({
                 total={doc.sections.length}
                 guildId={doc.id}
                 dispatch={dispatch}
-                quickPicks={quickPicks}
+                textPresets={textPresets}
                 isAdmin={isAdmin}
               />
             ))}
@@ -423,14 +422,8 @@ export default function GuildEditor({
           </div>
         </div>
 
-        {/* Chat surface — right, sticky */}
-        <div
-          className={`w-full lg:w-96 lg:shrink-0 ${
-            tab === "edit" ? "hidden lg:block" : ""
-          }`}
-        >
-          <ChatPanel doc={doc} dispatch={dispatch} quickPicks={quickPicks} />
-        </div>
+        {/* Reserved right column (chat removed) — keep layout width for future tools */}
+        <div className="hidden lg:block lg:w-96 lg:shrink-0" aria-hidden />
       </div>
     </div>
   );

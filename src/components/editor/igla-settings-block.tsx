@@ -7,15 +7,25 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from "react";
 import {
+  blankExtraOptionsFlags,
+  blankExtraOptionsToggle,
+  coerceToFlagsControl,
   ensureCarConfigurationOption,
   findCarConfigurationRow,
+  IGLA_FLAG_ON_BG,
   isCarConfigurationRow,
+  isExtraOptionsRow,
+  looksLikeExtraOptionFlags,
   mergeCarConfigurationOptions,
   type IglaConfigDoc,
   type IglaControl,
   type IglaRow,
   type IglaSection,
 } from "@/lib/igla-config";
+
+function canSwitchExtraOptionsStyle(row: IglaRow): boolean {
+  return isExtraOptionsRow(row) || looksLikeExtraOptionFlags(row.control);
+}
 
 type Content = {
   productId?: string;
@@ -153,7 +163,13 @@ function SectionBlock({
                   </span>
                 )}
               </div>
-              <div className="w-[58%] shrink-0">
+              <div className="w-[58%] shrink-0 space-y-1.5">
+                {isAdmin && canSwitchExtraOptionsStyle(row) && (
+                  <ExtraOptionsModeSwitch
+                    control={row.control}
+                    onChange={onControl.bind(null, row.id)}
+                  />
+                )}
                 <ControlField
                   row={row}
                   control={row.control}
@@ -166,6 +182,54 @@ function SectionBlock({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Switch Extra options between 1–8 squares and Enable/Disable toggle (guide edit). */
+function ExtraOptionsModeSwitch({
+  control,
+  onChange,
+}: {
+  control: IglaControl;
+  onChange: (control: IglaControl) => void;
+}) {
+  const mode = control.type === "toggle" ? "toggle" : "flags";
+  return (
+    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-1">
+      <p className="px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+        Extra options style (this guide)
+      </p>
+      <div className="grid grid-cols-2 gap-1">
+        <button
+          type="button"
+          onClick={() => {
+            if (mode === "flags") return;
+            onChange(blankExtraOptionsFlags());
+          }}
+          className={`rounded px-2 py-1.5 text-xs font-medium ${
+            mode === "flags"
+              ? "bg-zinc-900 text-white shadow-sm"
+              : "bg-white text-zinc-600 hover:bg-zinc-100"
+          }`}
+        >
+          Numbers 1–8
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (mode === "toggle") return;
+            onChange(blankExtraOptionsToggle());
+          }}
+          className={`rounded px-2 py-1.5 text-xs font-medium ${
+            mode === "toggle"
+              ? "bg-zinc-900 text-white shadow-sm"
+              : "bg-white text-zinc-600 hover:bg-zinc-100"
+          }`}
+        >
+          Enable / Disable
+        </button>
+      </div>
     </div>
   );
 }
@@ -185,6 +249,54 @@ function ControlField({
   onChange: (control: IglaControl) => void;
 }) {
   const c = control;
+
+  // Extra options as 1–8 squares (or legacy select/number coerced to flags).
+  // Toggle mode is handled by the normal toggle branch below.
+  if (
+    c.type === "flags" ||
+    (isExtraOptionsRow(row) && c.type !== "toggle")
+  ) {
+    const flags = coerceToFlagsControl(c);
+    const on = new Set(flags.values);
+    return (
+      <div className="flex flex-wrap gap-1">
+        {flags.options.map((o) => {
+          const active = on.has(o.id);
+          return (
+            <button
+              key={o.id}
+              type="button"
+              disabled={!isAdmin}
+              onClick={() => {
+                if (!isAdmin) return;
+                const next = active
+                  ? flags.values.filter((id) => id !== o.id)
+                  : [...flags.values, o.id];
+                onChange({ ...flags, values: next });
+              }}
+              className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-medium transition ${
+                isAdmin ? "cursor-pointer" : "cursor-default"
+              } ${
+                active
+                  ? "border-orange-300 text-zinc-900"
+                  : "border-zinc-300 bg-zinc-100 text-zinc-700"
+              }`}
+              style={active ? { backgroundColor: IGLA_FLAG_ON_BG } : undefined}
+              title={
+                isAdmin
+                  ? active
+                    ? `Turn off ${o.label}`
+                    : `Turn on ${o.label}`
+                  : o.label
+              }
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   if (c.type === "toggle") {
     const label = c.value ? c.onLabel ?? "Enabled" : c.offLabel ?? "Disabled";

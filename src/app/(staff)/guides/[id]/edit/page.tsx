@@ -18,7 +18,7 @@ export default async function GuildEditorPage(props: {
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
 
-  const [taxonomy, versions, quickPicks] = await Promise.all([
+  const [taxonomy, versions, textPresets] = await Promise.all([
     loadTaxonomy(),
     prisma.guildVersion.findMany({
       where: { guildId: id },
@@ -26,16 +26,8 @@ export default async function GuildEditorPage(props: {
       take: 20,
       include: { createdBy: { select: { name: true } } },
     }),
-    prisma.quickPick.findMany({
-      where: {
-        OR: [
-          { scope: "org" },
-          { scope: "personal", ownerId: user.id },
-          { scope: "per_make", makeId: doc.makeId },
-        ],
-      },
-      orderBy: { useCount: "desc" },
-      take: 50,
+    prisma.textBlockPreset.findMany({
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
     }),
   ]);
 
@@ -132,7 +124,7 @@ export default async function GuildEditorPage(props: {
       initialDoc={JSON.parse(JSON.stringify(doc))}
       taxonomy={JSON.parse(JSON.stringify(taxonomy))}
       versions={JSON.parse(JSON.stringify(versions))}
-      quickPicks={JSON.parse(JSON.stringify(quickPicks))}
+      textPresets={JSON.parse(JSON.stringify(textPresets))}
       publishAction={publishAction}
       rollbackAction={rollbackAction}
       unpublishAction={unpublishAction}

@@ -421,21 +421,28 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
         orderBy: { order: "asc" },
         select: { id: true },
       });
-      let index = blocks.length;
+      // Position in the ordered list (not a raw order integer — deletes leave
+      // gaps, and treating length as an order value was inserting mid-list).
+      let insertAt = blocks.length;
       if (op.afterBlockId) {
         const i = blocks.findIndex((b) => b.id === op.afterBlockId);
-        if (i >= 0) index = i + 1;
+        if (i >= 0) insertAt = i + 1;
       }
-      await shiftOrders(tx, "block", { sectionId: op.sectionId }, index);
+      const newId = op.blockId ?? crypto.randomUUID();
       await tx.block.create({
         data: {
-          ...(op.blockId ? { id: op.blockId } : {}),
+          id: newId,
           sectionId: op.sectionId,
-          order: index,
+          order: insertAt,
           type: op.type,
           content: (op.content ?? {}) as Prisma.InputJsonValue,
         },
       });
+      const ids = blocks.map((b) => b.id);
+      ids.splice(insertAt, 0, newId);
+      await Promise.all(
+        ids.map((id, i) => tx.block.update({ where: { id }, data: { order: i } })),
+      );
       return;
     }
     case "update_block": {
@@ -479,9 +486,20 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
     case "delete_block": {
       const block = await tx.block.findFirstOrThrow({
         where: { id: op.blockId, section: { guildId } },
+        select: { id: true, sectionId: true },
+      });
+      const sectionId = block.sectionId;
+      await tx.block.delete({ where: { id: block.id } });
+      const remaining = await tx.block.findMany({
+        where: { sectionId },
+        orderBy: { order: "asc" },
         select: { id: true },
       });
-      await tx.block.delete({ where: { id: block.id } });
+      await Promise.all(
+        remaining.map((b, i) =>
+          tx.block.update({ where: { id: b.id }, data: { order: i } }),
+        ),
+      );
       return;
     }
   }

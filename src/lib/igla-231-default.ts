@@ -256,9 +256,9 @@ export const IGLA_231_DEFAULT: IglaConfigDoc = {
           id: "extra_options",
           label: "Extra options",
           control: {
-            type: "select",
+            type: "flags",
             options: EXTRA_OPTION_BITS,
-            value: null,
+            values: [],
           },
         },
         {

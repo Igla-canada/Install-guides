@@ -12,8 +12,12 @@ import {
   cloneDoc,
   cloneRow,
   cloneSection,
+  blankExtraOptionsFlags,
+  blankExtraOptionsToggle,
+  coerceToFlagsControl,
   emptyDoc,
   isCarConfigurationRow,
+  isExtraOptionsRow,
   reorder,
   type IglaConfigDoc,
   type IglaControlType,
@@ -990,6 +994,107 @@ function ControlEditor({
   const setC = (patch: any) =>
     onChange((r) => ({ ...r, control: { ...r.control, ...patch } as any }));
 
+  if (isExtraOptionsRow(row)) {
+    const mode = c.type === "toggle" ? "toggle" : "flags";
+    return (
+      <div className="space-y-2 text-xs">
+        <p className="text-zinc-500">
+          Extra options can be <strong>Numbers 1–8</strong> (new flashers) or{" "}
+          <strong>Enable / Disable</strong> (old flashers). Pick the style for
+          this template:
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              onChange((r) => ({
+                ...r,
+                control:
+                  r.control.type === "flags"
+                    ? r.control
+                    : blankExtraOptionsFlags(),
+              }))
+            }
+            className={`rounded-md border px-2 py-1 ${
+              mode === "flags"
+                ? "border-zinc-800 bg-zinc-800 text-white"
+                : "border-zinc-300 bg-white hover:bg-zinc-100"
+            }`}
+          >
+            Numbers 1–8
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onChange((r) => ({
+                ...r,
+                control: blankExtraOptionsToggle(),
+              }))
+            }
+            className={`rounded-md border px-2 py-1 ${
+              mode === "toggle"
+                ? "border-zinc-800 bg-zinc-800 text-white"
+                : "border-zinc-300 bg-white hover:bg-zinc-100"
+            }`}
+          >
+            Enable / Disable
+          </button>
+        </div>
+        {mode === "flags" && c.type === "flags" && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {c.options.map((o) => {
+              const active = c.values.includes(o.id);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => {
+                    const next = active
+                      ? c.values.filter((id) => id !== o.id)
+                      : [...c.values, o.id];
+                    setC({ values: next });
+                  }}
+                  className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-medium ${
+                    active
+                      ? "border-orange-300 text-zinc-900"
+                      : "border-zinc-300 bg-white text-zinc-700"
+                  }`}
+                  style={active ? { backgroundColor: "#f5b086" } : undefined}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {mode === "flags" && c.type !== "flags" && (
+          <button
+            type="button"
+            onClick={() =>
+              onChange((r) => ({
+                ...r,
+                control: coerceToFlagsControl(r.control),
+              }))
+            }
+            className="rounded-md border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-100"
+          >
+            Apply Numbers 1–8 now
+          </button>
+        )}
+        {mode === "toggle" && c.type === "toggle" && (
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={c.value}
+              onChange={(e) => setC({ value: e.target.checked })}
+            />
+            Default on (Enabled)
+          </label>
+        )}
+      </div>
+    );
+  }
+
   if (c.type === "toggle") {
     return (
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1085,6 +1190,55 @@ function ControlEditor({
         >
           + box
         </button>
+      </div>
+    );
+  }
+
+  if (c.type === "flags") {
+    const on = new Set(c.values);
+    return (
+      <div className="space-y-2 text-xs">
+        <p className="text-zinc-500">
+          Click squares to set which options are on by default (orange = on).
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {c.options.map((o) => {
+            const active = on.has(o.id);
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => {
+                  const next = active
+                    ? c.values.filter((id) => id !== o.id)
+                    : [...c.values, o.id];
+                  setC({ values: next });
+                }}
+                className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-medium ${
+                  active
+                    ? "border-orange-300 text-zinc-900"
+                    : "border-zinc-300 bg-white text-zinc-700"
+                }`}
+                style={active ? { backgroundColor: "#f5b086" } : undefined}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        <OptionList
+          options={c.options}
+          value={null}
+          allowAdd
+          onOptions={(options) => {
+            const ids = new Set(options.map((o) => o.id));
+            setC({
+              options,
+              values: c.values.filter((id) => ids.has(id)),
+            });
+          }}
+          onValue={() => {}}
+        />
       </div>
     );
   }

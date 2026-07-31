@@ -24,6 +24,24 @@ import {
 } from "@/lib/guide-list-actions";
 import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
 import { withFromParam } from "@/lib/guides-nav";
+import { baseModelName, modelBaseKey } from "@/lib/vehicle-compatibility";
+
+/** URL value for “all variants of this model line” (vs a specific modelId). */
+function familyModelParam(makeId: string, baseKey: string) {
+  return `family:${makeId}:${baseKey}`;
+}
+
+function parseFamilyModelParam(
+  value: string | undefined,
+): { makeId: string; baseKey: string } | null {
+  if (!value?.startsWith("family:")) return null;
+  const parts = value.split(":");
+  if (parts.length < 3) return null;
+  const makeId = parts[1]!;
+  const baseKey = parts.slice(2).join(":");
+  if (!makeId || !baseKey) return null;
+  return { makeId, baseKey };
+}
 
 export type BrowserGuild = {
   id: string;
@@ -289,9 +307,37 @@ export function GuideBrowser({
       a[1].localeCompare(b[1]),
     )) {
       makeOpts.push({ value: id, label: name });
-      modelsByMake[id] = [...(models.get(id)?.entries() ?? [])]
-        .map(([value, label]) => ({ value, label }))
-        .sort((a, b) => a.label.localeCompare(b.label));
+      // Offer both: "CR-V (all variants)" and each specific name (mk4, mk5…).
+      const byBase = new Map<
+        string,
+        { baseLabel: string; variants: Array<{ id: string; name: string }> }
+      >();
+      for (const [modelId, modelName] of models.get(id) ?? []) {
+        const key = modelBaseKey(modelName);
+        const existing = byBase.get(key);
+        if (existing) {
+          existing.variants.push({ id: modelId, name: modelName });
+        } else {
+          byBase.set(key, {
+            baseLabel: baseModelName(modelName),
+            variants: [{ id: modelId, name: modelName }],
+          });
+        }
+      }
+      const opts: Array<{ value: string; label: string }> = [];
+      for (const [baseKey, group] of byBase) {
+        group.variants.sort((a, b) => a.name.localeCompare(b.name));
+        if (group.variants.length > 1) {
+          opts.push({
+            value: familyModelParam(id, baseKey),
+            label: `${group.baseLabel} (all variants)`,
+          });
+        }
+        for (const v of group.variants) {
+          opts.push({ value: v.id, label: v.name });
+        }
+      }
+      modelsByMake[id] = opts.sort((a, b) => a.label.localeCompare(b.label));
     }
   }
 
@@ -310,14 +356,39 @@ export function GuideBrowser({
     return [...set].sort((a, b) => b - a);
   })();
 
+  const familyFilter = parseFamilyModelParam(sp.model);
   const make = sp.make
     ? allGuilds.find((g) => g.makeId === sp.make)?.make
-    : undefined;
+    : familyFilter
+      ? allGuilds.find((g) => g.makeId === familyFilter.makeId)?.make
+      : undefined;
   const year = sp.year ? parseInt(sp.year, 10) : undefined;
   const yearOk = year != null && !Number.isNaN(year);
-  const model = sp.model
-    ? allGuilds.find((g) => g.modelId === sp.model)?.model
-    : undefined;
+  const model =
+    !familyFilter && sp.model
+      ? allGuilds.find((g) => g.modelId === sp.model)?.model
+      : undefined;
+  const modelFamilyLabel = familyFilter
+    ? (() => {
+        const sample = allGuilds.find(
+          (g) =>
+            g.makeId === familyFilter.makeId &&
+            modelBaseKey(g.model.name) === familyFilter.baseKey,
+        );
+        return sample ? baseModelName(sample.model.name) : null;
+      })()
+    : null;
+  const modelFamilyVariantCount = familyFilter
+    ? new Set(
+        allGuilds
+          .filter(
+            (g) =>
+              g.makeId === familyFilter.makeId &&
+              modelBaseKey(g.model.name) === familyFilter.baseKey,
+          )
+          .map((g) => g.modelId),
+      ).size
+    : 0;
 
   const filteredHits = useMemo(() => {
     let hits = guilds;
@@ -331,10 +402,19 @@ export function GuideBrowser({
       );
     }
     if (sp.make) hits = hits.filter((g) => g.makeId === sp.make);
-    if (sp.model) hits = hits.filter((g) => g.modelId === sp.model);
+    if (familyFilter) {
+      // "CR-V (all variants)" — every naming variant under that make.
+      hits = hits.filter(
+        (g) =>
+          g.makeId === familyFilter.makeId &&
+          modelBaseKey(g.model.name) === familyFilter.baseKey,
+      );
+    } else if (sp.model) {
+      // Exact model row only (e.g. CR-V [mk4]).
+      hits = hits.filter((g) => g.modelId === sp.model);
+    }
     if (yearOk) hits = hits.filter((g) => covers(g, year!));
     return [...hits].sort(compareGuides);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guilds, sp.q, sp.make, sp.model, yearOk, year]);
 
   const alphabetizedGuilds = useMemo(
@@ -444,16 +524,23 @@ export function GuideBrowser({
             </Link>
           </>
         )}
-        {make && model && (
+        {make && (model || familyFilter) && (
           <>
             <span className="text-zinc-300">/</span>
             <Link
-              href={drill({ make: make.id, model: model.id })}
+              href={drill({
+                make: make.id,
+                model: familyFilter
+                  ? familyModelParam(familyFilter.makeId, familyFilter.baseKey)
+                  : model!.id,
+              })}
               className={`rounded-md px-2 py-1 ${
                 !yearOk ? "font-semibold" : "text-zinc-500 hover:bg-zinc-100"
               }`}
             >
-              {model.name}
+              {familyFilter
+                ? `${modelFamilyLabel ?? "Model"} (all variants)`
+                : model!.name}
             </Link>
           </>
         )}
@@ -540,6 +627,16 @@ export function GuideBrowser({
         </p>
       ) : (
         crumbs
+      )}
+      {familyFilter && modelFamilyVariantCount > 1 && (
+        <p className="mt-2 text-xs text-zinc-500">
+          Showing every{" "}
+          <span className="font-medium text-zinc-700">
+            {modelFamilyLabel}
+          </span>{" "}
+          guide ({modelFamilyVariantCount} model names). Pick a specific
+          variant in Model to narrow to one only.
+        </p>
       )}
 
       <div className="mt-4 min-h-[12rem]">

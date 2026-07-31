@@ -21,6 +21,8 @@ export type IglaControl =
   | { type: "toggle"; value: boolean; onLabel?: string; offLabel?: string }
   // Single choice from a fixed option list (e.g. "15 seconds", "ON (in all modes)").
   | { type: "select"; options: IglaOption[]; value: string | null }
+  // Multi on/off squares (e.g. Extra options 1–8). Selected ids get the orange fill.
+  | { type: "flags"; options: IglaOption[]; values: string[] }
   // A 0..255-style range with the current numeric value shown.
   | { type: "slider"; min: number; max: number; value: number }
   // One or more numeric boxes, optional unit label.
@@ -35,6 +37,105 @@ export type IglaControl =
       inversion: boolean;
       func: { options: IglaOption[]; value: string | null };
     };
+
+/** Soft orange used for selected Extra-options squares (matches Igla software). */
+export const IGLA_FLAG_ON_BG = "#f5b086";
+
+export const DEFAULT_EXTRA_OPTION_FLAGS: IglaOption[] = [
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+].map((label) => ({ id: label, label }));
+
+export function isExtraOptionsRow(row: { id: string; label: string }): boolean {
+  const label = row.label.trim().toLowerCase().replace(/\s+/g, " ");
+  return (
+    row.id === "extra_options" ||
+    label === "extra options" ||
+    label === "extra option" ||
+    /^extra options?\b/i.test(row.label.trim())
+  );
+}
+
+/** True when this control is (or should offer) Extra-options number squares. */
+export function looksLikeExtraOptionFlags(control: {
+  type: string;
+  options?: { label: string }[];
+}): boolean {
+  if (control.type !== "flags" && control.type !== "select") return false;
+  const labels = (control.options ?? []).map((o) => o.label.trim());
+  if (labels.length < 2) return false;
+  return labels.every((l) => /^[1-8]$/.test(l));
+}
+
+export function blankExtraOptionsToggle(): Extract<
+  IglaControl,
+  { type: "toggle" }
+> {
+  return {
+    type: "toggle",
+    value: false,
+    onLabel: "Enabled",
+    offLabel: "Disabled",
+  };
+}
+
+export function blankExtraOptionsFlags(): Extract<
+  IglaControl,
+  { type: "flags" }
+> {
+  return {
+    type: "flags",
+    options: DEFAULT_EXTRA_OPTION_FLAGS.map((o) => ({ ...o })),
+    values: [],
+  };
+}
+
+/** Normalize legacy select/number Extra options into flags for editing/view. */
+export function coerceToFlagsControl(
+  control: IglaControl,
+): Extract<IglaControl, { type: "flags" }> {
+  if (control.type === "flags") {
+    return {
+      ...control,
+      values: Array.isArray(control.values) ? control.values : [],
+      options:
+        control.options?.length > 0
+          ? control.options
+          : DEFAULT_EXTRA_OPTION_FLAGS,
+    };
+  }
+  if (control.type === "select") {
+    const options =
+      control.options.length > 0
+        ? control.options
+        : DEFAULT_EXTRA_OPTION_FLAGS;
+    const values: string[] = [];
+    if (control.value) {
+      const byId = options.find((o) => o.id === control.value);
+      if (byId) values.push(byId.id);
+      else {
+        const byLabel = options.find(
+          (o) =>
+            o.label.trim().toLowerCase() ===
+            String(control.value).trim().toLowerCase(),
+        );
+        if (byLabel) values.push(byLabel.id);
+      }
+    }
+    return { type: "flags", options, values };
+  }
+  return {
+    type: "flags",
+    options: DEFAULT_EXTRA_OPTION_FLAGS,
+    values: [],
+  };
+}
 
 export type IglaControlType = IglaControl["type"];
 
@@ -62,6 +163,7 @@ export type IglaConfigDoc = {
 export const CONTROL_TYPES: { type: IglaControlType; label: string }[] = [
   { type: "toggle", label: "Toggle (Enabled / Disabled)" },
   { type: "select", label: "Dropdown (choose one)" },
+  { type: "flags", label: "Option squares (1–8 on/off)" },
   { type: "slider", label: "Slider (0–255)" },
   { type: "number", label: "Number / time boxes" },
   { type: "io", label: "Input / Output wire" },
@@ -92,6 +194,12 @@ export function blankControl(type: IglaControlType): IglaControl {
       return { type: "toggle", value: false, onLabel: "Enabled", offLabel: "Disabled" };
     case "select":
       return { type: "select", options: [], value: null };
+    case "flags":
+      return {
+        type: "flags",
+        options: DEFAULT_EXTRA_OPTION_FLAGS.map((o) => ({ ...o })),
+        values: [],
+      };
     case "slider":
       return { type: "slider", min: 0, max: 255, value: 0 };
     case "number":
@@ -116,6 +224,13 @@ export function controlValueLabel(c: IglaControl): string {
       return c.value ? c.onLabel ?? "Enabled" : c.offLabel ?? "Disabled";
     case "select":
       return c.options.find((o) => o.id === c.value)?.label ?? "";
+    case "flags": {
+      const on = new Set(c.values);
+      return c.options
+        .filter((o) => on.has(o.id))
+        .map((o) => o.label)
+        .join(", ");
+    }
     case "slider":
       return String(c.value);
     case "number":
@@ -153,6 +268,17 @@ export function cloneControl(control: IglaControl): IglaControl {
     case "select": {
       const remapped = remapOptions(c.options, c.value);
       return { ...c, ...remapped };
+    }
+    case "flags": {
+      const selectedLabels = new Set(
+        c.options.filter((o) => c.values.includes(o.id)).map((o) => o.label),
+      );
+      const options = c.options.map((o) => ({ ...o, id: newId() }));
+      return {
+        ...c,
+        options,
+        values: options.filter((o) => selectedLabels.has(o.label)).map((o) => o.id),
+      };
     }
     case "number":
       return {

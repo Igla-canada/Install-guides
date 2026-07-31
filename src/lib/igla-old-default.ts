@@ -69,8 +69,6 @@ const DRIVING_PERIOD = opts(
   "60 minutes",
 );
 
-const EXTRA_OPTION_BITS = opts("1", "2", "3", "4", "5", "6", "7", "8");
-
 export const IGLA_OLD_DEFAULT: IglaConfigDoc = {
   sections: [
     {
@@ -174,9 +172,10 @@ export const IGLA_OLD_DEFAULT: IglaConfigDoc = {
           id: "extra_options",
           label: "Extra options",
           control: {
-            type: "select",
-            options: EXTRA_OPTION_BITS,
-            value: null,
+            type: "toggle",
+            value: false,
+            onLabel: "Enabled",
+            offLabel: "Disabled",
           },
         },
         {
