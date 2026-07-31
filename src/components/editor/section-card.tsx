@@ -11,6 +11,11 @@ import {
   sectionAccent,
   sectionColors,
 } from "@/lib/blocks";
+import {
+  flasherPackDoc,
+  productHasOldFlasherPack,
+  type FlasherVariant,
+} from "@/lib/igla-flasher-packs";
 
 type IglaProductLite = { id: string; name: string; line: string; hasTemplate: boolean };
 
@@ -33,22 +38,49 @@ export default function SectionCard({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   // The Igla-settings insert flow: pick a unit type (product with a template),
-  // then snapshot that template into a frozen igla_settings block. Admin only.
+  // then optionally Current vs Old flasher, then snapshot into a frozen block.
   const [iglaPicker, setIglaPicker] = useState<IglaProductLite[] | null>(null);
+  const [iglaFlasherPick, setIglaFlasherPick] = useState<IglaProductLite | null>(
+    null,
+  );
 
   const openIglaPicker = async () => {
     setAddOpen(false);
+    setIglaFlasherPick(null);
     const r = await fetch("/api/igla-config/products");
     if (!r.ok) return;
     const list: IglaProductLite[] = (await r.json()).products;
-    setIglaPicker(list.filter((p) => p.hasTemplate));
+    // Fake "OLD" catalog SKUs are not products — ignore if any linger in DB.
+    setIglaPicker(
+      list.filter((p) => p.hasTemplate && !/\bold\b/i.test(p.name)),
+    );
   };
 
-  const addIglaSettings = async (productId: string) => {
+  const pickIglaProduct = (p: IglaProductLite) => {
+    if (productHasOldFlasherPack(p.name)) {
+      setIglaPicker(null);
+      setIglaFlasherPick(p);
+      return;
+    }
+    void addIglaSettings(p.id, "current");
+  };
+
+  const addIglaSettings = async (
+    productId: string,
+    variant: FlasherVariant,
+  ) => {
     setIglaPicker(null);
+    setIglaFlasherPick(null);
     const r = await fetch(`/api/igla-config/${productId}`);
     if (!r.ok) return;
     const data = await r.json();
+    const productName: string = data.productName ?? "";
+    // Current → saved product template. Old → transcribed older-flasher pack
+    // for the same unit type (not a separate product).
+    const sections =
+      variant === "old"
+        ? (flasherPackDoc(productName, "old")?.sections ?? data.doc.sections ?? [])
+        : (data.doc.sections ?? []);
     void dispatch([
       {
         op: "add_block",
@@ -57,8 +89,9 @@ export default function SectionCard({
         type: "igla_settings",
         content: {
           productId: data.productId,
-          productName: data.productName,
-          sections: data.doc.sections ?? [],
+          productName,
+          flasherVariant: variant,
+          sections: structuredClone(sections),
         },
       },
     ]);
@@ -308,11 +341,15 @@ export default function SectionCard({
                   {iglaPicker.map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => void addIglaSettings(p.id)}
+                      onClick={() => pickIglaProduct(p)}
                       className="flex w-full items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
                     >
                       <span>{p.name}</span>
-                      <span className="text-xs text-zinc-400">{p.line}</span>
+                      <span className="text-xs text-zinc-400">
+                        {productHasOldFlasherPack(p.name)
+                          ? "choose flasher →"
+                          : p.line}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -321,6 +358,60 @@ export default function SectionCard({
                   className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Current vs older flasher pack (same product — not a separate unit) */}
+          {iglaFlasherPick && (
+            <div
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+              onClick={() => setIglaFlasherPick(null)}
+            >
+              <div
+                className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-sm font-semibold">
+                  {iglaFlasherPick.name} — which flasher?
+                </h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Same product. Pick the settings layout that matches the
+                  software on the vehicle (current or older flasher).
+                </p>
+                <div className="mt-3 space-y-1">
+                  <button
+                    onClick={() =>
+                      void addIglaSettings(iglaFlasherPick.id, "current")
+                    }
+                    className="flex w-full flex-col rounded-md border border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                  >
+                    <span className="font-medium">Current flasher</span>
+                    <span className="text-xs text-zinc-400">
+                      Saved template for this unit type
+                    </span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      void addIglaSettings(iglaFlasherPick.id, "old")
+                    }
+                    className="flex w-full flex-col rounded-md border border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                  >
+                    <span className="font-medium">Old flasher</span>
+                    <span className="text-xs text-zinc-400">
+                      Older software layout for this unit
+                    </span>
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setIglaFlasherPick(null);
+                    void openIglaPicker();
+                  }}
+                  className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
+                >
+                  Back
                 </button>
               </div>
             </div>

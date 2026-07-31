@@ -36,11 +36,13 @@ export type BlockContent =
   // Igla config software). Structure is fixed once added; an admin edits the
   // per-control VALUES only, techs/installers see it read-only. Shape defined in
   // src/lib/igla-config.ts (IglaConfigDoc). `productId`/`productName` record the
-  // unit type this was seeded from.
+  // unit type this was seeded from. `flasherVariant` is "old" when the snapshot
+  // used the older flasher pack for that unit (not a separate product).
   | {
       kind: "igla_settings";
       productId?: string;
       productName?: string;
+      flasherVariant?: "current" | "old";
       sections: import("./igla-config").IglaSection[];
     }
   | { kind: "divider" };

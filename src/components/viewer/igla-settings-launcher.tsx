@@ -8,7 +8,11 @@ import { createPortal } from "react-dom";
 import IglaSettingsView from "./igla-settings-view";
 import type { IglaSection } from "@/lib/igla-config";
 
-type Content = { productName?: string; sections?: IglaSection[] };
+type Content = {
+  productName?: string;
+  flasherVariant?: "current" | "old";
+  sections?: IglaSection[];
+};
 
 export default function IglaSettingsLauncher({
   content,
@@ -66,9 +70,14 @@ export default function IglaSettingsLauncher({
           </span>
           <span className="min-w-0">
             <span className="block">Click to see settings</span>
-            {content.productName && (
+            {(content.productName || content.flasherVariant === "old") && (
               <span className="block truncate text-xs font-normal text-white/85">
-                {content.productName}
+                {[
+                  content.productName,
+                  content.flasherVariant === "old" ? "Old flasher" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             )}
           </span>
@@ -117,6 +126,7 @@ export default function IglaSettingsLauncher({
                   >
                     Igla settings
                     {content.productName ? ` · ${content.productName}` : ""}
+                    {content.flasherVariant === "old" ? " · Old flasher" : ""}
                   </div>
                 </div>
                 <button

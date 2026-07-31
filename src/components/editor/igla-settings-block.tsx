@@ -17,7 +17,12 @@ import {
   type IglaSection,
 } from "@/lib/igla-config";
 
-type Content = { productId?: string; productName?: string; sections?: IglaSection[] };
+type Content = {
+  productId?: string;
+  productName?: string;
+  flasherVariant?: "current" | "old";
+  sections?: IglaSection[];
+};
 
 export default function IglaSettingsBlockEditor({
   c,
@@ -90,6 +95,11 @@ export default function IglaSettingsBlockEditor({
         {doc.productName && (
           <span className="rounded bg-white px-1.5 py-0.5 text-zinc-500">
             {doc.productName}
+          </span>
+        )}
+        {c.flasherVariant === "old" && (
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">
+            Old flasher
           </span>
         )}
         {!isAdmin && <span className="ml-auto text-zinc-400">read-only</span>}

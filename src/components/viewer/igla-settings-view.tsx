@@ -4,7 +4,11 @@
 // the PDF export alike; `dark` themes it for the watermarked installer view.
 import type { IglaControl, IglaSection } from "@/lib/igla-config";
 
-type Content = { productName?: string; sections?: IglaSection[] };
+type Content = {
+  productName?: string;
+  flasherVariant?: "current" | "old";
+  sections?: IglaSection[];
+};
 
 export default function IglaSettingsView({
   content,
@@ -31,6 +35,15 @@ export default function IglaSettingsView({
         {content.productName && (
           <span className={`rounded px-1.5 py-0.5 ${dark ? "bg-zinc-700" : "bg-white"}`}>
             {content.productName}
+          </span>
+        )}
+        {content.flasherVariant === "old" && (
+          <span
+            className={`rounded px-1.5 py-0.5 ${
+              dark ? "bg-amber-900/50 text-amber-200" : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            Old flasher
           </span>
         )}
       </div>

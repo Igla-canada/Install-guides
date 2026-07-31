@@ -259,13 +259,13 @@ export default function IglaConfigManager() {
       doc &&
       doc.sections.length > 0 &&
       !confirm(
-        "Replace the current template with the IGLA OLD defaults? This overwrites what's here (guides already built are untouched).",
+        "Replace this template with the older 231 flasher pack? (Not a separate product — intended for the IGLA 231 unit type. Guides already built are untouched.)",
       )
     )
       return;
     setDoc(structuredClone(IGLA_OLD_DEFAULT));
     setDirty(true);
-    setMsg("Loaded IGLA OLD defaults — review and Save.");
+    setMsg("Loaded old 231 flasher pack — review and Save.");
   };
 
   const loadAlarmOldDefaults = () => {
@@ -273,13 +273,13 @@ export default function IglaConfigManager() {
       doc &&
       doc.sections.length > 0 &&
       !confirm(
-        "Replace the current template with the IGLA Alarm OLD defaults? This overwrites what's here (guides already built are untouched).",
+        "Replace this template with the older Alarm flasher pack? (Not a separate product — intended for the IGLA Alarm unit type. Guides already built are untouched.)",
       )
     )
       return;
     setDoc(structuredClone(IGLA_ALARM_OLD_DEFAULT));
     setDirty(true);
-    setMsg("Loaded IGLA Alarm OLD defaults — review and Save.");
+    setMsg("Loaded old Alarm flasher pack — review and Save.");
   };
 
   const otherProducts = products.filter((p) => p.id !== selected);
@@ -412,16 +412,16 @@ export default function IglaConfigManager() {
                 <button
                   onClick={loadOldDefaults}
                   className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Fill this template with the transcribed IGLA OLD (231 old) settings"
+                  title="Older 231 flasher settings pack (not a separate product — use on IGLA 231)"
                 >
-                  Load IGLA OLD defaults
+                  Load old 231 flasher pack
                 </button>
                 <button
                   onClick={loadAlarmOldDefaults}
                   className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
-                  title="Fill this template with the transcribed IGLA Alarm OLD settings"
+                  title="Older Alarm flasher settings pack (not a separate product — use on IGLA Alarm)"
                 >
-                  Load IGLA Alarm OLD defaults
+                  Load old Alarm flasher pack
                 </button>
                 <button
                   onClick={() => void save()}

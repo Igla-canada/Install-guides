@@ -1,7 +1,7 @@
-// IGLA OLD (231 old flasher) — default settings template, transcribed from the
-// official Igla configuration software (screen recording "231 old"). Exact
-// on-screen wording is kept (including typos such as "Input/Ouptut"). Load via
-// Admin → Igla settings → Load IGLA OLD defaults.
+// Older IGLA 231 flasher settings pack (same product as IGLA 231 — not a
+// separate unit type). Transcribed from screen recording "231 old". Exact
+// on-screen wording is kept (including typos such as "Input/Ouptut"). Offered
+// when inserting guide settings, or via Admin → Load old 231 flasher pack.
 import type { IglaConfigDoc, IglaOption } from "./igla-config";
 
 const opt = (label: string): IglaOption => ({

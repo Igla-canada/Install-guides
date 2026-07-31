@@ -1,8 +1,8 @@
-// IGLA Alarm OLD — default settings template, transcribed from the official
-// Igla configuration software (screen recording "OLD ALARM"). Exact on-screen
-// wording is kept (including typos such as "Input/Ouptut" and
-// "Authorization via standard keyfobfob"). Load via Admin → Igla settings →
-// Load IGLA Alarm OLD defaults.
+// Older IGLA Alarm flasher settings pack (same product as IGLA Alarm — not a
+// separate unit type). Transcribed from screen recording "OLD ALARM". Exact
+// on-screen wording is kept (including typos such as "Input/Ouptut" and
+// "Authorization via standard keyfobfob"). Offered when inserting guide
+// settings, or via Admin → Load old Alarm flasher pack.
 import type { IglaConfigDoc, IglaOption } from "./igla-config";
 
 const opt = (label: string): IglaOption => ({
