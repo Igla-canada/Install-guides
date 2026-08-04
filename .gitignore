@@ -42,3 +42,6 @@ next-env.d.ts
 
 .env
 
+
+# Audit report output (scripts/audit-compatibility.ts --csv)
+compat-audit-*.csv

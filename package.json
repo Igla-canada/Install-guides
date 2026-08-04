@@ -18,7 +18,8 @@
     "compat:seed": "tsx --env-file=.env scripts/seed-vehicle-compatibility.ts",
     "compat:refresh": "tsx --env-file=.env scripts/seed-vehicle-compatibility.ts --refresh",
     "import:ghost:all": "tsx --env-file=.env scripts/import-ghost.ts --all",
-    "import:ghost:repair": "tsx --env-file=.env scripts/import-ghost.ts --all --replace"
+    "import:ghost:repair": "tsx --env-file=.env scripts/import-ghost.ts --all --replace",
+    "compat:audit": "tsx --env-file=.env scripts/audit-compatibility.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
