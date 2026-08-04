@@ -53,6 +53,11 @@ export default async function StaffCompatibilityPage(props: {
     blockKind: r.blockKind,
     dealerNotes: r.dealerNotes,
     iglaProducts: r.iglaProducts,
+    recommendAlarm: r.recommendAlarm,
+    // Which guide the row is ("RAM 1500 Classic") and the other names it answers
+    // to — read live from the guide, so they must be forwarded explicitly here.
+    variantLabel: r.variantLabel,
+    altModelNames: r.altModelNames,
     isVisibleToDealers: r.isVisibleToDealers,
     guideStatus: r.guideStatus,
     updatedAt: r.updatedAt,
