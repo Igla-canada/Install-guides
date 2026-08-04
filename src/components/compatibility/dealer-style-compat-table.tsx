@@ -38,8 +38,24 @@ export default function DealerStyleCompatTable({
                 key={r.id}
                 className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/80"
               >
-                <td className="whitespace-nowrap px-3 py-1.5 font-medium text-zinc-900">
-                  {r.make} {base}
+                <td className="px-3 py-1.5 font-medium text-zinc-900">
+                  <span className="whitespace-nowrap">
+                    {r.make} {base}
+                  </span>
+                  {/* Which guide this row is — otherwise two guides for the same
+                      model are indistinguishable ("RAM 1500" vs "RAM 1500 Classic"). */}
+                  {r.variantLabel && (
+                    <span className="block text-xs font-normal text-zinc-500">
+                      {r.variantLabel}
+                    </span>
+                  )}
+                  {/* The other names this vehicle is known by, so it can be found
+                      by any of them when scanning the list. */}
+                  {r.altModelNames.length > 0 && (
+                    <span className="block text-xs font-normal text-zinc-400">
+                      also: {r.altModelNames.join(" · ")}
+                    </span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-zinc-800">
                   {yearsLabel(r.yearFrom, r.yearTo)}

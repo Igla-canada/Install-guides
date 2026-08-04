@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/db";
 import {
+  aliasKey,
   buildCompatibilityWhere,
   coversBothIglaUnits,
   excludeHiddenCompatibilityRows,
+  guideVariantLabel,
   loadGuideModelAliases,
   loadLiveGuideCompatInfo,
   rowMatchesModel,
@@ -28,6 +30,13 @@ export type CompatListRow = {
   iglaProducts: string[];
   /** Both units fit and Alarm is the better pick — show the recommendation. */
   recommendAlarm: boolean;
+  /**
+   * Read live from the guide (never stored, so it can't drift): what tells this
+   * row apart from another guide on the same model — the guide's title or its
+   * generation label — plus the extra model names it answers to.
+   */
+  variantLabel: string;
+  altModelNames: string[];
   isVisibleToDealers: boolean;
   sourceGuideId: string | null;
   sourceGuideStatus: string | null;
@@ -163,6 +172,16 @@ export async function loadCompatibilityList(opts: {
     iglaProducts: r.iglaProducts,
     // Only meaningful where the installer actually has a choice between the two.
     recommendAlarm: r.alarmMoreButtons && coversBothIglaUnits(r.iglaProducts),
+    ...(() => {
+      const info = r.sourceGuideId ? liveCompat.get(r.sourceGuideId) : undefined;
+      const variantLabel = guideVariantLabel(info, r.make, r.model);
+      // Don't repeat a name that's already the variant line, or that just
+      // restates the model.
+      const altModelNames = (info?.altModelNames ?? []).filter(
+        (n) => aliasKey(n) !== aliasKey(variantLabel) && aliasKey(n) !== aliasKey(r.model),
+      );
+      return { variantLabel, altModelNames };
+    })(),
     isVisibleToDealers: r.isVisibleToDealers,
     sourceGuideId: r.sourceGuideId,
     sourceGuideStatus: r.sourceGuideStatus,

@@ -27,6 +27,9 @@ export type StaffCompatRow = {
   dealerNotes: string | null;
   iglaProducts: string[];
   recommendAlarm?: boolean;
+  /** Live from the guide: which guide this row is, and its other model names. */
+  variantLabel?: string;
+  altModelNames?: string[];
   isVisibleToDealers: boolean;
   guideStatus: string | null;
   updatedAt?: string;
@@ -352,6 +355,19 @@ export default function StaffCompatibilityTable({
                     {base !== r.model.trim() && (
                       <div className="text-xs font-normal text-zinc-500">
                         {r.model}
+                      </div>
+                    )}
+                    {/* Which guide this row is — two guides on the same model
+                        ("RAM 1500" vs "RAM 1500 Classic") look identical without it. */}
+                    {r.variantLabel && (
+                      <div className="text-xs font-normal text-zinc-500">
+                        {r.variantLabel}
+                      </div>
+                    )}
+                    {/* Extra names the vehicle answers to, so it's findable by any. */}
+                    {r.altModelNames && r.altModelNames.length > 0 && (
+                      <div className="text-xs font-normal text-zinc-400">
+                        also: {r.altModelNames.join(" · ")}
                       </div>
                     )}
                   </td>

@@ -408,6 +408,18 @@ export function buildCompatibilityWhere(
 export type LiveGuideCompatInfo = {
   status: string;
   hideFromCompatibility: boolean;
+  /**
+   * Phase 3 — read live, never stored, so these can't drift.
+   *
+   * The row only copies the MODEL, which is why two guides for the same model
+   * ("RAM 1500" and "RAM 1500 Classic") looked identical on the list: what tells
+   * them apart is the guide's own title and its generation label, neither of
+   * which lived on the row. Both are read from the guide at query time, along
+   * with the extra model names it answers to.
+   */
+  title: string;
+  generationName: string;
+  altModelNames: string[];
 };
 
 /** Live guild status + hide flag for optional sourceGuideId provenance links. */
@@ -419,15 +431,60 @@ export async function loadLiveGuideCompatInfo(
   if (!ids.length) return map;
   const guides = await prisma.guild.findMany({
     where: { id: { in: ids } },
-    select: { id: true, status: true, hideFromCompatibility: true },
+    select: {
+      id: true,
+      status: true,
+      hideFromCompatibility: true,
+      title: true,
+      generation: { select: { name: true } },
+      altModelAliases: { select: { name: true } },
+    },
   });
   for (const g of guides) {
     map.set(g.id, {
       status: g.status,
       hideFromCompatibility: g.hideFromCompatibility,
+      title: g.title.trim(),
+      generationName: g.generation.name.trim(),
+      altModelNames: g.altModelAliases.map((a) => a.name.trim()).filter(Boolean),
     });
   }
   return map;
+}
+
+/**
+ * What to show under the vehicle name so two guides for the same model can be
+ * told apart — the guide's own title, or its generation label when the title
+ * adds nothing (e.g. title "RAM 1500" on generation "FD CAN ONLY 2025").
+ * Empty when neither says more than "make model" already does.
+ */
+export function guideVariantLabel(
+  info: LiveGuideCompatInfo | undefined,
+  make: string,
+  model: string,
+): string {
+  if (!info) return "";
+  const title = info.title;
+  // Imported titles often just restate the vehicle and its years
+  // ("Toyota C-HR 2016–2018 V2"). Compare with years and version suffixes
+  // removed from BOTH sides, so only a title that genuinely names a variant
+  // survives — the model name itself sometimes carries a year too.
+  const core = (s: string) =>
+    aliasKey(
+      s
+        .replace(/\b(19|20)\d{2}\b/g, " ")
+        .replace(/\bv\d+\b/gi, " ")
+        .replace(/[–—-]+/g, " "),
+    );
+  const titleCore = core(title);
+  const titleAdds =
+    titleCore && titleCore !== core(model) && titleCore !== core(`${make} ${model}`);
+  if (titleAdds) return title;
+  // Fall back to the generation label, but not when it's only a year range —
+  // the Years column already says that, so it would just be noise.
+  const gen = info.generationName;
+  const genIsJustYears = !/[a-z]/i.test(gen);
+  return gen && !genIsJustYears && aliasKey(gen) !== aliasKey(model) ? gen : "";
 }
 
 /**
@@ -626,17 +683,6 @@ export function excludeHiddenCompatibilityRows<
     if (info.hideFromCompatibility) return false;
     return true;
   });
-}
-
-/** @deprecated Use excludeHiddenCompatibilityRows with loadLiveGuideCompatInfo. */
-export function excludeArchivedGuideRows<
-  T extends { sourceGuideId?: string | null },
->(rows: T[], liveStatus: Map<string, string>): T[] {
-  const live = new Map<string, LiveGuideCompatInfo>();
-  for (const [id, status] of liveStatus) {
-    live.set(id, { status, hideFromCompatibility: false });
-  }
-  return excludeHiddenCompatibilityRows(rows, live);
 }
 
 /**
