@@ -194,6 +194,13 @@ export async function deleteGuidePermanently(
     meta: { guildId, title: g.title },
   });
   await prisma.guild.delete({ where: { id: guildId } });
+  // Drop the mirrored compatibility row too. There's no FK (the mirror must
+  // never control guides), so without this the row is orphaned: it can never
+  // resync, yet keeps showing dealers a vehicle with a frozen status and no
+  // guide behind it.
+  await prisma.vehicleCompatibility
+    .deleteMany({ where: { sourceGuideId: guildId } })
+    .catch(() => null);
   revalidatePath("/guides");
   revalidatePath("/compatibility");
   revalidatePath("/dealer/compatibility");

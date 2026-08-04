@@ -518,23 +518,53 @@ export async function syncCompatibilityFromGuide(guildId: string): Promise<numbe
   ];
   const iglaProducts = expandIglaProducts(productNames);
 
-  const res = await prisma.vehicleCompatibility.updateMany({
+  // Only the fields the guide owns. dealerNotes / internalAdminNotes /
+  // isVisibleToDealers are human-authored and never touched here — on create
+  // they simply take their column defaults.
+  const owned = {
+    make: g.make.name,
+    model: g.model.name,
+    yearFrom: g.generation.yearStart,
+    yearTo: g.generation.yearEnd,
+    trim: g.trim?.name ?? null,
+    iglaProducts,
+    alarmMoreButtons: g.alarmMoreButtons,
+    sourceGuideStatus: g.status,
+    // Guide checkbox drives Analog column; does not invent analogBlockType text.
+    analogBlockRequired: g.analogBlockingRequired,
+    ...(g.analogBlockingRequired ? { blockKind: "analog" } : {}),
+  };
+
+  // Upsert, not update: a guide with no row used to stay off the list forever,
+  // which is how published guides went missing. Keyed on the unique
+  // sourceGuideId so a guide can only ever own one row.
+  const existing = await prisma.vehicleCompatibility.findUnique({
     where: { sourceGuideId: guildId },
-    data: {
-      make: g.make.name,
-      model: g.model.name,
-      yearFrom: g.generation.yearStart,
-      yearTo: g.generation.yearEnd,
-      trim: g.trim?.name ?? null,
-      iglaProducts,
-      alarmMoreButtons: g.alarmMoreButtons,
-      sourceGuideStatus: g.status,
-      // Guide checkbox drives Analog column; does not invent analogBlockType text.
-      analogBlockRequired: g.analogBlockingRequired,
-      ...(g.analogBlockingRequired ? { blockKind: "analog" } : {}),
-    },
+    select: { id: true },
   });
-  return res.count;
+  await prisma.vehicleCompatibility.upsert({
+    where: { sourceGuideId: guildId },
+    update: owned,
+    create: { ...owned, sourceGuideId: guildId },
+  });
+  return existing ? 1 : 0;
+}
+
+/**
+ * Same as syncCompatibilityFromGuide but reports which happened — used by the
+ * reconcile script's summary. Returns null when the guide doesn't exist.
+ */
+export async function syncCompatibilityFromGuideDetailed(
+  guildId: string,
+): Promise<"created" | "updated" | null> {
+  const before = await prisma.vehicleCompatibility.findUnique({
+    where: { sourceGuideId: guildId },
+    select: { id: true },
+  });
+  const exists = await prisma.guild.findUnique({ where: { id: guildId }, select: { id: true } });
+  if (!exists) return null;
+  await syncCompatibilityFromGuide(guildId);
+  return before ? "updated" : "created";
 }
 
 async function syncCompatibilityForGuildIds(guildIds: string[]): Promise<number> {
@@ -585,9 +615,13 @@ export function excludeHiddenCompatibilityRows<
   T extends { sourceGuideId?: string | null },
 >(rows: T[], live: Map<string, LiveGuideCompatInfo>): T[] {
   return rows.filter((r) => {
-    if (!r.sourceGuideId) return true;
+    // Manual coverage with no guide behind it: kept in the table, but never
+    // shown — nothing backs it and it can't be reviewed or resynced.
+    if (!r.sourceGuideId) return false;
     const info = live.get(r.sourceGuideId);
-    if (!info) return true;
+    // Orphan: the guide is gone, so this row is stale by definition. Hide it
+    // (Phase 2's reconcile deletes them for good).
+    if (!info) return false;
     if (info.status === "ARCHIVED") return false;
     if (info.hideFromCompatibility) return false;
     return true;
