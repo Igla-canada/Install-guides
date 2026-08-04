@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import {
   buildCompatibilityWhere,
+  coversBothIglaUnits,
   excludeHiddenCompatibilityRows,
   loadGuideModelAliases,
   loadLiveGuideCompatInfo,
@@ -25,6 +26,8 @@ export type CompatListRow = {
   blockKind: string | null;
   dealerNotes: string | null;
   iglaProducts: string[];
+  /** Both units fit and Alarm is the better pick — show the recommendation. */
+  recommendAlarm: boolean;
   isVisibleToDealers: boolean;
   sourceGuideId: string | null;
   sourceGuideStatus: string | null;
@@ -115,6 +118,7 @@ export async function loadCompatibilityList(opts: {
       blockKind: true,
       dealerNotes: true,
       iglaProducts: true,
+      alarmMoreButtons: true,
       isVisibleToDealers: true,
       sourceGuideId: true,
       sourceGuideStatus: true,
@@ -157,6 +161,8 @@ export async function loadCompatibilityList(opts: {
     blockKind: r.blockKind ?? (r.analogBlockRequired ? "analog" : null),
     dealerNotes: r.dealerNotes,
     iglaProducts: r.iglaProducts,
+    // Only meaningful where the installer actually has a choice between the two.
+    recommendAlarm: r.alarmMoreButtons && coversBothIglaUnits(r.iglaProducts),
     isVisibleToDealers: r.isVisibleToDealers,
     sourceGuideId: r.sourceGuideId,
     sourceGuideStatus: r.sourceGuideStatus,

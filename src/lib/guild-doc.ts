@@ -40,6 +40,9 @@ export const identitySchema = z.object({
   generationId: z.string().optional(),
   trimId: z.string().nullable().optional(),
   iglaProductId: z.string().optional(),
+  // Both units fit this car and Alarm drives more programming buttons — shown
+  // as a recommendation to the installer. Off = no recommendation.
+  alarmMoreButtons: z.boolean().optional(),
 });
 
 export const opSchema = z.discriminatedUnion("op", [

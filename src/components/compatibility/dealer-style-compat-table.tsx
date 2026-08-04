@@ -1,4 +1,5 @@
 import {
+  ALARM_MORE_BUTTONS_NOTE,
   baseModelName,
   formatBlockKind,
   formatIglaProducts,
@@ -43,8 +44,14 @@ export default function DealerStyleCompatTable({
                 <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-zinc-800">
                   {yearsLabel(r.yearFrom, r.yearTo)}
                 </td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-zinc-800">
-                  {formatIglaProducts(r.iglaProducts)}
+                <td className="px-3 py-1.5 text-zinc-800">
+                  <span className="whitespace-nowrap">{formatIglaProducts(r.iglaProducts)}</span>
+                  {/* Both units fit — say which one gives the installer more. */}
+                  {r.recommendAlarm && (
+                    <span className="mt-0.5 block text-xs text-indigo-700">
+                      ℹ {ALARM_MORE_BUTTONS_NOTE}
+                    </span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-zinc-600">
                   {formatBlockKind(kind)}

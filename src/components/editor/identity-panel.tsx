@@ -23,6 +23,7 @@ type Draft = {
   trimId: string | null;
   regionId: string;
   productIds: string[];
+  alarmMoreButtons: boolean;
   genName: string;
   genYearStart: number;
   genYearEnd: number | null;
@@ -43,6 +44,7 @@ function baseDraft(doc: ClientDoc): Draft {
     productIds: doc.products?.length
       ? doc.products.map((p) => p.iglaProductId)
       : [doc.iglaProductId],
+    alarmMoreButtons: Boolean(doc.alarmMoreButtons),
     genName: doc.generation.name,
     genYearStart: doc.generation.yearStart,
     genYearEnd: doc.generation.yearEnd ?? null,
@@ -81,6 +83,7 @@ export default function IdentityPanel({
     doc.generation.yearStart,
     doc.generation.yearEnd ?? "",
     doc.products?.length ? doc.products.map((p) => p.iglaProductId).join(",") : doc.iglaProductId,
+    String(Boolean(doc.alarmMoreButtons)),
   ].join("|");
   useEffect(() => {
     setDraft(baseDraft(doc));
@@ -232,14 +235,26 @@ export default function IdentityPanel({
   const base = baseDraft(doc);
   const dirty = JSON.stringify(draft) !== JSON.stringify(base);
 
+  // The Alarm recommendation is only a question when both units are ticked —
+  // with one unit there's nothing to choose between.
+  const tickedProductNames = taxonomy.productLines
+    .flatMap((pl) => pl.products)
+    .filter((p) => draft.productIds.includes(p.id))
+    .map((p) => p.name.toLowerCase());
+  const bothIglaUnitsTicked =
+    tickedProductNames.some((n) => n.includes("231")) &&
+    tickedProductNames.some((n) => n.includes("alarm"));
+
   const save = async () => {
     const ops: any[] = [];
-    const idData: Record<string, string | null> = {};
+    const idData: Record<string, string | null | boolean> = {};
     if (draft.makeId !== base.makeId) idData.makeId = draft.makeId;
     if (draft.modelId !== base.modelId) idData.modelId = draft.modelId;
     if (draft.generationId !== base.generationId) idData.generationId = draft.generationId;
     if ((draft.trimId ?? null) !== (base.trimId ?? null)) idData.trimId = draft.trimId ?? null;
     if (draft.regionId !== base.regionId) idData.regionId = draft.regionId;
+    if (draft.alarmMoreButtons !== base.alarmMoreButtons)
+      idData.alarmMoreButtons = draft.alarmMoreButtons;
     if (Object.keys(idData).length) ops.push({ op: "update_identity", data: idData });
 
     if (!sameIds(draft.productIds, base.productIds))
@@ -669,6 +684,34 @@ export default function IdentityPanel({
               <p className="mt-1 text-xs text-zinc-400">
                 The guide is served for any ticked product. First ticked is the primary.
               </p>
+
+              {/* Only asked when BOTH units are ticked — that's the one case where
+                  the installer has to choose between them. */}
+              {bothIglaUnitsTicked && (
+                <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 p-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.alarmMoreButtons}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, alarmMoreButtons: e.target.checked }))
+                    }
+                    className="mt-0.5"
+                  />
+                  <span className="text-xs">
+                    <span className="font-medium text-indigo-900">
+                      Recommend IGLA Alarm on this vehicle — more buttons
+                    </span>
+                    <span className="mt-0.5 block text-indigo-700/80">
+                      Both units fit, so installers are told:{" "}
+                      <em>
+                        “Recommended IGLA Alarm as it enables to use more buttons than IGLA
+                        231”
+                      </em>{" "}
+                      — in the portal and on the compatibility list. Leave off to say nothing.
+                    </span>
+                  </span>
+                </label>
+              )}
             </div>
             <Select
               label="Region"

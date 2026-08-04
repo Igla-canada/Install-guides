@@ -501,6 +501,7 @@ export async function syncCompatibilityFromGuide(guildId: string): Promise<numbe
       id: true,
       status: true,
       analogBlockingRequired: true,
+      alarmMoreButtons: true,
       make: { select: { name: true } },
       model: { select: { name: true } },
       trim: { select: { name: true } },
@@ -526,6 +527,7 @@ export async function syncCompatibilityFromGuide(guildId: string): Promise<numbe
       yearTo: g.generation.yearEnd,
       trim: g.trim?.name ?? null,
       iglaProducts,
+      alarmMoreButtons: g.alarmMoreButtons,
       sourceGuideStatus: g.status,
       // Guide checkbox drives Analog column; does not invent analogBlockType text.
       analogBlockRequired: g.analogBlockingRequired,
@@ -724,7 +726,23 @@ export type PublicCompatibilityItem = {
   /** Live guide status when linked; otherwise stored snapshot. */
   guideStatus: string | null;
   guidePublished: boolean;
+  /**
+   * Set only when BOTH units fit this vehicle and the guide marks Alarm as the
+   * better pick — the installer is choosing between them, so the advice is
+   * actionable. Never set when only one unit applies.
+   */
+  recommendAlarm: boolean;
 };
+
+/** Does this row cover both IGLA 231 and IGLA Alarm (so a choice exists)? */
+export function coversBothIglaUnits(products: string[]): boolean {
+  const lower = products.map((p) => p.toLowerCase());
+  return lower.some((p) => p.includes("231")) && lower.some((p) => p.includes("alarm"));
+}
+
+/** The one sentence shown wherever we recommend Alarm over 231. */
+export const ALARM_MORE_BUTTONS_NOTE =
+  "Recommended IGLA Alarm as it enables to use more buttons than IGLA 231";
 
 export function toPublicCompatibilityItem(
   r: {
@@ -738,6 +756,7 @@ export function toPublicCompatibilityItem(
     analogBlockType: string | null;
     blockKind?: string | null;
     dealerNotes: string | null;
+    alarmMoreButtons?: boolean;
     sourceGuideStatus?: string | null;
   },
   liveGuideStatus?: string | null
@@ -759,6 +778,7 @@ export function toPublicCompatibilityItem(
     dealerNotes: r.dealerNotes,
     guideStatus,
     guidePublished: guideStatus === "PUBLISHED",
+    recommendAlarm: Boolean(r.alarmMoreButtons) && coversBothIglaUnits(r.iglaProducts),
   };
 }
 

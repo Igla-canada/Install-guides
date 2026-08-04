@@ -188,6 +188,11 @@ model Guild {
   /// Guide-level flag: this install needs analog blocking. Synced onto linked
   /// VehicleCompatibility.analogBlockRequired (admin can still edit the row).
   analogBlockingRequired Boolean @default(false)
+  /// Set on guides where BOTH IGLA 231 and IGLA Alarm fit the car and Alarm is
+  /// the better choice (it drives more programming buttons). Surfaces a
+  /// recommendation to the installer in the portal and the compatibility list;
+  /// synced onto this guide's VehicleCompatibility rows. Off = say nothing.
+  alarmMoreButtons Boolean @default(false)
   currentVersionId String?
   coverImageId     String?
   coverImage       ImageAsset? @relation("GuildCover", fields: [coverImageId], references: [id])
@@ -449,6 +454,9 @@ model VehicleCompatibility {
   /// Which IGLA units apply, e.g. ["IGLA 231","IGLA Alarm"]. If 231 is listed,
   /// Alarm is always included (231 ⇒ Alarm); Alarm alone does not imply 231.
   iglaProducts            String[] @default([])
+  /// Mirrors Guild.alarmMoreButtons — when both units fit, recommend Alarm
+  /// because it enables more programming buttons. Synced from the source guide.
+  alarmMoreButtons        Boolean  @default(false)
   /// Optional read-only provenance (guide id string). No FK — never controls guides.
   sourceGuideId           String?
   /// Snapshot of source guide status (PUBLISHED/DRAFT/…). Display may also

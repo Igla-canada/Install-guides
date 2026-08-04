@@ -24,6 +24,8 @@ export type ClientDoc = {
   /** Overrides publish for dealer/API compatibility list visibility. */
   hideFromCompatibility?: boolean;
   analogBlockingRequired?: boolean;
+  /** Both units fit and Alarm drives more buttons — recommend it to installers. */
+  alarmMoreButtons?: boolean;
   properties: Record<string, string> | null;
   regionId: string;
   makeId: string;

@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
       analogBlockType: true,
       blockKind: true,
       dealerNotes: true,
+      alarmMoreButtons: true,
       sourceGuideId: true,
       sourceGuideStatus: true,
     },

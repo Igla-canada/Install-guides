@@ -6,6 +6,7 @@ import {
   updateCompatibilityBlockingFields,
 } from "@/lib/vehicle-compatibility-actions";
 import {
+  ALARM_MORE_BUTTONS_NOTE,
   baseModelName,
   formatIglaProducts,
   yearsLabel,
@@ -25,6 +26,7 @@ export type StaffCompatRow = {
   blockKind: string | null;
   dealerNotes: string | null;
   iglaProducts: string[];
+  recommendAlarm?: boolean;
   isVisibleToDealers: boolean;
   guideStatus: string | null;
   updatedAt?: string;
@@ -358,6 +360,11 @@ export default function StaffCompatibilityTable({
                   </td>
                   <td className="px-3 py-2 text-xs font-medium">
                     {formatIglaProducts(r.iglaProducts)}
+                    {r.recommendAlarm && (
+                      <span className="mt-0.5 block font-normal text-indigo-700">
+                        ℹ {ALARM_MORE_BUTTONS_NOTE}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     {r.guideStatus ? (
