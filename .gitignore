@@ -45,3 +45,4 @@ next-env.d.ts
 
 # Audit report output (scripts/audit-compatibility.ts --csv)
 compat-audit-*.csv
+compat-orphans-*.json
