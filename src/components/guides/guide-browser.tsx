@@ -23,6 +23,10 @@ import {
   restoreGuide,
 } from "@/lib/guide-list-actions";
 import HideFromCompatibilityToggle from "@/components/guides/hide-from-compatibility-toggle";
+import {
+  GuideBlockingCells,
+  type BlockingFieldsState,
+} from "@/components/guides/blocking-fields-inline";
 import { withFromParam } from "@/lib/guides-nav";
 import { baseModelName, modelBaseKey } from "@/lib/vehicle-compatibility";
 
@@ -49,6 +53,9 @@ export type BrowserGuild = {
   status: string;
   /** When true, linked compatibility rows stay off dealer/API lists. */
   hideFromCompatibility?: boolean;
+  analogBlockingRequired?: boolean;
+  /** Linked compatibility row blocking fields (when present). */
+  compatBlocking?: BlockingFieldsState;
   updatedAt: Date | string;
   makeId: string;
   modelId: string;
@@ -67,6 +74,8 @@ export type GuideBrowserSearch = {
   q?: string;
   status?: string;
   view?: string;
+  /** Staff list filter: hidden | analog */
+  compat?: string;
 };
 
 const VIEW_KEY = "igla-guides-view";
@@ -89,6 +98,16 @@ function formatUpdated(d: Date | string) {
   return dt.toISOString().slice(0, 10);
 }
 
+function blockingForGuide(g: BrowserGuild): BlockingFieldsState {
+  if (g.compatBlocking) return g.compatBlocking;
+  const required = Boolean(g.analogBlockingRequired);
+  return {
+    blockKind: required ? "analog" : null,
+    analogBlockRequired: required,
+    analogBlockType: null,
+  };
+}
+
 /** Make → model → year → title → product */
 function compareGuides(a: BrowserGuild, b: BrowserGuild) {
   return (
@@ -107,6 +126,7 @@ function guideUrl(guideBasePath: string, id: string, from?: string) {
 
 export function GuideBrowser({
   guilds: allGuilds,
+  compatByGuideId = {},
   sp,
   basePath,
   title,
@@ -120,6 +140,14 @@ export function GuideBrowser({
   canDeletePermanently = false,
 }: {
   guilds: BrowserGuild[];
+  compatByGuideId?: Record<
+    string,
+    {
+      blockKind: string | null;
+      analogBlockRequired: boolean;
+      analogBlockType: string | null;
+    }
+  >;
   sp: GuideBrowserSearch;
   basePath: string;
   title: string;
@@ -143,6 +171,9 @@ export function GuideBrowser({
   const [localStatuses, setLocalStatuses] = useState<Record<string, string>>({});
   const [localHideCompat, setLocalHideCompat] = useState<
     Record<string, boolean>
+  >({});
+  const [localBlocking, setLocalBlocking] = useState<
+    Record<string, BlockingFieldsState>
   >({});
   const [removedIds, setRemovedIds] = useState<Record<string, true>>({});
   const [peek, setPeek] = useState<PeekGuide | null>(null);
@@ -168,6 +199,8 @@ export function GuideBrowser({
   }, [urlView]);
 
   const statusFilter = statusTabs ? sp.status?.toUpperCase() : undefined;
+  const compatFilter =
+    sp.compat === "hidden" || sp.compat === "analog" ? sp.compat : undefined;
   // Text / vehicle filters under "All" should still surface archived matches.
   const searching =
     Boolean(sp.q?.trim()) ||
@@ -175,14 +208,24 @@ export function GuideBrowser({
     Boolean(sp.model) ||
     Boolean(sp.year);
 
-  const guilds = useMemo(() => {
+  const guildsByStatus = useMemo(() => {
     const withLocal = allGuilds
       .filter((g) => !removedIds[g.id])
       .map((g) => {
-        let next = g;
+        let next: BrowserGuild = {
+          ...g,
+          compatBlocking: compatByGuideId[g.id] ?? undefined,
+        };
         if (localStatuses[g.id]) next = { ...next, status: localStatuses[g.id]! };
         if (g.id in localHideCompat) {
           next = { ...next, hideFromCompatibility: localHideCompat[g.id]! };
+        }
+        if (g.id in localBlocking) {
+          next = {
+            ...next,
+            compatBlocking: localBlocking[g.id]!,
+            analogBlockingRequired: localBlocking[g.id]!.analogBlockRequired,
+          };
         }
         return next;
       });
@@ -192,17 +235,30 @@ export function GuideBrowser({
     if (statusFilter === "PUBLISHED" || statusFilter === "DRAFT") {
       return withLocal.filter((g) => g.status === statusFilter);
     }
-    // "All" browsing hides archived backups; searching includes them.
     if (searching) return withLocal;
     return withLocal.filter((g) => g.status !== "ARCHIVED");
   }, [
     allGuilds,
+    compatByGuideId,
     localStatuses,
     localHideCompat,
+    localBlocking,
     removedIds,
     statusFilter,
     searching,
   ]);
+
+  const guilds = useMemo(() => {
+    if (compatFilter === "hidden") {
+      return guildsByStatus.filter((g) => Boolean(g.hideFromCompatibility));
+    }
+    if (compatFilter === "analog") {
+      return guildsByStatus.filter(
+        (g) => blockingForGuide(g).analogBlockRequired,
+      );
+    }
+    return guildsByStatus;
+  }, [guildsByStatus, compatFilter]);
 
   const statusCounts = useMemo(() => {
     let published = 0;
@@ -219,9 +275,23 @@ export function GuideBrowser({
       published,
       draft,
       archived,
-      all: published + draft, // "All" tab excludes archived
+      all: published + draft,
     };
   }, [allGuilds, localStatuses, removedIds]);
+
+  const compatCounts = useMemo(() => {
+    let hiddenCompat = 0;
+    let analogBlocking = 0;
+    for (const g of guildsByStatus) {
+      if (Boolean(g.hideFromCompatibility)) hiddenCompat++;
+      if (blockingForGuide(g).analogBlockRequired) analogBlocking++;
+    }
+    return {
+      all: guildsByStatus.length,
+      hiddenCompat,
+      analogBlocking,
+    };
+  }, [guildsByStatus]);
 
   function markDeleted(id: string) {
     setRemovedIds((r) => ({ ...r, [id]: true }));
@@ -229,9 +299,13 @@ export function GuideBrowser({
     router.refresh();
   }
 
-  const noneMsg = statusFilter
-    ? `No ${statusFilter.toLowerCase()} guides for this selection.`
-    : null;
+  const noneMsg = compatFilter
+    ? compatFilter === "hidden"
+      ? "No guides are marked hidden from the compatibility list."
+      : "No guides with analog blocking required."
+    : statusFilter
+      ? `No ${statusFilter.toLowerCase()} guides for this selection.`
+      : null;
 
   const drill = (o: { make?: string; year?: number; model?: string }) => {
     const p = new URLSearchParams();
@@ -239,6 +313,7 @@ export function GuideBrowser({
     if (o.year) p.set("year", String(o.year));
     if (o.model) p.set("model", o.model);
     if (statusFilter) p.set("status", statusFilter);
+    if (compatFilter) p.set("compat", compatFilter);
     if (view === "list") p.set("view", "list");
     const qs = p.toString();
     return `${basePath}${qs ? `?${qs}` : ""}`;
@@ -252,6 +327,8 @@ export function GuideBrowser({
     status?: string;
     view?: "icons" | "list";
     clearStatus?: boolean;
+    compat?: string;
+    clearCompat?: boolean;
   }) => {
     const params = new URLSearchParams();
     if (sp.make) params.set("make", sp.make);
@@ -264,6 +341,12 @@ export function GuideBrowser({
         ? opts.status
         : statusFilter;
     if (st) params.set("status", st);
+    const cf = opts?.clearCompat
+      ? undefined
+      : opts?.compat !== undefined
+        ? opts.compat
+        : compatFilter;
+    if (cf) params.set("compat", cf);
     const v = opts?.view ?? view;
     if (v === "list") params.set("view", "list");
     else if (sp.view === "icons" || opts?.view === "icons")
@@ -457,6 +540,46 @@ export function GuideBrowser({
     </div>
   ) : null;
 
+  const compatFilters = statusTabs ? (
+    <div className="mt-2 inline-flex flex-wrap gap-2 text-xs">
+      <span className="self-center text-zinc-500">Compatibility:</span>
+      {(
+        [
+          ["All guides", "", compatCounts.all],
+          [
+            "Hidden from list",
+            "hidden",
+            compatCounts.hiddenCompat,
+          ],
+          [
+            "Analog blocking",
+            "analog",
+            compatCounts.analogBlocking,
+          ],
+        ] as const
+      ).map(([label, value, count]) => {
+        const active = (compatFilter ?? "") === value;
+        return (
+          <Link
+            key={value || "all-compat"}
+            href={buildHref({
+              compat: value || undefined,
+              clearCompat: !value,
+            })}
+            className={`rounded-full border px-2.5 py-1 ${
+              active
+                ? "border-zinc-900 bg-zinc-900 text-white"
+                : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+            }`}
+          >
+            {label}
+            <span className="ml-1 tabular-nums opacity-70">{count}</span>
+          </Link>
+        );
+      })}
+    </div>
+  ) : null;
+
   const viewToggle = (
     <div className="inline-flex rounded-lg border border-zinc-200 bg-white p-0.5 text-xs">
       <button
@@ -582,6 +705,9 @@ export function GuideBrowser({
             {statusFilter && (
               <input type="hidden" name="status" value={statusFilter} />
             )}
+            {compatFilter && (
+              <input type="hidden" name="compat" value={compatFilter} />
+            )}
             {view === "list" && <input type="hidden" name="view" value="list" />}
             {sp.make && <input type="hidden" name="make" value={sp.make} />}
             {sp.model && <input type="hidden" name="model" value={sp.model} />}
@@ -605,6 +731,7 @@ export function GuideBrowser({
         </div>
       </div>
       {tabs}
+      {compatFilters}
       <div className="mt-4">
         <VehicleCascadeSearch
           makes={makeOpts}
@@ -614,6 +741,7 @@ export function GuideBrowser({
           actionPath={basePath}
           extraParams={{
             status: statusFilter || undefined,
+            compat: compatFilter,
             view: view === "list" ? "list" : undefined,
           }}
         />
@@ -675,6 +803,9 @@ export function GuideBrowser({
             onHideFromCompatibilityChange={(id, hidden) =>
               setLocalHideCompat((s) => ({ ...s, [id]: hidden }))
             }
+            onBlockingChange={(id, blocking) =>
+              setLocalBlocking((s) => ({ ...s, [id]: blocking }))
+            }
             onDeleted={markDeleted}
           />
         ) : view === "icons" && hasDrill ? (
@@ -706,6 +837,9 @@ export function GuideBrowser({
             }
             onHideFromCompatibilityChange={(id, hidden) =>
               setLocalHideCompat((s) => ({ ...s, [id]: hidden }))
+            }
+            onBlockingChange={(id, blocking) =>
+              setLocalBlocking((s) => ({ ...s, [id]: blocking }))
             }
             onDeleted={markDeleted}
           />
@@ -849,6 +983,7 @@ function GuildTable({
   onOpen,
   onStatusChange,
   onHideFromCompatibilityChange,
+  onBlockingChange,
   onDeleted,
 }: {
   guilds: BrowserGuild[];
@@ -862,6 +997,7 @@ function GuildTable({
   onOpen?: (g: BrowserGuild) => void;
   onStatusChange?: (id: string, status: string) => void;
   onHideFromCompatibilityChange?: (id: string, hidden: boolean) => void;
+  onBlockingChange?: (id: string, blocking: BlockingFieldsState) => void;
   onDeleted?: (id: string) => void;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -908,15 +1044,29 @@ function GuildTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+      <table className="w-full min-w-[56rem] text-sm">
+        {staffTools && (
+          <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-xs font-medium text-zinc-500">
+            <tr>
+              <th className="px-4 py-2">Guide</th>
+              {showMeta && (
+                <th className="hidden px-4 py-2 md:table-cell">Updated</th>
+              )}
+              {showStatusBadge && <th className="px-3 py-2">Status</th>}
+              <th className="px-3 py-2">Type of block</th>
+              <th className="px-3 py-2">Analog</th>
+              <th className="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+        )}
         <tbody>
           {guilds.map((g) => (
             <tr
               key={g.id}
               className={`border-b border-zinc-100 last:border-0 hover:bg-zinc-50 ${
                 onOpen ? "cursor-pointer" : ""
-              }`}
+              } ${g.hideFromCompatibility ? "bg-amber-50/40" : ""}`}
               onClick={onOpen ? () => onOpen(g) : undefined}
             >
               <td className="px-4 py-3">
@@ -931,6 +1081,11 @@ function GuildTable({
                   </Link>
                 )}
                 <div className="text-xs text-zinc-500">{subtitle(g)}</div>
+                {g.hideFromCompatibility && (
+                  <div className="mt-1 text-xs text-amber-700">
+                    Hidden from compatibility list
+                  </div>
+                )}
               </td>
               {showMeta && (
                 <td className="hidden px-4 py-3 text-xs text-zinc-400 md:table-cell">
@@ -939,12 +1094,19 @@ function GuildTable({
                 </td>
               )}
               {showStatusBadge && (
-                <td className="px-3 py-3 text-right">
+                <td className="px-3 py-3">
                   <StatusBadge status={g.status} />
                 </td>
               )}
               {staffTools && (
-                <td className="px-3 py-3 text-right">
+                <GuideBlockingCells
+                  guildId={g.id}
+                  initial={blockingForGuide(g)}
+                  onChange={(blocking) => onBlockingChange?.(g.id, blocking)}
+                />
+              )}
+              {staffTools && (
+                <td className="px-3 py-3 text-right align-top">
                   <div className="inline-flex flex-wrap items-center justify-end gap-3">
                     <HideFromCompatibilityToggle
                       guildId={g.id}

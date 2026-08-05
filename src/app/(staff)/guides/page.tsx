@@ -13,6 +13,7 @@ export default async function GuildsPage(props: {
     q?: string;
     status?: string;
     view?: string;
+    compat?: string;
   }>;
 }) {
   const sp = await props.searchParams;
@@ -30,9 +31,36 @@ export default async function GuildsPage(props: {
     },
   });
 
+  const compatRows = await prisma.vehicleCompatibility.findMany({
+    where: { sourceGuideId: { in: guilds.map((g) => g.id) } },
+    select: {
+      sourceGuideId: true,
+      blockKind: true,
+      analogBlockRequired: true,
+      analogBlockType: true,
+    },
+  });
+  const compatByGuideId: Record<
+    string,
+    {
+      blockKind: string | null;
+      analogBlockRequired: boolean;
+      analogBlockType: string | null;
+    }
+  > = {};
+  for (const row of compatRows) {
+    if (!row.sourceGuideId) continue;
+    compatByGuideId[row.sourceGuideId] = {
+      blockKind: row.blockKind,
+      analogBlockRequired: row.analogBlockRequired,
+      analogBlockType: row.analogBlockType,
+    };
+  }
+
   return (
     <GuideBrowser
       guilds={guilds}
+      compatByGuideId={compatByGuideId}
       sp={sp}
       basePath="/guides"
       title="Guides"

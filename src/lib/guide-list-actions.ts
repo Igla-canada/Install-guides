@@ -139,6 +139,79 @@ export async function setAnalogBlockingRequired(
   return { ok: true, analogBlockingRequired: required, syncedRows };
 }
 
+/** Guide list — same blocking fields as staff compatibility (updates guild + linked row). */
+export async function updateGuideBlockingFromList(
+  guildId: string,
+  patch: {
+    analogBlockRequired?: boolean;
+    analogBlockType?: string | null;
+    blockKind?: "analog" | "digital" | null;
+  },
+): Promise<
+  | {
+      ok: true;
+      analogBlockRequired: boolean;
+      analogBlockType: string | null;
+      blockKind: string | null;
+    }
+  | { ok: false; error: string }
+> {
+  const u = await requireRole("ADMIN", "TECH");
+  const g = await prisma.guild.findUnique({ where: { id: guildId } });
+  if (!g) return { ok: false, error: "not_found" };
+
+  await syncCompatibilityFromGuide(guildId);
+  const row = await prisma.vehicleCompatibility.findUnique({
+    where: { sourceGuideId: guildId },
+  });
+  if (!row) return { ok: false, error: "no_compat_row" };
+
+  const analogBlockRequired =
+    patch.analogBlockRequired ?? row.analogBlockRequired;
+  let analogBlockType =
+    patch.analogBlockType !== undefined
+      ? patch.analogBlockType?.trim() || null
+      : row.analogBlockType;
+  if (!analogBlockRequired) analogBlockType = null;
+
+  let blockKind =
+    patch.blockKind !== undefined ? patch.blockKind : row.blockKind;
+  if (analogBlockRequired) blockKind = "analog";
+  else if (blockKind !== "digital" && blockKind !== "analog") blockKind = null;
+
+  await prisma.$transaction([
+    prisma.vehicleCompatibility.update({
+      where: { id: row.id },
+      data: { analogBlockRequired, analogBlockType, blockKind },
+    }),
+    prisma.guild.update({
+      where: { id: guildId },
+      data: { analogBlockingRequired: analogBlockRequired, updatedById: u.id },
+    }),
+  ]);
+
+  const meta = await requestMeta();
+  await logEvent({
+    actor: { userId: u.id },
+    guildId,
+    action: "guild_blocking_fields_updated",
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    meta: { analogBlockRequired, blockKind, analogBlockType },
+  });
+  revalidatePath("/guides");
+  revalidatePath(`/guides/${guildId}`);
+  revalidatePath(`/guides/${guildId}/edit`);
+  revalidatePath("/dealer/compatibility");
+  revalidatePath("/compatibility");
+  return {
+    ok: true,
+    analogBlockRequired,
+    analogBlockType,
+    blockKind,
+  };
+}
+
 /** Publish from the floating preview / list without opening the full editor. */
 export async function quickPublishGuide(
   guildId: string,
