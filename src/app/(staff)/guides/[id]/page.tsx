@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { loadGuildDoc, duplicateGuild, publishGuild, PublishConflictError } from "@/lib/guild-doc";
+import { detachGuildImageAssets } from "@/lib/image-asset-clone";
 import { createAccessGrant, EXPIRY_OPTIONS } from "@/lib/grants";
 import GuildView from "@/components/viewer/guild-view";
 import GrantPanel from "@/components/guides/grant-panel";
@@ -16,11 +17,11 @@ export const dynamic = "force-dynamic";
 
 export default async function GuildPreviewPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string; label?: string; publish_error?: string; from?: string }>;
+  searchParams: Promise<{ created?: string; label?: string; publish_error?: string; from?: string; detached?: string }>;
 }) {
   const user = await requireRole("ADMIN", "TECH");
   const { id } = await props.params;
-  const { created, label, publish_error, from } = await props.searchParams;
+  const { created, label, publish_error, from, detached } = await props.searchParams;
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
 
@@ -73,7 +74,20 @@ export default async function GuildPreviewPage(props: {
     redirect(withFromParam(`/guides/${newId}/edit`, from));
   }
 
-  // Publish straight from this preview, so admins don't have to open the editor
+  /** Fix guides duplicated before photo fork — clone every image + annotations in-place. */
+  async function detachPhotosAction() {
+    "use server";
+    const u = await requireRole("ADMIN", "TECH");
+    const { cloned } = await detachGuildImageAssets(id, u.id);
+    redirect(
+      withFromParam(
+        `/guides/${id}?detached=${cloned}`,
+        from,
+      ),
+    );
+  }
+
+  // Publish straight from this preview
   // just to make a checked-over draft live.
   async function publishAction() {
     "use server";
@@ -159,9 +173,18 @@ export default async function GuildPreviewPage(props: {
             <button
               type="submit"
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
-              title="Create a new draft with the same sections, blocks and identity — fastest way to build a consistent guide"
+              title="Create a new draft with the same content — photos and annotations are copied so the new guide is independent"
             >
               ⧉ Duplicate
+            </button>
+          </form>
+          <form action={detachPhotosAction}>
+            <button
+              type="submit"
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
+              title="Clone every photo/file in this guide so annotation edits here no longer affect other guides that share the same images"
+            >
+              ⧉ Split shared photos
             </button>
           </form>
           <Link
@@ -178,6 +201,12 @@ export default async function GuildPreviewPage(props: {
           Another <strong>published</strong> guide already exists for this exact
           vehicle + product identity. Unpublish or change that one&apos;s
           identity before publishing this draft.
+        </div>
+      )}
+      {detached && (
+        <div className="mt-3 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Cloned {detached} photo/file{detached === "1" ? "" : "s"} for this
+          guide — annotation edits here are now independent.
         </div>
       )}
 

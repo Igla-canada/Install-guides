@@ -13,6 +13,10 @@ import {
   syncCompatibilityForGeneration,
   syncCompatibilityFromGuide,
 } from "./vehicle-compatibility";
+import {
+  cloneImageAssetsForGuildCopy,
+  remapAssetIdsInContent,
+} from "./image-asset-clone";
 
 /** Ops that change identity fields mirrored on VehicleCompatibility rows. */
 const COMPAT_SYNC_OPS = new Set([
@@ -646,10 +650,10 @@ export async function publishGuild(
 /**
  * Duplicate a guild into a new DRAFT — same identity, properties, cover and the
  * full section/block structure — so a similar guide can be built consistently
- * without rebuilding the scaffold. Photos/files are referenced (not re-uploaded);
- * replace a photo in the copy and it points at a fresh asset. The copy starts as
- * a DRAFT titled "Copy of …"; change its identity before publishing (one
- * published guild per identity is still enforced at publish time).
+ * without rebuilding the scaffold. Photos, files and their annotations are
+ * cloned (new ImageAsset rows + S3 copies) so the copy is fully independent.
+ * The copy starts as a DRAFT titled "Copy of …"; change its identity before
+ * publishing (one published guild per identity is still enforced at publish time).
  */
 export async function duplicateGuild(
   guildId: string,
@@ -657,6 +661,12 @@ export async function duplicateGuild(
 ): Promise<string> {
   const doc = await loadGuildDoc(guildId);
   if (!doc) throw new Error("guild not found");
+
+  const assetMap = await cloneImageAssetsForGuildCopy(doc, actorUserId);
+  const copyCoverId =
+    doc.coverImageId && assetMap.has(doc.coverImageId)
+      ? assetMap.get(doc.coverImageId)!
+      : doc.coverImageId;
 
   // Give the copy its OWN generation (cloned from the original's years, with a
   // unique label) so editing one guide's years never affects the other. The
@@ -688,7 +698,7 @@ export async function duplicateGuild(
       iglaProductId: doc.iglaProductId,
       title: `Copy of ${doc.title}`,
       status: "DRAFT",
-      coverImageId: doc.coverImageId,
+      coverImageId: copyCoverId,
       properties: (doc.properties ?? undefined) as Prisma.InputJsonValue | undefined,
       createdById: actorUserId,
       updatedById: actorUserId,
@@ -708,7 +718,10 @@ export async function duplicateGuild(
             create: s.blocks.map((b) => ({
               order: b.order,
               type: b.type,
-              content: b.content as Prisma.InputJsonValue,
+              content: remapAssetIdsInContent(
+                b.content,
+                assetMap,
+              ) as Prisma.InputJsonValue,
             })),
           },
         })),
