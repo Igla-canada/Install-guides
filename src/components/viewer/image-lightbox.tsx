@@ -5,13 +5,14 @@
 // on the wires. On installer-facing views a per-view watermark is stamped over
 // the zoomed image too (AGENTS.md #3 — a leaked screenshot stays traceable).
 import { useEffect, useRef, useState } from "react";
+import {
+  ZOOM_STEPS,
+  clampZoom,
+  defaultOpenZoom,
+  maxZoom,
+  minZoomForViewport,
+} from "@/lib/image-zoom";
 import { watermarkStamp } from "@/lib/watermark";
-
-// Zoom stops the +/- buttons walk through (25%…200%); gestures clamp to the ends.
-const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-const MIN_ZOOM = ZOOM_STEPS[0];
-const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
-const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
 type WM = { label: string; reference: string };
 
@@ -30,7 +31,11 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     | { startDist: number; startZoom: number; panX: number; panY: number; midX: number; midY: number }
   >(null);
   const drag = useRef<null | { x: number; y: number; panX: number; panY: number }>(null);
+  const gesturePinched = useRef(false);
+  const openZoomRef = useRef(1);
   const openRef = useRef(false);
+
+  const minZoom = minZoomForViewport();
 
   const close = () => {
     openRef.current = false;
@@ -40,12 +45,30 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     pointers.current.clear();
     pinch.current = null;
     drag.current = null;
+    gesturePinched.current = false;
+  };
+
+  const clampPan = (z: number, px: number, py: number) => {
+    const outer = outerRef.current;
+    const c = contentRef.current;
+    if (!outer || !c) return { x: px, y: py };
+    const ow = outer.clientWidth;
+    const oh = outer.clientHeight;
+    const sw = c.offsetWidth * z;
+    const sh = c.offsetHeight * z;
+    const axis = (o: number, s: number, p: number) =>
+      s <= o ? (o - s) / 2 : Math.min(0, Math.max(o - s, p));
+    return { x: axis(ow, sw, px), y: axis(oh, sh, py) };
+  };
+
+  const centerAtZoom = (z: number) => {
+    setPan((p) => clampPan(z, p.x, p.y));
   };
 
   // Open on click of any zoomable image; clone its container (img + annotations).
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (openRef.current) return; // already open — clicks inside drive zoom/pan
+      if (openRef.current) return;
       const img = (e.target as HTMLElement | null)?.closest?.(
         "[data-zoomable]"
       ) as HTMLElement | null;
@@ -53,9 +76,10 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
       const container = img.parentElement;
       if (!container) return;
       openRef.current = true;
-      setZoom(MIN_ZOOM); // open zoomed-out so the whole image is visible
+      const z0 = defaultOpenZoom();
+      openZoomRef.current = z0;
+      setZoom(z0);
       setPan({ x: 0, y: 0 });
-      // Strip data-zoomable so the cloned image can't re-trigger this handler.
       setHtml(container.innerHTML.replaceAll("data-zoomable", "data-z"));
     };
     document.addEventListener("click", onClick);
@@ -71,43 +95,35 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [html]);
 
-  // Center the (zoomed-out) image once it has laid out on open.
+  // Center once the cloned image has laid out.
   useEffect(() => {
     if (!html) return;
-    const id = requestAnimationFrame(() => setPan((p) => clampPan(MIN_ZOOM, p.x, p.y)));
-    return () => cancelAnimationFrame(id);
+    const z0 = openZoomRef.current;
+    const id = requestAnimationFrame(() => centerAtZoom(z0));
+    const img = contentRef.current?.querySelector("img");
+    const onLoad = () => centerAtZoom(z0);
+    img?.addEventListener("load", onLoad);
+    return () => {
+      cancelAnimationFrame(id);
+      img?.removeEventListener("load", onLoad);
+    };
   }, [html]);
 
-  // While the lightbox is open, lock the page behind it: freeze body scroll and
-  // swallow wheel events on the overlay (a non-passive listener — React's
-  // onWheel can't preventDefault) so scrolling only zooms, never moves the page.
   useEffect(() => {
     if (!html) return;
     const prevOverflow = document.body.style.overflow;
+    const prevTouchAction = document.body.style.touchAction;
     document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
     const el = outerRef.current;
     const stop = (e: WheelEvent) => e.preventDefault();
     el?.addEventListener("wheel", stop, { passive: false });
     return () => {
       document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction;
       el?.removeEventListener("wheel", stop);
     };
   }, [html]);
-
-  const clampPan = (z: number, px: number, py: number) => {
-    const outer = outerRef.current;
-    const c = contentRef.current;
-    if (!outer || !c) return { x: px, y: py };
-    const ow = outer.clientWidth;
-    const oh = outer.clientHeight;
-    const sw = c.offsetWidth * z;
-    const sh = c.offsetHeight * z;
-    // When the content is smaller than the viewport on an axis, center it on
-    // that axis; otherwise clamp so you can't pan past an edge.
-    const axis = (o: number, s: number, p: number) =>
-      s <= o ? (o - s) / 2 : Math.min(0, Math.max(o - s, p));
-    return { x: axis(ow, sw, px), y: axis(oh, sh, py) };
-  };
 
   const zoomToCenter = (z: number) => {
     const nz = clampZoom(z);
@@ -124,7 +140,6 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
     setPan(clampPan(nz, cx - nz * ux, cy - nz * uy));
   };
 
-  // Walk to the next/previous discrete zoom stop (the +/- buttons).
   const stepZoom = (dir: 1 | -1) => {
     let idx = 0;
     let best = Infinity;
@@ -136,21 +151,23 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
       }
     });
     const ni = Math.min(ZOOM_STEPS.length - 1, Math.max(0, idx + dir));
-    zoomToCenter(ZOOM_STEPS[ni]);
+    zoomToCenter(ZOOM_STEPS[ni]!);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") e.preventDefault();
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size >= 2) {
+      gesturePinched.current = true;
       drag.current = null;
       const pts = [...pointers.current.values()];
       pinch.current = {
-        startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+        startDist: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y) || 1,
         startZoom: zoom,
         panX: pan.x,
         panY: pan.y,
-        midX: (pts[0].x + pts[1].x) / 2,
-        midY: (pts[0].y + pts[1].y) / 2,
+        midX: (pts[0]!.x + pts[1]!.x) / 2,
+        midY: (pts[0]!.y + pts[1]!.y) / 2,
       };
       return;
     }
@@ -163,27 +180,35 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     if (pinch.current && pointers.current.size >= 2) {
+      e.preventDefault();
       const outer = outerRef.current;
       if (!outer) return;
       const o = outer.getBoundingClientRect();
       const pts = [...pointers.current.values()];
-      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
-      const nz = clampZoom((pinch.current.startZoom * dist) / pinch.current.startDist);
-      const midX = (pts[0].x + pts[1].x) / 2 - o.left;
-      const midY = (pts[0].y + pts[1].y) / 2 - o.top;
-      const ux = (pinch.current.midX - o.left - pinch.current.panX) / pinch.current.startZoom;
-      const uy = (pinch.current.midY - o.top - pinch.current.panY) / pinch.current.startZoom;
+      const dist = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y) || 1;
+      const nz = clampZoom(
+        (pinch.current.startZoom * dist) / pinch.current.startDist,
+      );
+      const midX = (pts[0]!.x + pts[1]!.x) / 2 - o.left;
+      const midY = (pts[0]!.y + pts[1]!.y) / 2 - o.top;
+      const ux =
+        (pinch.current.midX - o.left - pinch.current.panX) /
+        pinch.current.startZoom;
+      const uy =
+        (pinch.current.midY - o.top - pinch.current.panY) /
+        pinch.current.startZoom;
       setZoom(nz);
       setPan(clampPan(nz, midX - nz * ux, midY - nz * uy));
       return;
     }
+    if (gesturePinched.current) return;
     if (drag.current) {
       setPan(
         clampPan(
           zoom,
           drag.current.panX + (e.clientX - drag.current.x),
-          drag.current.panY + (e.clientY - drag.current.y)
-        )
+          drag.current.panY + (e.clientY - drag.current.y),
+        ),
       );
     }
   };
@@ -191,7 +216,15 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
   const onPointerUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
-    if (pointers.current.size === 0) drag.current = null;
+    if (pointers.current.size === 0) {
+      drag.current = null;
+      if (gesturePinched.current) gesturePinched.current = false;
+    }
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
   };
 
   const onWheel = (e: React.WheelEvent) => {
@@ -214,11 +247,11 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
       <div className="flex items-center gap-2 px-3 py-2 text-sm text-white">
-        <span className="text-white/60">Drag to pan · scroll / pinch to zoom</span>
+        <span className="text-white/60">Drag to pan · pinch / scroll to zoom</span>
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={() => stepZoom(-1)}
-            disabled={zoom <= MIN_ZOOM}
+            disabled={zoom <= minZoom}
             className="rounded-md border border-white/30 px-2 py-1 leading-none disabled:opacity-40"
           >
             −
@@ -226,7 +259,7 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
           <span className="w-12 text-center text-xs text-white/70">{Math.round(zoom * 100)}%</span>
           <button
             onClick={() => stepZoom(1)}
-            disabled={zoom >= MAX_ZOOM}
+            disabled={zoom >= maxZoom()}
             className="rounded-md border border-white/30 px-2 py-1 leading-none disabled:opacity-40"
           >
             +
@@ -242,29 +275,27 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
 
       <div
         ref={outerRef}
-        className="relative min-h-0 flex-1 touch-none select-none overflow-hidden"
+        className="relative min-h-0 flex-1 touch-none select-none overflow-hidden overscroll-none"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
-        onDoubleClick={() => zoomToCenter(zoom > 1 ? 1 : MAX_ZOOM)}
+        onDoubleClick={() => zoomToCenter(zoom > 1 ? 1 : maxZoom())}
         onClick={(e) => {
           if (e.target === e.currentTarget) close();
         }}
-        // No "open/save image in new tab": block the context menu (right-click
-        // and mobile long-press), dragging, and the iOS image callout. The
-        // watermark + audit log remain the real controls.
         onContextMenu={(e) => e.preventDefault()}
         onDragStart={(e) => e.preventDefault()}
         style={{
           cursor: zoom > 1 ? "grab" : "zoom-in",
           WebkitTouchCallout: "none",
+          touchAction: "none",
         }}
       >
         <div
           ref={contentRef}
-          className="absolute left-0 top-0 w-full select-none"
+          className="absolute left-0 top-0 w-full select-none [&_img]:max-w-none"
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: "0 0",
@@ -278,8 +309,6 @@ export default function ImageLightbox({ watermark }: { watermark?: WM }) {
                 key={i}
                 className="absolute whitespace-nowrap text-sm font-medium"
                 style={{
-                  // Evenly spaced parallel lines + real gaps between repeats
-                  // (matches the page Watermark — no doubled/overlapping look).
                   top: `${i * 12}%`,
                   left: "-25%",
                   width: "150%",

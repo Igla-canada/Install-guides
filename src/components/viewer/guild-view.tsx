@@ -455,13 +455,15 @@ function BlockView({
     }
     case "gallery": {
       const items = (c.items as Array<{ imageAssetId: string; caption?: string }>) ?? [];
+      const colCount = Math.min(Math.max(Number(c.columns) || 2, 1), 4);
+      // Phones: one per row; full column count from md breakpoint up.
       const galleryCols: Record<number, string> = {
         1: "grid-cols-1",
-        2: "grid-cols-2",
-        3: "grid-cols-3",
-        4: "grid-cols-4",
+        2: "grid-cols-1 sm:grid-cols-2",
+        3: "grid-cols-1 sm:grid-cols-2 md:grid-cols-3",
+        4: "grid-cols-1 sm:grid-cols-2 md:grid-cols-4",
       };
-      const cols = galleryCols[Number(c.columns) || 2] ?? "grid-cols-2";
+      const cols = galleryCols[colCount] ?? "grid-cols-2";
       return (
         <div className={`grid items-start gap-3 ${cols}`}>
           {items.map((it, i) => {
