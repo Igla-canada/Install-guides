@@ -51,8 +51,10 @@ export default function GuildEditor({
   unpublishAction,
   archiveAction,
   deleteAction,
+  splitPhotosAction,
   isAdmin,
   publishError,
+  photosSplitCount,
   previewHref,
 }: {
   initialDoc: ClientDoc;
@@ -64,8 +66,10 @@ export default function GuildEditor({
   unpublishAction: () => Promise<void>;
   archiveAction: () => Promise<void>;
   deleteAction: () => Promise<void>;
+  splitPhotosAction: () => Promise<void>;
   isAdmin: boolean;
   publishError?: string;
+  photosSplitCount?: string;
   currentUserId: string;
   /** Preview page URL, including `?from=` so ← Guides returns to the starting list. */
   previewHref: string;
@@ -261,6 +265,26 @@ export default function GuildEditor({
                     </span>
                   </button>
                 </form>
+                <form
+                  action={splitPhotosAction}
+                  onSubmit={(e) => {
+                    if (
+                      !confirm(
+                        "Split shared photos for this guide?\n\nEvery photo and file will be copied so annotation edits here no longer affect other guides that share the same images.\n\nUse this on duplicated guides (e.g. Civic vs CR-V) before changing wire colors.",
+                      )
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
+                >
+                  <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-100">
+                    ⧉ Split shared photos
+                    <span className="block text-xs text-zinc-400">
+                      For duplicated guides — clone photos &amp; annotations so
+                      edits stay on this guide only
+                    </span>
+                  </button>
+                </form>
                 {isAdmin && (
                   <form
                     action={deleteAction}
@@ -300,6 +324,14 @@ export default function GuildEditor({
           Another <strong>published</strong> guide already exists for this exact
           vehicle + product + region. Archive it or change this guide&apos;s
           identity before publishing.
+        </p>
+      )}
+
+      {photosSplitCount && (
+        <p className="mt-3 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Split complete — cloned {photosSplitCount} photo/file
+          {photosSplitCount === "1" ? "" : "s"}. Annotation edits on this guide
+          are now independent.
         </p>
       )}
 

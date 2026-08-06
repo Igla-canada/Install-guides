@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { requireRole, requestMeta } from "@/lib/auth";
 import { loadGuildDoc, publishGuild, rollbackGuild, PublishConflictError } from "@/lib/guild-doc";
+import { detachGuildImageAssets } from "@/lib/image-asset-clone";
 import { loadTaxonomy } from "@/lib/taxonomy";
 import { prisma } from "@/lib/db";
 import { logEvent } from "@/lib/audit";
@@ -9,11 +10,11 @@ import { safeGuidesFrom, withFromParam } from "@/lib/guides-nav";
 
 export default async function GuildEditorPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ publish_error?: string; from?: string }>;
+  searchParams: Promise<{ publish_error?: string; from?: string; photos_split?: string }>;
 }) {
   const user = await requireRole("ADMIN", "TECH");
   const { id } = await props.params;
-  const { publish_error, from: fromRaw } = await props.searchParams;
+  const { publish_error, from: fromRaw, photos_split } = await props.searchParams;
   const from = safeGuidesFrom(fromRaw);
   const doc = await loadGuildDoc(id);
   if (!doc) notFound();
@@ -119,6 +120,15 @@ export default async function GuildEditorPage(props: {
     redirect(from ?? "/guides");
   }
 
+  async function splitPhotosAction() {
+    "use server";
+    const u = await requireRole("ADMIN", "TECH");
+    const { cloned } = await detachGuildImageAssets(id, u.id);
+    redirect(
+      withFromParam(`/guides/${id}/edit?photos_split=${cloned}`, from),
+    );
+  }
+
   return (
     <GuildEditor
       initialDoc={JSON.parse(JSON.stringify(doc))}
@@ -130,8 +140,10 @@ export default async function GuildEditorPage(props: {
       unpublishAction={unpublishAction}
       archiveAction={archiveAction}
       deleteAction={deleteAction}
+      splitPhotosAction={splitPhotosAction}
       isAdmin={user.role === "ADMIN"}
       publishError={publish_error}
+      photosSplitCount={photos_split}
       currentUserId={user.id}
       previewHref={withFromParam(`/guides/${id}`, from)}
     />
