@@ -199,6 +199,12 @@ export type CompatibilitySearch = {
   /** Exact make match (dropdown); uses equals not contains */
   makeExact?: boolean;
   modelExact?: boolean;
+  /**
+   * Guides bridged to the requested make via "Also matches make(s)". Their rows
+   * carry the PRIMARY make, so a lookup under the secondary name would miss
+   * them — see loadGuideIdsForAltMake.
+   */
+  makeAltGuideIds?: string[];
 };
 
 function clean(s: unknown): string | null {
@@ -338,10 +344,16 @@ export function buildCompatibilityWhere(
 
   if (search.visibleOnly) and.push({ isVisibleToDealers: true });
   if (search.make) {
+    const byMake: Prisma.VehicleCompatibilityWhereInput = search.makeExact
+      ? { make: { equals: search.make, mode: "insensitive" } }
+      : { make: { contains: search.make, mode: "insensitive" } };
+    // A bridged guide's row still says "Dodge"; it is only findable as "Ram"
+    // through the guides that declare that bridge.
+    const bridged = search.makeAltGuideIds ?? [];
     and.push(
-      search.makeExact
-        ? { make: { equals: search.make, mode: "insensitive" } }
-        : { make: { contains: search.make, mode: "insensitive" } }
+      bridged.length
+        ? { OR: [byMake, { sourceGuideId: { in: bridged } }] }
+        : byMake,
     );
   }
   if (search.model) {
@@ -507,6 +519,46 @@ export async function loadGuideModelAliases(
     const name = r.name.trim();
     if (!name) continue;
     map.set(r.guildId, [...(map.get(r.guildId) ?? []), name]);
+  }
+  return map;
+}
+
+/**
+ * The guides bridged to a secondary make name ("Also matches make(s)").
+ *
+ * The compatibility mirror only ever copies a guide's PRIMARY make, so a lookup
+ * for "Ram 1500" finds nothing even though the guide resolver serves it — which
+ * is how the portal ended up saying "no compatibility information" for a vehicle
+ * whose guide it had just listed. Exact make-name match only: a bridge is an
+ * explicit per-guide statement, never a fuzzy one.
+ */
+export async function loadGuideIdsForAltMake(makeName: string): Promise<string[]> {
+  const want = makeName.trim();
+  if (!want) return [];
+  const guides = await prisma.guild.findMany({
+    where: { altMakes: { some: { make: { name: { equals: want, mode: "insensitive" } } } } },
+    select: { id: true },
+  });
+  return guides.map((g) => g.id);
+}
+
+/**
+ * Secondary make names per guide, for building dropdown options — the mirror of
+ * loadGuideIdsForAltMake, read in bulk for a page of rows.
+ */
+export async function loadGuideAltMakes(
+  sourceGuideIds: Array<string | null | undefined>,
+): Promise<Map<string, string[]>> {
+  const ids = [...new Set(sourceGuideIds.filter((id): id is string => Boolean(id)))];
+  const map = new Map<string, string[]>();
+  if (!ids.length) return map;
+  const guides = await prisma.guild.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, altMakes: { select: { make: { select: { name: true } } } } },
+  });
+  for (const g of guides) {
+    const names = g.altMakes.map((m) => m.make.name.trim()).filter(Boolean);
+    if (names.length) map.set(g.id, names);
   }
   return map;
 }
@@ -723,6 +775,9 @@ export async function listCompatibilitySearchMeta(opts?: {
   // options so a vehicle is findable by every name it answers to, not just the
   // one its guide happens to be filed under.
   const aliasesByGuide = await loadGuideModelAliases(rows.map((r) => r.sourceGuideId));
+  // The secondary makes each row's guide is bridged to, so the same vehicle is
+  // offered under both names ("1500" under Dodge AND under Ram).
+  const altMakesByGuide = await loadGuideAltMakes(rows.map((r) => r.sourceGuideId));
 
   // make → compact key → preferred display label
   const byMake = new Map<string, Map<string, string>>();
@@ -743,9 +798,16 @@ export async function listCompatibilitySearchMeta(opts?: {
     }
   };
   for (const r of rows) {
-    addOption(r.make, baseModelName(r.model), modelBaseKey(r.model));
-    for (const alias of r.sourceGuideId ? aliasesByGuide.get(r.sourceGuideId) ?? [] : []) {
-      addOption(r.make, baseModelName(alias), modelBaseKey(alias));
+    const guideId = r.sourceGuideId;
+    const modelNames = [
+      r.model,
+      ...(guideId ? aliasesByGuide.get(guideId) ?? [] : []),
+    ];
+    const makeNames = [r.make, ...(guideId ? altMakesByGuide.get(guideId) ?? [] : [])];
+    for (const makeName of makeNames) {
+      for (const name of modelNames) {
+        addOption(makeName, baseModelName(name), modelBaseKey(name));
+      }
     }
   }
   const modelsByMake: Record<string, string[]> = {};

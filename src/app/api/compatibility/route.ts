@@ -15,6 +15,7 @@ import { checkServiceToken } from "@/lib/service-auth";
 import {
   buildCompatibilityWhere,
   excludeHiddenCompatibilityRows,
+  loadGuideIdsForAltMake,
   loadGuideModelAliases,
   loadLiveGuideCompatInfo,
   rowMatchesModel,
@@ -42,10 +43,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "bad_request", detail: "invalid year" }, { status: 400 });
   }
 
+  // Answer to the same make names the guide resolver does: a guide bridged to
+  // "Ram" is served under it, so it must report compatibility under it too.
+  const makeAltGuideIds = make ? await loadGuideIdsForAltMake(make) : [];
+
   const where = buildCompatibilityWhere({
     make,
     year,
     makeExact: Boolean(make),
+    makeAltGuideIds,
     visibleOnly: true,
   });
 

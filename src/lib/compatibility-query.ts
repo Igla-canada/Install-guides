@@ -5,6 +5,7 @@ import {
   coversBothIglaUnits,
   excludeHiddenCompatibilityRows,
   guideVariantLabel,
+  loadGuideIdsForAltMake,
   loadGuideModelAliases,
   loadLiveGuideCompatInfo,
   rowMatchesModel,
@@ -97,11 +98,16 @@ export async function loadCompatibilityList(opts: {
     };
   }
 
+  // Rows only carry a guide's primary make, so a search under a bridged make
+  // ("Also matches make(s)") has to reach the guides declaring that bridge.
+  const makeAltGuideIds = !showingAll && make ? await loadGuideIdsForAltMake(make) : [];
+
   const where = showingAll
     ? {}
     : buildCompatibilityWhere({
         make,
         makeExact: Boolean(make),
+        makeAltGuideIds,
         year,
         q,
         visibleOnly: opts.dealerFacing,
