@@ -10,7 +10,11 @@ import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
 import IglaSettingsView from "@/components/viewer/igla-settings-view";
 import IglaSettingsLauncher from "@/components/viewer/igla-settings-launcher";
-import CollapsibleRichText from "@/components/viewer/collapsible-rich-text";
+import CollapsibleBlock from "@/components/viewer/collapsible-block";
+import {
+  blockCollapsedPreview,
+  isBlockCollapsible,
+} from "@/lib/block-collapsible";
 import type { IglaSection as IglaSectionType } from "@/lib/igla-config";
 
 type AnnotationRow = {
@@ -403,19 +407,60 @@ function BlockView({
   settingsInline: boolean;
   watermarkLabel?: string;
 }) {
+  const body = renderBlockBody({
+    type,
+    content: c,
+    urlMap,
+    annoMap,
+    aspectMap,
+    viewMap,
+    guildId,
+    t,
+    guildName,
+    settingsInline,
+    watermarkLabel,
+  });
+
+  if (isBlockCollapsible(c) && !settingsInline) {
+    return (
+      <CollapsibleBlock
+        preview={blockCollapsedPreview(type, c)}
+        textClassName={t.text}
+      >
+        {body}
+      </CollapsibleBlock>
+    );
+  }
+  return body;
+}
+
+function renderBlockBody({
+  type,
+  content: c,
+  urlMap,
+  annoMap,
+  aspectMap,
+  viewMap,
+  guildId,
+  t,
+  guildName,
+  settingsInline,
+  watermarkLabel,
+}: {
+  type: string;
+  content: Record<string, unknown>;
+  urlMap: Map<string, string>;
+  annoMap: Map<string, AnnotationRow[]>;
+  aspectMap: Map<string, number>;
+  viewMap: Map<string, ImageView>;
+  guildId: string;
+  t: ReturnType<typeof themeClasses>;
+  guildName: string;
+  settingsInline: boolean;
+  watermarkLabel?: string;
+}) {
   switch (type) {
     case "text":
-      if (c.collapsible) {
-        return (
-          <CollapsibleRichText
-            html={c.html}
-            text={c.text}
-            className="text-sm leading-relaxed"
-            mutedClassName={t.muted}
-            forceOpen={settingsInline}
-          />
-        );
-      }
       return richBody(c.html, c.text, "text-sm leading-relaxed");
     case "key_value_table": {
       const rows = (c.rows as Array<{ key: string; value: string }>) ?? [];

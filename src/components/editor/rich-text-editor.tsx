@@ -31,15 +31,10 @@ export default function RichTextEditor({
   html,
   text,
   onChange,
-  collapsible,
-  onCollapsibleChange,
 }: {
   html?: string;
   text?: string;
   onChange: (next: { html: string; text: string }) => void;
-  /** When set, show the optional collapsible toggle in the toolbar. */
-  collapsible?: boolean;
-  onCollapsibleChange?: (collapsible: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -227,23 +222,6 @@ export default function RichTextEditor({
         <ToolBtn title="Clear Formatting" onClick={clearFormatting}>
           <span className="text-xs text-zinc-500">clear</span>
         </ToolBtn>
-
-        {onCollapsibleChange && (
-          <>
-            <span className="mx-0.5 h-5 w-px bg-zinc-200" />
-            <ToolBtn
-              title={
-                collapsible
-                  ? "Collapsible — starts closed when viewing (click to turn off)"
-                  : "Make collapsible — starts closed when viewing the guide"
-              }
-              active={Boolean(collapsible)}
-              onClick={() => onCollapsibleChange(!collapsible)}
-            >
-              <span className="text-xs tracking-tight">▶▼</span>
-            </ToolBtn>
-          </>
-        )}
       </div>
 
       <div
@@ -271,12 +249,10 @@ function ToolBtn({
   title,
   onClick,
   children,
-  active = false,
 }: {
   title: string;
   onClick: () => void;
   children: React.ReactNode;
-  active?: boolean;
 }) {
   return (
     <button
@@ -285,9 +261,7 @@ function ToolBtn({
       // Keep the text selection while clicking a toolbar button.
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`flex h-7 min-w-[1.75rem] items-center justify-center rounded-md px-1.5 hover:bg-zinc-100 ${
-        active ? "bg-zinc-900 text-white hover:bg-zinc-800" : "text-zinc-600"
-      }`}
+      className="flex h-7 min-w-[1.75rem] items-center justify-center rounded-md px-1.5 text-zinc-600 hover:bg-zinc-100"
     >
       {children}
     </button>

@@ -7,6 +7,7 @@ import ImageBlockEditor from "@/components/images/image-block-editor";
 import RichTextEditor from "./rich-text-editor";
 import IglaSettingsBlockEditor from "./igla-settings-block";
 import { uploadImage } from "@/lib/client/offline";
+import { withBlockCollapsible } from "@/lib/block-collapsible";
 
 export default function BlockCard({
   block,
@@ -24,6 +25,8 @@ export default function BlockCard({
   dispatch: (ops: any[]) => Promise<void>;
   isAdmin: boolean;
 }) {
+  const c = block.content ?? {};
+  const collapsible = Boolean(c.collapsible);
   const update = (content: any) =>
     void dispatch([{ op: "update_block", blockId: block.id, content }]);
 
@@ -63,6 +66,24 @@ export default function BlockCard({
           ✕
         </button>
       </div>
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => update(withBlockCollapsible(c, !collapsible))}
+          className={`rounded-md border px-2 py-0.5 text-xs ${
+            collapsible
+              ? "border-zinc-900 bg-zinc-900 font-medium text-white"
+              : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+          }`}
+          title={
+            collapsible
+              ? "Collapsible — starts closed when viewing (click to turn off)"
+              : "Make collapsible — starts closed when viewing the guide"
+          }
+        >
+          {collapsible ? "▶▼ Starts closed" : "▶▼ Collapsible"}
+        </button>
+      </div>
       <BlockBody block={block} update={update} sectionId={sectionId} isAdmin={isAdmin} />
     </div>
   );
@@ -85,10 +106,6 @@ function BlockBody({
         <RichTextEditor
           html={c.html}
           text={c.text}
-          collapsible={Boolean(c.collapsible)}
-          onCollapsibleChange={(v) =>
-            update({ ...c, collapsible: v ? true : undefined })
-          }
           onChange={(next) => update({ ...c, html: next.html, text: next.text })}
         />
       );

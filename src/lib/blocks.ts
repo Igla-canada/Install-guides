@@ -4,7 +4,7 @@
 // crash (forward compatibility for content authored by newer versions).
 
 export type BlockContent =
-  | { kind: "text"; text: string; html?: string; /** Viewer: start collapsed behind ▶ */ collapsible?: boolean }
+  | { kind: "text"; text: string; html?: string }
   | { kind: "key_value_table"; rows: Array<{ key: string; value: string }> }
   // heading = the red banner over the photo, e.g. "Passenger Foot Well
   // Harness" or "Installation Location: (1) Passenger Side Foot Well" —
