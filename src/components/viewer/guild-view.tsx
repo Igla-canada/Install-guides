@@ -10,6 +10,7 @@ import { AnnoOverlay, type Anno } from "@/components/images/annotator";
 import ImageLightbox from "@/components/viewer/image-lightbox";
 import IglaSettingsView from "@/components/viewer/igla-settings-view";
 import IglaSettingsLauncher from "@/components/viewer/igla-settings-launcher";
+import CollapsibleRichText from "@/components/viewer/collapsible-rich-text";
 import type { IglaSection as IglaSectionType } from "@/lib/igla-config";
 
 type AnnotationRow = {
@@ -404,6 +405,17 @@ function BlockView({
 }) {
   switch (type) {
     case "text":
+      if (c.collapsible) {
+        return (
+          <CollapsibleRichText
+            html={c.html}
+            text={c.text}
+            className="text-sm leading-relaxed"
+            mutedClassName={t.muted}
+            forceOpen={settingsInline}
+          />
+        );
+      }
       return richBody(c.html, c.text, "text-sm leading-relaxed");
     case "key_value_table": {
       const rows = (c.rows as Array<{ key: string; value: string }>) ?? [];

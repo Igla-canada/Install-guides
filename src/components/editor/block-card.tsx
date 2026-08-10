@@ -85,6 +85,10 @@ function BlockBody({
         <RichTextEditor
           html={c.html}
           text={c.text}
+          collapsible={Boolean(c.collapsible)}
+          onCollapsibleChange={(v) =>
+            update({ ...c, collapsible: v ? true : undefined })
+          }
           onChange={(next) => update({ ...c, html: next.html, text: next.text })}
         />
       );
