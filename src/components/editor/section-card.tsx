@@ -202,6 +202,20 @@ export default function SectionCard({
             ↓
           </IconBtn>
           <IconBtn
+            label="Duplicate section"
+            onClick={() =>
+              void dispatch([
+                {
+                  op: "duplicate_section",
+                  sectionId: section.id,
+                  newSectionId: crypto.randomUUID(),
+                },
+              ])
+            }
+          >
+            ⧉
+          </IconBtn>
+          <IconBtn
             label="Delete section"
             onClick={() => {
               if (confirm(`Delete section "${section.title}" and its blocks?`)) {

@@ -131,6 +131,31 @@ function applyOne(doc: ClientDoc, op: any): ClientDoc {
         ...doc,
         sections: reindex(doc.sections.filter((s) => s.id !== op.sectionId)),
       };
+    case "duplicate_section": {
+      const i = doc.sections.findIndex((s) => s.id === op.sectionId);
+      if (i < 0) return doc;
+      const source = doc.sections[i]!;
+      const uid = () =>
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `local-${Math.round(performance.now() * 1000)}${Math.random()}`;
+      const copy: ClientSection = {
+        id: op.newSectionId ?? uid(),
+        order: i + 1,
+        title: `${source.title} (copy)`,
+        type: source.type,
+        collapsedDefault: source.collapsedDefault,
+        blocks: source.blocks.map((b, bi) => ({
+          id: uid(),
+          order: bi,
+          type: b.type,
+          content: structuredClone(b.content),
+        })),
+      };
+      const sections = [...doc.sections];
+      sections.splice(i + 1, 0, copy);
+      return { ...doc, sections: reindex(sections) };
+    }
     case "add_block": {
       return {
         ...doc,

@@ -120,6 +120,11 @@ export const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("move_section"), sectionId: z.string(), toIndex: z.number().int().min(0) }),
   z.object({ op: z.literal("delete_section"), sectionId: z.string() }),
   z.object({
+    op: z.literal("duplicate_section"),
+    sectionId: z.string(),
+    newSectionId: z.string().optional(),
+  }),
+  z.object({
     op: z.literal("add_block"),
     sectionId: z.string(),
     type: z.string(),
@@ -417,6 +422,38 @@ async function applyOne(tx: Tx, guildId: string, op: GuildOp): Promise<void> {
     case "delete_section":
       await tx.section.delete({ where: { id: op.sectionId, guildId } });
       return;
+    case "duplicate_section": {
+      const source = await tx.section.findFirstOrThrow({
+        where: { id: op.sectionId, guildId },
+        include: { blocks: { orderBy: { order: "asc" } } },
+      });
+      const sections = await tx.section.findMany({
+        where: { guildId },
+        orderBy: { order: "asc" },
+        select: { id: true },
+      });
+      const i = sections.findIndex((s) => s.id === op.sectionId);
+      const index = i >= 0 ? i + 1 : sections.length;
+      await shiftOrders(tx, "section", { guildId }, index);
+      await tx.section.create({
+        data: {
+          ...(op.newSectionId ? { id: op.newSectionId } : {}),
+          guildId,
+          order: index,
+          title: `${source.title} (copy)`,
+          type: source.type,
+          collapsedDefault: source.collapsedDefault,
+          blocks: {
+            create: source.blocks.map((b, bi) => ({
+              order: bi,
+              type: b.type,
+              content: b.content as Prisma.InputJsonValue,
+            })),
+          },
+        },
+      });
+      return;
+    }
     case "add_block": {
       // Validate the section belongs to this guild.
       await tx.section.findFirstOrThrow({
