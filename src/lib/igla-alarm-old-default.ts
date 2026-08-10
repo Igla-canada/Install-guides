@@ -54,6 +54,25 @@ const OUTPUT_FUNCS = opts(
   "Test signal to check device functionality and output",
 );
 
+const LIN_FUNCS = opts("LIN", "Not available");
+
+const WHITE_RED_DIRECTIONS: IglaOption[] = [
+  { id: "in_minus", label: "Input '-'" },
+  { id: "out_minus", label: "Output '-'" },
+  { id: "lin", label: "LIN" },
+];
+
+const WHITE_RED_FUNCS: IglaOption[] = (() => {
+  const seen = new Set<string>();
+  const out: IglaOption[] = [];
+  for (const o of [...LIN_FUNCS, ...INPUT_FUNCS, ...OUTPUT_FUNCS]) {
+    if (seen.has(o.id)) continue;
+    seen.add(o.id);
+    out.push(o);
+  }
+  return out;
+})();
+
 const DRIVING_PERIOD = opts(
   "1 minute",
   "1 minute 30 seconds",
@@ -507,12 +526,12 @@ export const IGLA_ALARM_OLD_DEFAULT: IglaConfigDoc = {
             color: "#c43c3c",
             wire: "White-red",
             direction: {
-              options: DIRECTIONS,
-              value: "out_minus",
+              options: WHITE_RED_DIRECTIONS,
+              value: "lin",
               locked: false,
             },
             inversion: false,
-            func: { options: OUTPUT_FUNCS, value: "feature_1" },
+            func: { options: WHITE_RED_FUNCS, value: "lin" },
           },
         },
         {
