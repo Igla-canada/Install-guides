@@ -90,6 +90,51 @@ curl -s https://<your-app>/api/mcp -H "Authorization: Bearer <token>" -H "Conten
 
 ---
 
+## Killing the line after a leak
+
+**Revoking a token is instant.** Every request re-checks the database, so a
+revoked token stops working on the very next call — no deploy, no restart.
+
+```bash
+npm run token:list                              # what exists, and what's active
+npm run token:revoke -- "ChatGPT support agent" # kill one. Instant.
+npm run token:rotate -- "ChatGPT support agent" # kill it AND issue a replacement
+npm run token:revoke -- --all --yes             # panic: kill every token
+```
+
+`rotate` is the "change the password" move: the old token dies and a new one is
+printed in the same step. Paste the new one into ChatGPT and you are back up.
+
+> `--all` also kills the Igla portal integration, not just the AI connectors.
+> It asks for `--yes` before doing anything.
+
+### The one token you cannot revoke
+
+`IGLA_SERVICE_TOKEN` in the environment is checked *before* the database, so it
+always works and no command here can stop it. Killing that one means editing the
+env var in Vercel and redeploying — and every integration sharing it breaks at
+the same moment.
+
+**So never hand the env token to an AI connector.** Mint a dedicated one per
+place you connect, and a leak costs you one `revoke`.
+
+### Taking the whole endpoint dark
+
+If you don't yet know *which* token leaked, set `MCP_DISABLED=1` in the Vercel
+environment. Both routes then answer `503` before even looking at credentials.
+It needs a redeploy to take effect, which is why revoking is the first move and
+this is the second.
+
+### Seeing what was read
+
+Every tool call is in the audit log, with the query:
+
+```sql
+select ts, meta->>'tool' as tool, meta->>'query' as query, ip
+from "AuditEvent" where action = 'mcp_tool_call'
+order by ts desc limit 50;
+```
+
 ## How retrieval works
 
 `GuideSearchDoc` holds **one row per guide section** — section-level because that

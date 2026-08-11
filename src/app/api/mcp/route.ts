@@ -12,11 +12,21 @@
 // route /api/mcp/[token] instead.
 import { NextRequest } from "next/server";
 import { checkServiceToken } from "@/lib/service-auth";
-import { mcpGet, mcpOptions, mcpRespond, mcpUnauthorized } from "@/lib/mcp/respond";
+import {
+  mcpDisabled,
+  mcpGet,
+  mcpOptions,
+  mcpRespond,
+  mcpUnauthorized,
+} from "@/lib/mcp/respond";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Checked before auth: a kill switch that first asks for valid credentials
+  // is not a kill switch.
+  const off = mcpDisabled();
+  if (off) return off;
   if (!(await checkServiceToken(req))) return mcpUnauthorized();
   return mcpRespond(req);
 }

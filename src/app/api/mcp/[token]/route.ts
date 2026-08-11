@@ -9,11 +9,19 @@
 // of them can be revoked on its own.
 import { NextRequest } from "next/server";
 import { isValidServiceToken } from "@/lib/service-auth";
-import { mcpGet, mcpOptions, mcpRespond, mcpUnauthorized } from "@/lib/mcp/respond";
+import {
+  mcpDisabled,
+  mcpGet,
+  mcpOptions,
+  mcpRespond,
+  mcpUnauthorized,
+} from "@/lib/mcp/respond";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  const off = mcpDisabled();
+  if (off) return off;
   const { token } = await ctx.params;
   if (!(await isValidServiceToken(decodeURIComponent(token)))) return mcpUnauthorized();
   return mcpRespond(req);

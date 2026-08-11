@@ -15,6 +15,27 @@ export const MCP_CORS = {
   "Access-Control-Max-Age": "86400",
 };
 
+/**
+ * Master switch. Set MCP_DISABLED=1 in the environment to take the whole
+ * endpoint dark without touching tokens — the blunt instrument for when you
+ * don't yet know which token leaked.
+ *
+ * Slower than revoking a token (Vercel needs a redeploy for an env change to
+ * take effect), so reach for `npm run token:revoke` first: that is instant.
+ */
+export function mcpDisabled(): NextResponse | null {
+  const off = process.env.MCP_DISABLED?.trim().toLowerCase();
+  if (off !== "1" && off !== "true") return null;
+  return NextResponse.json(
+    {
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32000, message: "This MCP server is currently disabled." },
+    },
+    { status: 503, headers: MCP_CORS },
+  );
+}
+
 export function mcpUnauthorized(): NextResponse {
   return NextResponse.json(
     { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized" } },
