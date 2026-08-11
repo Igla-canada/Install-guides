@@ -11,7 +11,7 @@
 // ChatGPT's own connector UI can't send custom headers; it uses the sibling
 // route /api/mcp/[token] instead.
 import { NextRequest } from "next/server";
-import { checkServiceToken } from "@/lib/service-auth";
+import { diagnoseServiceToken } from "@/lib/service-auth";
 import {
   mcpDisabled,
   mcpGet,
@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
   // is not a kill switch.
   const off = mcpDisabled();
   if (off) return off;
-  if (!(await checkServiceToken(req))) return mcpUnauthorized();
+  const auth = await diagnoseServiceToken(req.headers.get("authorization"));
+  if (!auth.ok) return mcpUnauthorized(auth.reason);
   return mcpRespond(req);
 }
 

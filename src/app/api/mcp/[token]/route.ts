@@ -23,7 +23,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const off = mcpDisabled();
   if (off) return off;
   const { token } = await ctx.params;
-  if (!(await isValidServiceToken(decodeURIComponent(token)))) return mcpUnauthorized();
+  // Tolerate a value that was pasted with quotes or surrounding whitespace.
+  const raw = decodeURIComponent(token).trim().replace(/^["']|["']$/g, "");
+  if (!(await isValidServiceToken(raw))) return mcpUnauthorized("bad_path_token");
   return mcpRespond(req);
 }
 

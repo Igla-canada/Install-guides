@@ -36,9 +36,34 @@ export function mcpDisabled(): NextResponse | null {
   );
 }
 
-export function mcpUnauthorized(): NextResponse {
+/**
+ * A 401 that says which of the three things went wrong. "Unauthorized" alone
+ * sends you hunting through client configs; knowing whether the credential even
+ * arrived is usually the whole answer. No secret is echoed back.
+ */
+const AUTH_HINTS: Record<string, string> = {
+  no_credential:
+    "No Authorization header arrived. If your client cannot send headers, use the path form instead: POST /api/mcp/<service-token>",
+  bad_scheme:
+    'Authorization header present but not readable as a bearer credential. Expected: Authorization: Bearer <service-token>',
+  unknown_token:
+    "That token is not recognised — it may be mistyped, truncated, or revoked. Check `npm run token:list`.",
+  bad_path_token:
+    "The token in the URL path is not recognised — it may be mistyped, truncated, or revoked. Check `npm run token:list`.",
+};
+
+export function mcpUnauthorized(reason?: keyof typeof AUTH_HINTS): NextResponse {
+  const hint = reason ? AUTH_HINTS[reason] : undefined;
   return NextResponse.json(
-    { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized" } },
+    {
+      jsonrpc: "2.0",
+      id: null,
+      error: {
+        code: -32001,
+        message: "Unauthorized",
+        ...(hint ? { data: { reason, hint } } : {}),
+      },
+    },
     { status: 401, headers: { ...MCP_CORS, "WWW-Authenticate": "Bearer" } },
   );
 }
