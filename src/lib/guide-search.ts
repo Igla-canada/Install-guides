@@ -458,8 +458,20 @@ export function snippetAround(body: string, query: string, radius = 200): string
   return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
 }
 
+/**
+ * Absolute URL for a guide. Absolute matters here: an agent cites these back to
+ * a user, and a bare "/guides/<id>" is not something anyone can open.
+ *
+ * APP_BASE_URL is what the rest of this app uses (grants, password reset, the
+ * issue API). VERCEL_URL is the deploy-time fallback so a preview deployment
+ * still returns links that work.
+ */
 export function guideUrl(guildId: string): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const configured = process.env.APP_BASE_URL?.trim();
+  const vercel = process.env.VERCEL_URL?.trim();
+  const base = (
+    configured || (vercel ? `https://${vercel}` : "http://localhost:3000")
+  ).replace(/\/$/, "");
   return `${base}/guides/${guildId}`;
 }
 
