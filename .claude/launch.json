@@ -5,6 +5,13 @@
       "name": "igla-guilds",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "igla-portal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\summi\\OneDrive\\Desktop\\Igla-canada\\igla-system"],
       "port": 3000
     }
   ]

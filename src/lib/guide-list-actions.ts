@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { logEvent } from "@/lib/audit";
 import { publishGuild, PublishConflictError } from "@/lib/guild-doc";
 import { syncCompatibilityFromGuide } from "@/lib/vehicle-compatibility";
+import { syncGuideSearchDocs } from "@/lib/guide-search";
 
 export type GuideListActionResult =
   | { ok: true; status: string }
@@ -23,6 +24,7 @@ export async function archiveGuide(guildId: string): Promise<GuideListActionResu
     data: { status: "ARCHIVED", updatedById: u.id },
   });
   await syncCompatibilityFromGuide(guildId);
+  await syncGuideSearchDocs(guildId);
   const meta = await requestMeta();
   await logEvent({
     actor: { userId: u.id },
@@ -49,6 +51,7 @@ export async function restoreGuide(guildId: string): Promise<GuideListActionResu
     data: { status: "DRAFT", updatedById: u.id },
   });
   await syncCompatibilityFromGuide(guildId);
+  await syncGuideSearchDocs(guildId);
   const meta = await requestMeta();
   await logEvent({
     actor: { userId: u.id },

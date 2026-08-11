@@ -33,7 +33,14 @@ export function proxy(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const hasServiceBearer = Boolean(auth?.toLowerCase().startsWith("bearer "));
 
-  if (!hasServiceBearer && isBlockedBotUserAgent(req.headers.get("user-agent"))) {
+  // The MCP endpoint gates itself on a service token, and its whole purpose is
+  // to be called by an AI agent. ChatGPT's connector cannot send an
+  // Authorization header (it carries the token in the path instead) and
+  // identifies as "chatgpt-user" — which the crawler filter below blocks. Let
+  // the route decide: no token, no answer.
+  const isMcp = path === "/api/mcp" || path.startsWith("/api/mcp/");
+
+  if (!isMcp && !hasServiceBearer && isBlockedBotUserAgent(req.headers.get("user-agent"))) {
     return new NextResponse("Forbidden", {
       status: 403,
       headers: {

@@ -20,7 +20,8 @@
     "import:ghost:all": "tsx --env-file=.env scripts/import-ghost.ts --all",
     "import:ghost:repair": "tsx --env-file=.env scripts/import-ghost.ts --all --replace",
     "compat:audit": "tsx --env-file=.env scripts/audit-compatibility.ts",
-    "compat:reconcile": "tsx --env-file=.env scripts/reconcile-compatibility.ts"
+    "compat:reconcile": "tsx --env-file=.env scripts/reconcile-compatibility.ts",
+    "search:reindex": "tsx --env-file=.env scripts/reindex-guide-search.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

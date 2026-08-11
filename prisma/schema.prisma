@@ -11,7 +11,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // On Supabase: DATABASE_URL = pooled connection (port 6543, pgbouncer),
   // DIRECT_URL = direct connection (port 5432) used by prisma migrate.
   // Locally both point at the same Docker Postgres.
@@ -24,20 +24,20 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Make {
-  id      String         @id @default(cuid())
-  name    String         @unique
-  logoUrl String? // manufacturer logo shown on the Guides menu tiles
-  models  Model[]
-  aliases VehicleAlias[]
-  guilds  Guild[]
-  altGuilds GuildMake[] // guides whose SECONDARY make is this one (RAM↔Dodge)
+  id         String         @id @default(cuid())
+  name       String         @unique
+  logoUrl    String? // manufacturer logo shown on the Guides menu tiles
+  models     Model[]
+  aliases    VehicleAlias[]
+  guilds     Guild[]
+  altGuilds  GuildMake[] // guides whose SECONDARY make is this one (RAM↔Dodge)
   quickPicks QuickPick[]
 }
 
 model Model {
-  id          String       @id @default(cuid())
+  id          String         @id @default(cuid())
   makeId      String
-  make        Make         @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  make        Make           @relation(fields: [makeId], references: [id], onDelete: Cascade)
   name        String
   generations Generation[]
   aliases     VehicleAlias[]
@@ -82,14 +82,14 @@ model ProductLine {
 }
 
 model IglaProduct {
-  id            String         @id @default(cuid())
-  productLineId String
-  productLine   ProductLine    @relation(fields: [productLineId], references: [id], onDelete: Cascade)
-  name          String
-  modelCode     String?
-  guilds        Guild[] // guilds whose PRIMARY product this is
-  guildLinks    GuildProduct[] // all guilds that cover this product (incl. primary)
-  inventoryUnits InventoryUnit[]
+  id              String               @id @default(cuid())
+  productLineId   String
+  productLine     ProductLine          @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  name            String
+  modelCode       String?
+  guilds          Guild[] // guilds whose PRIMARY product this is
+  guildLinks      GuildProduct[] // all guilds that cover this product (incl. primary)
+  inventoryUnits  InventoryUnit[]
   configTemplates IglaConfigTemplate[]
 
   @@unique([productLineId, name])
@@ -180,23 +180,23 @@ model Guild {
   iglaProductId String
   iglaProduct   IglaProduct @relation(fields: [iglaProductId], references: [id])
 
-  title            String
-  status           GuildStatus @default(DRAFT)
+  title                  String
+  status                 GuildStatus @default(DRAFT)
   /// When true, linked VehicleCompatibility rows stay off dealer/API lists
   /// even if this guide is PUBLISHED (overrides archive/publish visibility).
-  hideFromCompatibility Boolean @default(false)
+  hideFromCompatibility  Boolean     @default(false)
   /// Guide-level flag: this install needs analog blocking. Synced onto linked
   /// VehicleCompatibility.analogBlockRequired (admin can still edit the row).
-  analogBlockingRequired Boolean @default(false)
+  analogBlockingRequired Boolean     @default(false)
   /// Set on guides where BOTH IGLA 231 and IGLA Alarm fit the car and Alarm is
   /// the better choice (it drives more programming buttons). Surfaces a
   /// recommendation to the installer in the portal and the compatibility list;
   /// synced onto this guide's VehicleCompatibility rows. Off = say nothing.
-  alarmMoreButtons Boolean @default(false)
-  currentVersionId String?
-  coverImageId     String?
-  coverImage       ImageAsset? @relation("GuildCover", fields: [coverImageId], references: [id])
-  properties       Json? // the grey metadata box at the top of the reference pages
+  alarmMoreButtons       Boolean     @default(false)
+  currentVersionId       String?
+  coverImageId           String?
+  coverImage             ImageAsset? @relation("GuildCover", fields: [coverImageId], references: [id])
+  properties             Json? // the grey metadata box at the top of the reference pages
 
   createdById String
   createdBy   UserAccount @relation("GuildCreatedBy", fields: [createdById], references: [id])
@@ -205,13 +205,14 @@ model Guild {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  sections    Section[]
-  versions    GuildVersion[]
-  grantGuilds GrantGuild[]
-  auditEvents AuditEvent[]
-  products    GuildProduct[] // every product this guide covers (primary included)
-  altMakes    GuildMake[] // secondary make(s) this guide is ALSO valid for (e.g. a RAM 1500 guide bridged to "Dodge"). Bridge is per-guide; resolution matches the bridged guide by its own model name.
+  sections        Section[]
+  versions        GuildVersion[]
+  grantGuilds     GrantGuild[]
+  auditEvents     AuditEvent[]
+  products        GuildProduct[] // every product this guide covers (primary included)
+  altMakes        GuildMake[] // secondary make(s) this guide is ALSO valid for (e.g. a RAM 1500 guide bridged to "Dodge"). Bridge is per-guide; resolution matches the bridged guide by its own model name.
   altModelAliases GuildModelAlias[] // extra model NAME(s) this guide answers to (e.g. a RAM "1500" guide also called "Ram 1500" under Dodge). Free text — a resolution hint, NOT the canonical model identity (which stays the FK above).
+  guideSearchDocs GuideSearchDoc[]
 
   // One published guild per identity tuple is enforced in application logic at
   // publish time (Postgres treats NULL trimId as distinct, so a DB unique
@@ -391,16 +392,16 @@ model UserAccount {
   allGuides    Boolean    @default(false)
   createdAt    DateTime   @default(now())
 
-  sessions       Session[]
+  sessions            Session[]
   passwordResetTokens PasswordResetToken[]
-  guildsCreated  Guild[]        @relation("GuildCreatedBy")
-  guildsUpdated  Guild[]        @relation("GuildUpdatedBy")
-  versions       GuildVersion[]
-  imagesUploaded ImageAsset[]
-  quickPicks     QuickPick[]
-  grantsIssued   AccessGrant[]
-  auditEvents    AuditEvent[]
-  installerGrants InstallerGuild[]
+  guildsCreated       Guild[]              @relation("GuildCreatedBy")
+  guildsUpdated       Guild[]              @relation("GuildUpdatedBy")
+  versions            GuildVersion[]
+  imagesUploaded      ImageAsset[]
+  quickPicks          QuickPick[]
+  grantsIssued        AccessGrant[]
+  auditEvents         AuditEvent[]
+  installerGrants     InstallerGuild[]
 }
 
 model Session {
@@ -467,11 +468,11 @@ model VehicleCompatibility {
   sourceGuideStatus       String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+  // sourceGuideId is @unique, which already provides its index.
 
   @@index([make, model])
   @@index([yearFrom, yearTo])
   @@index([isVisibleToDealers])
-  // sourceGuideId is @unique, which already provides its index.
 }
 
 // Which guilds a persistent-login INSTALLER account may view. Each grant is
@@ -482,29 +483,29 @@ model InstallerGuild {
   user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
   guildId   String
   expiresAt DateTime? // null = permanent
-  grantedAt DateTime  @default(now())
+  grantedAt DateTime    @default(now())
 
   @@id([userId, guildId])
 }
 
 // Time-limited one-time-link access for installers without accounts.
 model AccessGrant {
-  id             String       @id @default(cuid())
-  granteeLabel   String // who this is for, e.g. "Mike @ DT Auto"
-  granteePhone   String? // SMS one-time-code destination (null for portal-issued direct links)
-  granteeEmail   String? // optional: where the access link is emailed at creation
+  id           String       @id @default(cuid())
+  granteeLabel String // who this is for, e.g. "Mike @ DT Auto"
+  granteePhone String? // SMS one-time-code destination (null for portal-issued direct links)
+  granteeEmail String? // optional: where the access link is emailed at creation
   // Portal-issued (Igla install) links: bound to a device unit serial, opened
   // directly (no SMS) because the portal already authenticated the installer.
-  granteeUnit    String? // device unit serial this guide link is bound to
-  directOpen     Boolean      @default(false) // skip SMS OTP — establish the view session on open
-  grantedById    String? // null for portal/integration-issued links (no staff author)
-  grantedBy      UserAccount? @relation(fields: [grantedById], references: [id])
-  tokenHash      String       @unique // the link token, hashed
-  expiresAt      DateTime
-  maxViews       Int?
-  viewsUsed      Int          @default(0)
-  revokedAt      DateTime?
-  createdAt      DateTime     @default(now())
+  granteeUnit  String? // device unit serial this guide link is bound to
+  directOpen   Boolean      @default(false) // skip SMS OTP — establish the view session on open
+  grantedById  String? // null for portal/integration-issued links (no staff author)
+  grantedBy    UserAccount? @relation(fields: [grantedById], references: [id])
+  tokenHash    String       @unique // the link token, hashed
+  expiresAt    DateTime
+  maxViews     Int?
+  viewsUsed    Int          @default(0)
+  revokedAt    DateTime?
+  createdAt    DateTime     @default(now())
 
   guilds      GrantGuild[]
   otpCodes    OtpCode[]
@@ -558,22 +559,22 @@ model ServiceToken {
 // ---------------------------------------------------------------------------
 
 model AuditEvent {
-  id      String       @id @default(cuid())
+  id                String       @id @default(cuid())
   // Actor is a staff/installer account OR an access grant — never both.
-  userId  String?
-  user    UserAccount? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  grantId String?
-  grant   AccessGrant? @relation(fields: [grantId], references: [id], onDelete: SetNull)
-  guildId String?
-  guild   Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  userId            String?
+  user              UserAccount? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  grantId           String?
+  grant             AccessGrant? @relation(fields: [grantId], references: [id], onDelete: SetNull)
+  guildId           String?
+  guild             Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
   // view | open_section | image_zoom | pdf_download | denied | login |
   // otp_sent | otp_failed | grant_created | grant_revoked | resolve | ...
-  action  String
-  ip      String?
+  action            String
+  ip                String?
   userAgent         String?
   deviceFingerprint String?
-  meta    Json?
-  ts      DateTime     @default(now())
+  meta              Json?
+  ts                DateTime     @default(now())
 
   @@index([guildId, ts])
   @@index([grantId, ts])
@@ -598,4 +599,47 @@ model Alert {
   createdAt DateTime    @default(now())
 
   @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Guide search index (RAG retrieval for the MCP server)
+// ---------------------------------------------------------------------------
+
+// One row per guide SECTION, holding that section's flattened text plus the
+// vehicle identity it belongs to. A denormalised mirror like
+// VehicleCompatibility: the guide owns every field here and rows are rebuilt
+// from it, never edited by hand.
+//
+// Section-level, not guide-level, because that is the unit a support agent
+// wants back — "the CAN-bus junction box section of the RAM 1500 guide", not a
+// 12-page document it has to re-read. `status` is a snapshot for filtering
+// cheaply; the live Guild row still wins at query time (see guide-search.ts),
+// so a stale snapshot can never leak an unpublished guide.
+model GuideSearchDoc {
+  id           String   @id @default(cuid())
+  guildId      String
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  sectionId    String?
+  sectionOrder Int      @default(0)
+  guideTitle   String
+  sectionTitle String
+  make         String
+  model        String
+  generation   String
+  years        String
+  trim         String?
+  product      String
+  region       String
+  status       String
+  /// Extra model/make names this guide answers to — so a search for "Ram 1500"
+  /// hits a guide filed under Dodge, the same way serving and compatibility do.
+  aliases      String
+  body         String
+  /// Maintained by Postgres (GENERATED ALWAYS) — declared only so Prisma sees
+  /// no drift. Never written from the client; queried via $queryRaw.
+  search       Unsupported("tsvector")?
+  updatedAt    DateTime @updatedAt
+
+  @@index([guildId])
+  @@index([status])
 }

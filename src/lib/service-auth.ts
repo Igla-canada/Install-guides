@@ -8,7 +8,18 @@ import { prisma } from "./db";
 export async function checkServiceToken(req: NextRequest): Promise<boolean> {
   const auth = req.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return false;
-  const token = auth.slice("Bearer ".length).trim();
+  return isValidServiceToken(auth.slice("Bearer ".length));
+}
+
+/**
+ * Validate a bare token string.
+ *
+ * Split out for the MCP endpoint: ChatGPT's connector UI only offers "no auth"
+ * or full OAuth, so that route carries the token in the URL path instead of an
+ * Authorization header. Same tokens, same revocation.
+ */
+export async function isValidServiceToken(raw: string): Promise<boolean> {
+  const token = raw.trim();
   if (!token) return false;
   if (process.env.IGLA_SERVICE_TOKEN && token === process.env.IGLA_SERVICE_TOKEN) {
     return true;

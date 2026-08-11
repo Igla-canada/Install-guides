@@ -13,6 +13,7 @@ import {
   syncCompatibilityForGeneration,
   syncCompatibilityFromGuide,
 } from "./vehicle-compatibility";
+import { syncGuideSearchDocs } from "./guide-search";
 import {
   cloneImageAssetsForGuildCopy,
   remapAssetIdsInContent,
@@ -163,6 +164,13 @@ export async function applyOps(
       data: { updatedById: actorUserId },
     });
   });
+
+  // The search index is a mirror of guide CONTENT, so unlike compatibility it
+  // has to follow every op, not just identity ones — an edited paragraph that
+  // never reaches the index is a support agent quoting last week's wiring.
+  await syncGuideSearchDocs(guildId).catch((e) =>
+    console.error("[guide-search] sync failed", e),
+  );
 
   // Compatibility is a denormalized mirror — push make/model/years/products
   // after identity edits so admin + public lists stay in sync with guides.
@@ -679,6 +687,7 @@ export async function publishGuild(
     where: { id: guildId },
     data: { status: "PUBLISHED", currentVersionId: version.id },
   });
+  await syncGuideSearchDocs(guildId);
   await syncCompatibilityFromGuide(guildId);
   revalidateCompatibilityPaths();
   return version;

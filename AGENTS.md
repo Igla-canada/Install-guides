@@ -34,6 +34,12 @@ These rules come from the system plan and must never erode:
 
 6. **Tracking is forensics, not prevention.** Don't oversell it in UI copy.
 
+7. **The MCP server is read-only and PUBLISHED-only.** `/api/mcp` exposes guide
+   text and compatibility to outside agents (see docs/mcp-server.md). Never add
+   a tool there that writes, that can reach a draft/archived guide, or that
+   returns customer data or image URLs — and keep resolving visibility from the
+   live Guild row, not the snapshot on GuideSearchDoc.
+
 ## Dev environment
 
 - `docker compose up -d` → Postgres (5432) + MinIO (9000/9001, console login
