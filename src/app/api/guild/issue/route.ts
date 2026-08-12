@@ -164,28 +164,67 @@ export async function POST(req: NextRequest) {
       ` · unit ${unitSerial}`,
   });
   if ("limited" in grant) {
+    // Locked out of NEW guides — but the ones this unit already has are still
+    // its own. Hand them back so the installer can reopen one instead of being
+    // left with a dead button and a "contact the admin" message.
     return NextResponse.json({
       ok: false,
       error: "guide_limit",
-      servedGuides: grant.served,
+      servedCount: grant.served,
       maxGuides: grant.max,
+      unitGuides: await summariseGuides(grant.servedGuideIds),
     });
   }
 
   // guidesRemaining: how many NEW guides this unit may still be served (0 = locked).
+  // unitGuides rides along on success too: the moment remaining hits 0 the portal
+  // locks the button, and it needs this list at exactly that moment.
   return NextResponse.json({
     ok: true,
     url: grant.url,
     guild: chosen,
     guidesRemaining: grant.remaining,
+    unitGuides: await summariseGuides(grant.servedGuideIds),
   });
+}
+
+/**
+ * Label the guides a unit has already been served, for the portal's "you still
+ * have these" list. PUBLISHED only — re-issuing goes through the forced-guildId
+ * path, which refuses anything else, so offering an archived guide would be
+ * offering a button that cannot work.
+ */
+async function summariseGuides(guildIds: string[]) {
+  if (!guildIds.length) return [];
+  const guides = await prisma.guild.findMany({
+    where: { id: { in: guildIds }, status: "PUBLISHED" },
+    include: {
+      make: true,
+      model: true,
+      generation: true,
+      trim: true,
+      iglaProduct: true,
+    },
+  });
+  return guides.map((g) => ({
+    guildId: g.id,
+    title: g.title,
+    vehicle: [g.make.name, g.model.name, g.trim?.name].filter(Boolean).join(" "),
+    years: g.generation.yearEnd
+      ? `${g.generation.yearStart}–${g.generation.yearEnd}`
+      : `${g.generation.yearStart}–present`,
+    product: g.iglaProduct.name,
+  }));
 }
 
 async function issueUnitGrant(opts: {
   guildId: string;
   unitSerial: string;
   label: string;
-}): Promise<{ url: string; remaining: number } | { limited: true; served: number; max: number }> {
+}): Promise<
+  | { url: string; remaining: number; servedGuideIds: string[] }
+  | { limited: true; served: number; max: number; servedGuideIds: string[] }
+> {
   const now = new Date();
 
   // Every direct-open grant ever minted for this unit (newest first). The set of distinct
@@ -201,7 +240,12 @@ async function issueUnitGrant(opts: {
   // Cap distinct guides per unit. Re-opening a guide already served (closed tab, expired link)
   // is always allowed and does NOT count — only a brand-new guide consumes the budget.
   if (isNewGuide && servedGuideIds.size >= MAX_GUIDES_PER_UNIT) {
-    return { limited: true, served: servedGuideIds.size, max: MAX_GUIDES_PER_UNIT };
+    return {
+      limited: true,
+      served: servedGuideIds.size,
+      max: MAX_GUIDES_PER_UNIT,
+      servedGuideIds: [...servedGuideIds],
+    };
   }
   const distinctAfter = isNewGuide ? servedGuideIds.size + 1 : servedGuideIds.size;
   const remaining = Math.max(0, MAX_GUIDES_PER_UNIT - distinctAfter);
@@ -218,7 +262,11 @@ async function issueUnitGrant(opts: {
         where: { id: active.id },
         data: { tokenHash: hashToken(token), expiresAt: hoursFromNow(GRANT_HOURS) },
       });
-      return { url: autoUrl(token), remaining };
+      return {
+        url: autoUrl(token),
+        remaining,
+        servedGuideIds: [...servedGuideIds],
+      };
     }
     await prisma.accessGrant.update({
       where: { id: active.id },
@@ -244,7 +292,11 @@ async function issueUnitGrant(opts: {
     guildId: opts.guildId,
     meta: { source: "portal", unit: opts.unitSerial },
   });
-  return { url: autoUrl(token), remaining };
+  return {
+    url: autoUrl(token),
+    remaining,
+    servedGuideIds: [...new Set([...servedGuideIds, opts.guildId])],
+  };
 }
 
 const hoursFromNow = (h: number) => new Date(Date.now() + h * 3600_000);
