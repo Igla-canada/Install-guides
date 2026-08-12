@@ -163,6 +163,21 @@ export async function POST(req: NextRequest) {
       [installerLabel || "Installer", dealerLabel].filter(Boolean).join(" @ ") +
       ` · unit ${unitSerial}`,
   });
+  if ("superseded" in grant) {
+    // A later correction moved this unit onto a different vehicle. The earlier
+    // car's guide is spent, not reopenable — offer what the unit still has.
+    await logEvent({
+      actor: null,
+      action: "resolve",
+      guildId: chosen.guildId,
+      meta: { source: "portal", unit: unitSerial, outcome: "guide_superseded" },
+    });
+    return NextResponse.json({
+      ok: false,
+      error: "guide_superseded",
+      unitGuides: await summariseGuides(grant.servedGuideIds),
+    });
+  }
   if ("limited" in grant) {
     // Locked out of NEW guides — but the ones this unit already has are still
     // its own. Hand them back so the installer can reopen one instead of being
@@ -217,6 +232,57 @@ async function summariseGuides(guildIds: string[]) {
   }));
 }
 
+/** make+model, normalised — what makes two guides "the same car". */
+function vehicleKey(g: { make: { name: string }; model: { name: string } }): string {
+  return `${g.make.name}|${g.model.name}`.toLowerCase().replace(/[^a-z0-9|]/g, "");
+}
+
+/**
+ * Sort a unit's served guides into the ones still reopenable and the ones a
+ * later correction superseded.
+ *
+ * The 2-guide budget exists so an installer can fix a wrong make/model/year
+ * once. Two guides for the SAME car (a variant, a different generation) are
+ * both legitimately in play, so both stay open. Two guides for DIFFERENT cars
+ * means the first was a mistake — the newest one is the car being worked on,
+ * and hopping back to the wrong car's wiring helps nobody.
+ *
+ * Superseded guides still count against the budget. They were spent.
+ */
+async function classifyServedGuides(unitSerial: string) {
+  const grants = await prisma.accessGrant.findMany({
+    where: { granteeUnit: unitSerial, directOpen: true },
+    include: { guilds: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Distinct guide ids, newest-served first.
+  const orderedIds: string[] = [];
+  for (const g of grants) {
+    for (const x of g.guilds) {
+      if (!orderedIds.includes(x.guildId)) orderedIds.push(x.guildId);
+    }
+  }
+  const served = new Set(orderedIds);
+  if (!orderedIds.length) {
+    return { grants, served, reopenable: new Set<string>(), superseded: new Set<string>() };
+  }
+
+  const guides = await prisma.guild.findMany({
+    where: { id: { in: orderedIds } },
+    select: { id: true, make: { select: { name: true } }, model: { select: { name: true } } },
+  });
+  const keyById = new Map(guides.map((g) => [g.id, vehicleKey(g)]));
+
+  // The car currently being worked on = the vehicle of the most recently served guide.
+  const currentKey = keyById.get(orderedIds[0]) ?? null;
+  const reopenable = new Set(
+    orderedIds.filter((id) => currentKey !== null && keyById.get(id) === currentKey),
+  );
+  const superseded = new Set(orderedIds.filter((id) => !reopenable.has(id)));
+  return { grants, served, reopenable, superseded };
+}
+
 async function issueUnitGrant(opts: {
   guildId: string;
   unitSerial: string;
@@ -224,18 +290,20 @@ async function issueUnitGrant(opts: {
 }): Promise<
   | { url: string; remaining: number; servedGuideIds: string[] }
   | { limited: true; served: number; max: number; servedGuideIds: string[] }
+  | { superseded: true; servedGuideIds: string[] }
 > {
   const now = new Date();
 
-  // Every direct-open grant ever minted for this unit (newest first). The set of distinct
-  // guildIds across them is how many DIFFERENT guides this unit has been served.
-  const grants = await prisma.accessGrant.findMany({
-    where: { granteeUnit: opts.unitSerial, directOpen: true },
-    include: { guilds: true },
-    orderBy: { createdAt: "desc" },
-  });
-  const servedGuideIds = new Set(grants.flatMap((g) => g.guilds.map((x) => x.guildId)));
+  const { grants, served: servedGuideIds, reopenable, superseded } =
+    await classifyServedGuides(opts.unitSerial);
   const isNewGuide = !servedGuideIds.has(opts.guildId);
+
+  // A guide a later correction replaced is not reopenable, however it is asked
+  // for — enforced here rather than only hidden in the portal, so the chooser
+  // and a direct API call are both covered.
+  if (superseded.has(opts.guildId)) {
+    return { superseded: true, servedGuideIds: [...reopenable] };
+  }
 
   // Cap distinct guides per unit. Re-opening a guide already served (closed tab, expired link)
   // is always allowed and does NOT count — only a brand-new guide consumes the budget.
@@ -244,7 +312,7 @@ async function issueUnitGrant(opts: {
       limited: true,
       served: servedGuideIds.size,
       max: MAX_GUIDES_PER_UNIT,
-      servedGuideIds: [...servedGuideIds],
+      servedGuideIds: [...reopenable],
     };
   }
   const distinctAfter = isNewGuide ? servedGuideIds.size + 1 : servedGuideIds.size;
@@ -265,7 +333,7 @@ async function issueUnitGrant(opts: {
       return {
         url: autoUrl(token),
         remaining,
-        servedGuideIds: [...servedGuideIds],
+        servedGuideIds: [...reopenable],
       };
     }
     await prisma.accessGrant.update({
@@ -292,10 +360,13 @@ async function issueUnitGrant(opts: {
     guildId: opts.guildId,
     meta: { source: "portal", unit: opts.unitSerial },
   });
+  // This guide is now the most recent, so it may have just superseded the
+  // others — re-classify rather than assume the set only grew.
+  const after = await classifyServedGuides(opts.unitSerial);
   return {
     url: autoUrl(token),
     remaining,
-    servedGuideIds: [...new Set([...servedGuideIds, opts.guildId])],
+    servedGuideIds: [...after.reopenable],
   };
 }
 
