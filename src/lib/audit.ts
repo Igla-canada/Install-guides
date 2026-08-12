@@ -89,40 +89,65 @@ async function evaluateAlerts(eventId: string, input: LogInput) {
     : { grantId: input.actor.grantId };
   const since = (min: number) => new Date(Date.now() - min * 60_000);
 
-  if (input.action === "view") {
-    // Rule: burst of guild views from one actor.
-    const views = await prisma.auditEvent.count({
-      where: {
-        ...actorWhere,
-        action: "view",
-        ts: { gte: since(RULES.burstViews.windowMin) },
-      },
-    });
-    if (views > RULES.burstViews.count) {
-      await raiseAlert("burst_views", "high", input, {
-        views,
-        windowMin: RULES.burstViews.windowMin,
-      });
-    }
+  /**
+   * An account granted EVERY guide (a tech partner like CSI Tech) is supposed to
+   * range across the whole library — that is the access they were given. The two
+   * breadth rules below exist to catch someone reading far more than their job
+   * needs, so for these accounts they only ever produce noise, and an alert list
+   * full of noise is one nobody reads.
+   *
+   * The other rules still apply to them: a new device can mean a shared login,
+   * repeated denials still mean probing. Breadth is what's expected here,
+   * not everything.
+   */
+  const breadthExempt = input.actor.userId
+    ? Boolean(
+        (
+          await prisma.userAccount.findUnique({
+            where: { id: input.actor.userId },
+            select: { allGuides: true },
+          })
+        )?.allGuides,
+      )
+    : false;
 
-    // Rule: views across many unrelated makes in a short window.
-    const recent = await prisma.auditEvent.findMany({
-      where: {
-        ...actorWhere,
-        action: "view",
-        guildId: { not: null },
-        ts: { gte: since(RULES.crossMake.windowMin) },
-      },
-      select: { guild: { select: { makeId: true } } },
-    });
-    const makes = new Set(
-      recent.map((r) => r.guild?.makeId).filter(Boolean)
-    );
-    if (makes.size > RULES.crossMake.makes) {
-      await raiseAlert("cross_make", "high", input, {
-        distinctMakes: makes.size,
-        windowMin: RULES.crossMake.windowMin,
+  if (input.action === "view") {
+    // The two breadth rules are skipped wholesale for an all-guides account —
+    // not just their verdicts. These are the heaviest checks here, and that
+    // account is by definition the one viewing most.
+    if (!breadthExempt) {
+      // Rule: burst of guild views from one actor.
+      const views = await prisma.auditEvent.count({
+        where: {
+          ...actorWhere,
+          action: "view",
+          ts: { gte: since(RULES.burstViews.windowMin) },
+        },
       });
+      if (views > RULES.burstViews.count) {
+        await raiseAlert("burst_views", "high", input, {
+          views,
+          windowMin: RULES.burstViews.windowMin,
+        });
+      }
+
+      // Rule: views across many unrelated makes in a short window.
+      const recent = await prisma.auditEvent.findMany({
+        where: {
+          ...actorWhere,
+          action: "view",
+          guildId: { not: null },
+          ts: { gte: since(RULES.crossMake.windowMin) },
+        },
+        select: { guild: { select: { makeId: true } } },
+      });
+      const makes = new Set(recent.map((r) => r.guild?.makeId).filter(Boolean));
+      if (makes.size > RULES.crossMake.makes) {
+        await raiseAlert("cross_make", "high", input, {
+          distinctMakes: makes.size,
+          windowMin: RULES.crossMake.windowMin,
+        });
+      }
     }
 
     // Rule: same grantee appearing from a new device/IP.
